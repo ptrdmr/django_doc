@@ -1,0 +1,1 @@
+# Django apps module for meddocparser 

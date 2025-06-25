@@ -1,0 +1,836 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Medical Document Parser Development Rules
+
+## **Project Overview**
+- **Healthcare SaaS Platform** with HIPAA compliance requirements
+- **Tech Stack:** Django 5.0 + htmx + Alpine.js + Tailwind + PostgreSQL + Celery
+- **Core Purpose:** Transform medical documents into FHIR-compliant patient histories
+- **Development Model:** Solo Developer with AI Assistance
+
+## **Django Project Structure**
+
+### **App Organization**
+```python
+# ✅ DO: Follow this exact app structure
+apps/
+├── accounts/          # User auth & profiles
+├── core/              # Shared utilities
+├── documents/         # Document upload/processing
+├── patients/          # Patient management
+├── providers/         # Provider management
+├── fhir/             # FHIR processing
+└── reports/          # Reporting module
+```
+
+### **Django App Configuration**
+```python
+# ✅ DO: Use full app paths in apps.py files
+# apps/documents/apps.py
+from django.apps import AppConfig
+
+class DocumentsConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'apps.documents'  # ← Must match path in INSTALLED_APPS
+
+# ❌ DON'T: Use short names that don't match INSTALLED_APPS
+class DocumentsConfig(AppConfig):
+    name = 'documents'  # ← Wrong! Will cause import errors
+
+# ✅ DO: Reference apps in settings with full paths
+INSTALLED_APPS = [
+    'apps.accounts',
+    'apps.core', 
+    'apps.documents',
+    # ... etc
+]
+```
+
+### **Celery + Django Integration Pattern**
+```python
+# ✅ DO: Follow this exact Celery setup pattern
+
+# 1. meddocparser/celery.py
+import os
+from celery import Celery
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'meddocparser.settings')
+app = Celery('meddocparser')
+app.config_from_object('django.conf:settings', namespace='CELERY')
+app.autodiscover_tasks()
+
+# 2. meddocparser/__init__.py
+from .celery import app as celery_app
+__all__ = ('celery_app',)
+
+# 3. settings/base.py Celery configuration
+REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
+# Task routing for medical document processing
+CELERY_TASK_ROUTES = {
+    'apps.documents.tasks.*': {'queue': 'document_processing'},
+    'apps.fhir.tasks.*': {'queue': 'fhir_processing'},
+}
+
+# Worker settings for medical documents (can be large)
+CELERY_TASK_TIME_LIMIT = 600  # 10 minutes
+CELERY_TASK_SOFT_TIME_LIMIT = 540  # 9 minutes
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # One task at a time
+
+# 4. Test Celery with management command
+# python manage.py test_celery --wait
+```
+
+### **Model Patterns**
+```python
+# ✅ DO: Use these base model patterns
+class BaseModel(models.Model):
+    """Base model with audit fields"""
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True)
+    
+    class Meta:
+        abstract = True
+
+# ✅ DO: Use soft delete for medical records
+class SoftDeleteManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+class MedicalRecord(BaseModel):
+    """Base for all medical data models"""
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    objects = SoftDeleteManager()
+    all_objects = models.Manager()  # Access deleted records
+    
+    class Meta:
+        abstract = True
+
+# ❌ DON'T: Hard delete medical records
+# patient.delete()  # Never do this
+# ✅ DO: Soft delete instead
+# patient.deleted_at = timezone.now()
+# patient.save()
+```
+
+## **HIPAA Compliance Patterns**
+
+### **PHI (Protected Health Information) Handling**
+```python
+# ✅ DO: Encrypt sensitive fields
+from django_cryptography.fields import encrypt
+
+class Patient(MedicalRecord):
+    # Encrypted PHI fields
+    first_name = encrypt(models.CharField(max_length=100))
+    last_name = encrypt(models.CharField(max_length=100))
+    ssn = encrypt(models.CharField(max_length=11, blank=True))
+    
+    # Non-encrypted fields for searching/indexing
+    mrn = models.CharField(max_length=50, unique=True)
+    date_of_birth = models.DateField()
+    
+    class Meta:
+        db_table = 'patients'
+        indexes = [
+            models.Index(fields=['mrn']),
+            models.Index(fields=['date_of_birth']),
+        ]
+
+# ✅ DO: Always log PHI access
+def log_phi_access(user, patient, action):
+    """Log all PHI access for HIPAA audit trail"""
+    AuditLog.objects.create(
+        user=user,
+        patient=patient,
+        action=action,
+        ip_address=get_client_ip(request),
+        timestamp=timezone.now()
+    )
+```
+
+### **Audit Logging Requirements**
+```python
+# ✅ DO: Implement comprehensive audit logging
+class AuditLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.PROTECT)
+    patient = models.ForeignKey('patients.Patient', on_delete=models.PROTECT, null=True)
+    action = models.CharField(max_length=100)  # 'viewed', 'created', 'updated', 'deleted'
+    resource_type = models.CharField(max_length=50)
+    resource_id = models.CharField(max_length=50)
+    ip_address = models.GenericIPAddressField()
+    user_agent = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'audit_logs'
+        indexes = [
+            models.Index(fields=['user', 'timestamp']),
+            models.Index(fields=['patient', 'timestamp']),
+        ]
+
+# ✅ DO: Use middleware for automatic audit logging
+class AuditMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        # Log request details before processing
+        response = self.get_response(request)
+        # Log response details after processing
+        return response
+```
+
+## **FHIR Data Patterns**
+
+### **FHIR Resource Handling**
+```python
+# ✅ DO: Use PostgreSQL JSONB for FHIR storage
+class Patient(MedicalRecord):
+    # Core demographics
+    mrn = models.CharField(max_length=50, unique=True)
+    first_name = encrypt(models.CharField(max_length=100))
+    last_name = encrypt(models.CharField(max_length=100))
+    date_of_birth = models.DateField()
+    
+    # Cumulative FHIR bundle (never overwrite, only append)
+    cumulative_fhir_json = models.JSONField(default=dict)
+    
+    def add_fhir_resources(self, new_resources, document_id):
+        """Append new FHIR resources without overwriting existing data"""
+        # ✅ DO: Always append, never replace
+        bundle = self.cumulative_fhir_json
+        
+        for resource in new_resources:
+            # Add provenance tracking
+            resource['meta'] = {
+                'source': f'document_{document_id}',
+                'lastUpdated': timezone.now().isoformat(),
+                'versionId': str(uuid.uuid4())
+            }
+            
+            # Append to appropriate resource array
+            resource_type = resource['resourceType']
+            if resource_type not in bundle:
+                bundle[resource_type] = []
+            bundle[resource_type].append(resource)
+        
+        self.cumulative_fhir_json = bundle
+        self.save()
+        
+        # ✅ DO: Log FHIR updates
+        PatientHistory.objects.create(
+            patient=self,
+            document_id=document_id,
+            action='fhir_append',
+            fhir_delta=new_resources
+        )
+
+# ❌ DON'T: Overwrite FHIR data
+# patient.cumulative_fhir_json = new_data  # This loses history!
+
+# ✅ DO: Always append with provenance
+# patient.add_fhir_resources(new_resources, document.id)
+```
+
+### **FHIR Resource Types Priority**
+```python
+# ✅ DO: Focus on these FHIR resources (in priority order)
+SUPPORTED_FHIR_RESOURCES = [
+    'Patient',           # Must have - demographics
+    'DocumentReference', # Must have - source documents
+    'Condition',         # Must have - diagnoses
+    'Observation',       # Should have - labs/vitals
+    'MedicationStatement', # Should have - medications
+    'Practitioner',      # Should have - providers
+    'Procedure',         # Nice to have - procedures
+    'AllergyIntolerance', # Nice to have - allergies
+]
+
+# ✅ DO: Validate FHIR resources
+from fhir.resources import patient as fhir_patient
+
+def validate_fhir_resource(resource_data, resource_type):
+    """Validate FHIR resource against specification"""
+    try:
+        if resource_type == 'Patient':
+            fhir_patient.Patient(**resource_data)
+        # Add other resource validations
+        return True
+    except Exception as e:
+        logger.error(f"FHIR validation failed: {e}")
+        return False
+```
+
+## **Django View Patterns**
+
+### **htmx + Django Views**
+```python
+# ✅ DO: Use this pattern for htmx views
+from django_htmx import htmx
+
+class PatientListView(LoginRequiredMixin, ListView):
+    model = Patient
+    template_name = 'patients/patient_list.html'
+    context_object_name = 'patients'
+    paginate_by = 20
+    
+    def get_queryset(self):
+        # ✅ DO: Always filter by current user's organization
+        return Patient.objects.filter(
+            organization=self.request.user.organization
+        ).select_related('primary_provider')
+    
+    def get(self, request, *args, **kwargs):
+        # ✅ DO: Log PHI access
+        log_phi_access(
+            user=request.user,
+            patient=None,
+            action='list_patients'
+        )
+        return super().get(request, *args, **kwargs)
+
+# ✅ DO: Use htmx for dynamic updates
+@htmx.requires_htmx
+def patient_search(request):
+    """htmx endpoint for patient search"""
+    query = request.GET.get('q', '')
+    if len(query) >= 3:  # Minimum 3 characters
+        patients = Patient.objects.filter(
+            Q(first_name__icontains=query) |
+            Q(last_name__icontains=query) |
+            Q(mrn__icontains=query)
+        )[:10]  # Limit results
+    else:
+        patients = Patient.objects.none()
+    
+    return render(request, 'patients/search_results.html', {
+        'patients': patients
+    })
+```
+
+### **Document Processing Views**
+```python
+# ✅ DO: Use Celery for long-running tasks
+from celery import shared_task
+
+@shared_task(bind=True)
+def process_document(self, document_id):
+    """Process uploaded document with AI extraction"""
+    try:
+        document = Document.objects.get(id=document_id)
+        document.status = 'processing'
+        document.save()
+        
+        # Extract text from PDF
+        text = extract_pdf_text(document.file.path)
+        
+        # Call AI for FHIR extraction
+        fhir_data = extract_fhir_from_text(text)
+        
+        # Add to patient's cumulative record
+        document.patient.add_fhir_resources(fhir_data, document.id)
+        
+        document.status = 'completed'
+        document.processed_at = timezone.now()
+        document.save()
+        
+    except Exception as exc:
+        document.status = 'failed'
+        document.error_message = str(exc)
+        document.save()
+        raise
+
+# ✅ DO: Provide real-time updates
+class DocumentUploadView(LoginRequiredMixin, CreateView):
+    model = Document
+    fields = ['file', 'patient', 'providers']
+    
+    def form_valid(self, form):
+        # ✅ DO: Set audit fields
+        form.instance.uploaded_by = self.request.user
+        response = super().form_valid(form)
+        
+        # ✅ DO: Start async processing
+        process_document.delay(self.object.id)
+        
+        if self.request.htmx:
+            return render(self.request, 'documents/upload_success.html', {
+                'document': self.object
+            })
+        return response
+```
+
+## **Frontend Patterns (htmx + Alpine.js)**
+
+### **htmx Patterns**
+```html
+<!-- ✅ DO: Use htmx for dynamic content -->
+<div hx-get="/patients/search/" 
+     hx-trigger="keyup changed delay:300ms" 
+     hx-target="#search-results"
+     hx-indicator="#loading">
+    <input type="text" name="q" placeholder="Search patients...">
+</div>
+
+<!-- ✅ DO: Provide user feedback -->
+<div id="loading" class="htmx-indicator">
+    <div class="flex items-center">
+        <svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
+            <!-- Loading spinner -->
+        </svg>
+        Processing...
+    </div>
+</div>
+
+<!-- ✅ DO: Handle errors gracefully -->
+<div hx-post="/documents/upload/" 
+     hx-target="#upload-result"
+     hx-on="htmx:responseError: alert('Upload failed. Please try again.')">
+    <!-- Upload form -->
+</div>
+```
+
+### **Alpine.js Patterns**
+```html
+<!-- ✅ DO: Use Alpine for client-side interactivity -->
+<div x-data="documentUpload()">
+    <form @submit.prevent="uploadDocument">
+        <input type="file" @change="selectedFile = $event.target.files[0]">
+        
+        <!-- Patient selection -->
+        <select x-model="selectedPatient" required>
+            <option value="">Select Patient...</option>
+            <template x-for="patient in patients">
+                <option :value="patient.id" x-text="patient.name"></option>
+            </template>
+        </select>
+        
+        <!-- Progress bar -->
+        <div x-show="uploading" class="w-full bg-gray-200 rounded-full">
+            <div class="bg-blue-600 text-xs font-medium text-blue-100 text-center p-0.5 leading-none rounded-full" 
+                 :style="`width: ${progress}%`" x-text="`${progress}%`">
+            </div>
+        </div>
+        
+        <button type="submit" :disabled="!selectedFile || !selectedPatient || uploading">
+            <span x-show="!uploading">Upload Document</span>
+            <span x-show="uploading">Processing...</span>
+        </button>
+    </form>
+</div>
+
+<script>
+function documentUpload() {
+    return {
+        selectedFile: null,
+        selectedPatient: null,
+        patients: [],
+        uploading: false,
+        progress: 0,
+        
+        async uploadDocument() {
+            // ✅ DO: Handle upload with progress
+            this.uploading = true;
+            // Implementation here
+        }
+    }
+}
+</script>
+```
+
+## **Database Query Patterns**
+
+### **Performance Optimization**
+```python
+# ✅ DO: Use select_related for ForeignKeys
+patients = Patient.objects.select_related(
+    'primary_provider',
+    'organization'
+).filter(organization=user.organization)
+
+# ✅ DO: Use prefetch_related for reverse FKs and M2M
+patients = Patient.objects.prefetch_related(
+    'documents',
+    'providers',
+    'audit_logs'
+).filter(organization=user.organization)
+
+# ✅ DO: Use database indexes for JSONB queries
+class Patient(models.Model):
+    cumulative_fhir_json = models.JSONField(default=dict)
+    
+    class Meta:
+        indexes = [
+            # ✅ DO: Index JSONB fields for common queries
+            models.Index(fields=['cumulative_fhir_json'], name='patient_fhir_gin_idx', 
+                        opclasses=['jsonb_path_ops']),
+        ]
+
+# ✅ DO: Query JSONB efficiently
+patients_with_diabetes = Patient.objects.filter(
+    cumulative_fhir_json__Condition__contains=[{
+        'code': {'coding': [{'code': 'E11.9'}]}  # Type 2 diabetes
+    }]
+)
+```
+
+## **Security Patterns**
+
+### **Authentication & Authorization**
+```python
+# ✅ DO: Use custom user model
+class User(AbstractUser):
+    organization = models.ForeignKey('core.Organization', on_delete=models.PROTECT)
+    role = models.CharField(max_length=50, choices=USER_ROLES)
+    last_login_ip = models.GenericIPAddressField(null=True)
+    
+    class Meta:
+        db_table = 'users'
+
+# ✅ DO: Implement role-based permissions
+class IsOwnerOrReadOnly(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        # Read permissions for any authenticated user in same org
+        if request.method in permissions.SAFE_METHODS:
+            return obj.organization == request.user.organization
+        
+        # Write permissions only to owner
+        return obj.created_by == request.user
+
+# ✅ DO: Use decorators for PHI access control
+def requires_phi_access(view_func):
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.has_perm('patients.view_phi'):
+            raise PermissionDenied("PHI access required")
+        return view_func(request, *args, **kwargs)
+    return wrapper
+```
+
+### **Data Validation**
+```python
+# ✅ DO: Validate all input data
+class PatientForm(forms.ModelForm):
+    class Meta:
+        model = Patient
+        fields = ['first_name', 'last_name', 'date_of_birth', 'mrn']
+    
+    def clean_mrn(self):
+        mrn = self.cleaned_data['mrn']
+        # ✅ DO: Validate business rules
+        if Patient.objects.filter(mrn=mrn).exclude(pk=self.instance.pk).exists():
+            raise ValidationError("MRN must be unique")
+        return mrn
+    
+    def clean_date_of_birth(self):
+        dob = self.cleaned_data['date_of_birth']
+        # ✅ DO: Validate reasonable dates
+        if dob > timezone.now().date():
+            raise ValidationError("Birth date cannot be in the future")
+        if dob < datetime.date(1900, 1, 1):
+            raise ValidationError("Birth date too far in the past")
+        return dob
+```
+
+## **Testing Patterns**
+
+### **Test Structure**
+```python
+# ✅ DO: Follow this test structure
+class PatientModelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        self.patient = Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            mrn='12345',
+            date_of_birth='1980-01-01',
+            created_by=self.user
+        )
+    
+    def test_fhir_resource_addition(self):
+        """Test adding FHIR resources to patient"""
+        # ✅ DO: Test core business logic
+        initial_count = len(self.patient.cumulative_fhir_json.get('Condition', []))
+        
+        new_resources = [{
+            'resourceType': 'Condition',
+            'code': {'coding': [{'code': 'E11.9', 'display': 'Type 2 diabetes'}]}
+        }]
+        
+        self.patient.add_fhir_resources(new_resources, document_id=1)
+        
+        final_count = len(self.patient.cumulative_fhir_json.get('Condition', []))
+        self.assertEqual(final_count, initial_count + 1)
+    
+    def test_soft_delete(self):
+        """Test soft delete functionality"""
+        # ✅ DO: Test HIPAA requirements
+        self.patient.deleted_at = timezone.now()
+        self.patient.save()
+        
+        # Should not appear in default queryset
+        self.assertNotIn(self.patient, Patient.objects.all())
+        
+        # Should appear in all_objects queryset
+        self.assertIn(self.patient, Patient.all_objects.all())
+```
+
+## **Error Handling Patterns**
+
+### **Graceful Error Handling**
+```python
+# ✅ DO: Use specific exception handling
+class DocumentProcessingError(Exception):
+    """Custom exception for document processing failures"""
+    pass
+
+def process_document_with_ai(document):
+    """Process document with comprehensive error handling"""
+    try:
+        # Try primary AI service (Claude)
+        return extract_with_claude(document)
+    except APITimeoutError:
+        logger.warning(f"Claude timeout for document {document.id}, trying fallback")
+        try:
+            # Try fallback AI service (GPT)
+            return extract_with_gpt(document)
+        except APIError as e:
+            logger.error(f"All AI services failed for document {document.id}: {e}")
+            raise DocumentProcessingError(f"AI extraction failed: {e}")
+    except ValidationError as e:
+        logger.error(f"FHIR validation failed for document {document.id}: {e}")
+        raise DocumentProcessingError(f"Invalid medical data extracted: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error processing document {document.id}: {e}")
+        raise DocumentProcessingError(f"Processing failed: {e}")
+
+# ✅ DO: Provide user-friendly error messages
+class DocumentUploadView(CreateView):
+    def form_invalid(self, form):
+        if self.request.htmx:
+            return render(self.request, 'documents/upload_error.html', {
+                'errors': form.errors,
+                'user_message': 'Please check your file and try again.'
+            })
+        return super().form_invalid(form)
+```
+
+## **AI Integration Patterns**
+
+### **LLM API Calls**
+```python
+# ✅ DO: Implement retry logic and fallbacks
+import backoff
+from anthropic import Anthropic
+
+@backoff.on_exception(backoff.expo, Exception, max_tries=3)
+def extract_fhir_from_text(text, model="claude-3-sonnet"):
+    """Extract FHIR data from medical text with retry logic"""
+    client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    
+    prompt = f"""
+    Extract medical information from the following text and format as FHIR resources.
+    Focus on: Patient demographics, Conditions, Medications, Observations.
+    
+    Text: {text[:4000]}  # Limit token usage
+    
+    Return valid FHIR JSON only.
+    """
+    
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        # ✅ DO: Validate and parse response
+        fhir_data = json.loads(response.content[0].text)
+        
+        # ✅ DO: Log API usage for cost tracking
+        APIUsageLog.objects.create(
+            model=model,
+            tokens_used=response.usage.total_tokens,
+            cost=calculate_cost(response.usage.total_tokens, model)
+        )
+        
+        return fhir_data
+        
+    except json.JSONDecodeError:
+        logger.error(f"Invalid JSON response from {model}")
+        raise
+    except Exception as e:
+        logger.error(f"AI extraction failed with {model}: {e}")
+        raise
+```
+
+## **Environment Configuration**
+
+### **Settings Pattern**
+```python
+# ✅ DO: Use environment-specific settings
+# settings/base.py
+from decouple import config
+
+# HIPAA Security Settings
+SECURE_SSL_REDIRECT = True
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+
+# Session Security
+SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_AGE = 3600  # 1 hour timeout
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# Database
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASSWORD'),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='5432'),
+        'OPTIONS': {
+            'sslmode': 'require',  # ✅ DO: Require SSL for production
+        }
+    }
+}
+
+# AI API Settings
+ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY')
+OPENAI_API_KEY = config('OPENAI_API_KEY', default=None)
+AI_MODEL_PRIMARY = config('AI_MODEL_PRIMARY', default='claude-3-sonnet')
+AI_MODEL_FALLBACK = config('AI_MODEL_FALLBACK', default='gpt-3.5-turbo')
+```
+
+## **Performance Guidelines**
+
+### **Database Performance**
+```python
+# ✅ DO: Use efficient queries
+# Instead of this (N+1 query problem):
+for patient in Patient.objects.all():
+    print(patient.primary_provider.name)  # Separate query each time
+
+# ✅ DO: This (single query):
+for patient in Patient.objects.select_related('primary_provider'):
+    print(patient.primary_provider.name)
+
+# ✅ DO: Use pagination for large datasets
+from django.core.paginator import Paginator
+
+def patient_list_view(request):
+    patients = Patient.objects.select_related('primary_provider')
+    paginator = Paginator(patients, 25)  # 25 patients per page
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    return render(request, 'patients/list.html', {'page_obj': page_obj})
+```
+
+### **File Handling**
+```python
+# ✅ DO: Stream large files
+def download_patient_report(request, patient_id):
+    """Stream large PDF reports"""
+    patient = get_object_or_404(Patient, id=patient_id)
+    
+    # ✅ DO: Check permissions first
+    if not request.user.can_access_patient(patient):
+        raise PermissionDenied
+    
+    # ✅ DO: Stream response for large files
+    response = StreamingHttpResponse(
+        generate_patient_pdf(patient),
+        content_type='application/pdf'
+    )
+    response['Content-Disposition'] = f'attachment; filename="patient_{patient.mrn}_report.pdf"'
+    return response
+```
+
+## **Common Anti-Patterns to Avoid**
+
+```python
+# ❌ DON'T: Store sensitive data in logs
+logger.info(f"Processing patient {patient.ssn}")  # HIPAA violation!
+
+# ✅ DO: Log safely
+logger.info(f"Processing patient ID {patient.id}")
+
+# ❌ DON'T: Use raw SQL for complex queries without parameterization
+Patient.objects.extra(where=[f"mrn = '{user_input}'"])  # SQL injection risk!
+
+# ✅ DO: Use ORM or parameterized queries
+Patient.objects.filter(mrn=user_input)
+
+# ❌ DON'T: Overwrite FHIR data
+patient.cumulative_fhir_json = new_data  # Loses medical history!
+
+# ✅ DO: Append to FHIR data
+patient.add_fhir_resources(new_resources, document_id)
+
+# ❌ DON'T: Process documents synchronously
+def upload_document(request):
+    # This blocks the web server
+    process_document(document)  # Takes 2-5 minutes!
+
+# ✅ DO: Use async processing
+def upload_document(request):
+    # This returns immediately
+    process_document.delay(document.id)
+```
+
+## **Code Review Checklist**
+
+Before committing code, verify:
+
+- [ ] **HIPAA Compliance:** No PHI in logs, audit logging implemented
+- [ ] **Security:** Input validation, permission checks, SQL injection prevention
+- [ ] **FHIR Handling:** Data appended (not overwritten), provenance tracked
+- [ ] **Error Handling:** Specific exceptions, user-friendly messages
+- [ ] **Performance:** Efficient queries, pagination for large datasets
+- [ ] **Testing:** Unit tests for business logic, integration tests for workflows
+- [ ] **Documentation:** Docstrings for complex functions, inline comments for business rules
+
+## **AI-Assisted Development Tips**
+
+### **Effective Prompts for Medical Code**
+```
+# ✅ DO: Provide medical context
+"Create a Django model for storing patient medications following FHIR MedicationStatement specification. Include dosage, frequency, and prescribing provider."
+
+# ✅ DO: Specify HIPAA requirements
+"Implement patient search functionality with HIPAA-compliant audit logging and PHI access controls."
+
+# ✅ DO: Request error handling
+"Add comprehensive error handling to the document processing function, including AI API failures and FHIR validation errors."
+```
+
+---
+
+**Remember:** This is a healthcare application. When in doubt, prioritize:
+1. **Patient data security** (HIPAA compliance)
+2. **Data integrity** (never lose medical history)
+3. **Audit trails** (track all access and changes)
+4. **User safety** (clear error messages, graceful failures)
+
+Tighten that up and see if she don't purr like a well-tuned engine!
+

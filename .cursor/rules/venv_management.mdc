@@ -1,0 +1,92 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: Ensure all Python-related commands run within activated virtual environment
+globs: **/*
+alwaysApply: true
+---
+
+# Virtual Environment Management Rules
+
+## **Always Activate Virtual Environment for Python Commands**
+
+When using the `run_terminal_cmd` tool, **ALWAYS** activate the virtual environment before running any Python-related commands.
+
+### **Commands That REQUIRE Virtual Environment Activation:**
+- `pip install/uninstall/list/show`
+- `python` (any Python script execution)
+- `python manage.py` (Django management commands)
+- `django-admin`
+- `celery`
+- `pytest` or any testing commands
+- Package-specific commands (like `black`, `flake8`, `mypy` if installed via pip)
+
+### **Platform-Specific Activation Commands:**
+
+```bash
+# ✅ DO: Windows Command Prompt
+venv\Scripts\activate && pip install package-name
+
+# ✅ DO: Windows PowerShell
+venv\Scripts\activate; pip install package-name
+
+# ✅ DO: Unix/Linux/macOS  
+source venv/bin/activate && pip install package-name
+
+# ✅ DO: Chain multiple commands (PowerShell)
+venv\Scripts\activate; pip install django; python manage.py migrate
+```
+
+### **Command Patterns to Follow:**
+
+```bash
+# ✅ DO: Install packages in venv
+venv\Scripts\activate && pip install python-decouple djangorestframework
+
+# ✅ DO: Run Django commands in venv  
+venv\Scripts\activate && python manage.py check
+
+# ✅ DO: Run tests in venv
+venv\Scripts\activate && python manage.py test
+
+# ❌ DON'T: Run Python commands without activation
+pip install package-name  # This installs globally!
+python manage.py runserver  # This might use wrong Python!
+```
+
+### **Detection of Missing Virtual Environment:**
+
+Watch for these warning signs in command output:
+- `"Defaulting to user installation because normal site-packages is not writeable"`
+- Packages installing to user directories instead of project venv
+- Python/Django commands failing with import errors
+
+### **Exception Cases (No venv needed):**
+- `git` commands
+- `mkdir`, `cd`, `ls`, `dir` (file system operations)  
+- `npm` or other non-Python package managers
+- System utilities (`curl`, `wget`, etc.)
+
+### **Best Practices:**
+- **Always check** if a virtual environment exists (`venv/` directory) before running Python commands
+- **Create the venv first** if it doesn't exist: `python -m venv venv`
+- **Document venv setup** in project README
+- **Use consistent venv naming** (`venv` or `.venv`)
+
+### **Error Recovery:**
+If you accidentally install packages globally:
+1. Activate the virtual environment: `venv\Scripts\activate`
+2. Reinstall the packages: `pip install package-name`
+3. Verify installation location: `pip show package-name`
+
+---
+
+**Remember:** A virtual environment is like a clean workspace - you don't want to mix your medical device project tools with your weekend car repair tools!
+
+
+
+
+
