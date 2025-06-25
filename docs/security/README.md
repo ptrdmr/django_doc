@@ -124,19 +124,52 @@ AXES_LOCK_OUT_BY_COMBINATION_USER_AND_IP = True
 
 ### Data Encryption
 
-**Field-Level Encryption (django-cryptography)**
+**Patient Model Security Implementation - Task 3.1 ✅**
+
+Current implementation with security-ready design:
 ```python
-# Encrypt sensitive PHI fields
+# apps/patients/models.py - Current Implementation
+class Patient(MedicalRecord):
+    """
+    SECURITY WARNING: PHI ENCRYPTION REQUIRED FOR PRODUCTION
+    
+    Current implementation stores patient data in plain text for development.
+    Before production deployment, implement field-level encryption for:
+    - first_name, last_name (patient names)
+    - ssn (Social Security Numbers)
+    - Any other PHI fields added in the future
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    mrn = models.CharField(max_length=50, unique=True)  # Medical Record Number
+    first_name = models.CharField(max_length=100)  # TODO: Encrypt in production
+    last_name = models.CharField(max_length=100)   # TODO: Encrypt in production
+    ssn = models.CharField(max_length=11, blank=True)  # TODO: Encrypt in production
+    
+    # FHIR data in JSONB (may contain PHI - consider encryption)
+    cumulative_fhir_json = models.JSONField(default=dict, blank=True)
+```
+
+**Future Field-Level Encryption (Planned)**
+```python
+# Future production implementation with django-cryptography or similar
 from django_cryptography.fields import encrypt
 
-class Patient(models.Model):
+class Patient(MedicalRecord):
     # Encrypted PHI fields
-    ssn = encrypt(models.CharField(max_length=11))
-    medical_record_number = encrypt(models.CharField(max_length=50))
+    first_name = encrypt(models.CharField(max_length=100))
+    last_name = encrypt(models.CharField(max_length=100))
+    ssn = encrypt(models.CharField(max_length=11, blank=True))
     
-    # Non-encrypted demographic data
-    date_of_birth = models.DateField()
+    # Consider encrypting FHIR data if it contains PHI
+    cumulative_fhir_json = encrypt(models.JSONField(default=dict, blank=True))
 ```
+
+**Current Security Features (Implemented)**
+- **UUID Primary Keys**: Enhanced security over sequential integers
+- **Soft Delete Protection**: Medical records never permanently deleted
+- **Complete Audit Trail**: PatientHistory tracks all changes with user attribution
+- **Foreign Key Protection**: PROTECT prevents accidental cascade deletion
+- **Database Indexes**: Optimized for secure queries without exposing sensitive data
 
 **Password Security (argon2-cffi)**
 ```python
