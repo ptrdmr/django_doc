@@ -1,0 +1,200 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Documentation Automation Rule
+
+## **CRITICAL: Always Update Documentation When Tasks Complete**
+
+When using Task Master tools to mark tasks or subtasks as complete, **ALWAYS** update the relevant documentation in the `docs/` directory.
+
+### **Required Documentation Updates**
+
+**When ANY task/subtask is marked as `done`:**
+1. **Update docs/README.md** - Add completed feature to the "✅ Completed Features" section
+2. **Update relevant section docs** based on task type (see mapping below)
+3. **Add implementation details** to appropriate documentation files
+4. **Update project status** and next milestones
+
+### **Task Type → Documentation Mapping**
+
+```bash
+# ✅ DO: Update these docs based on task completion type
+
+# Architecture changes
+Task involves: models, database, system design
+→ Update: docs/architecture/README.md
+
+# Setup/installation changes  
+Task involves: requirements, dependencies, environment config
+→ Update: docs/setup/README.md
+
+# Security/HIPAA features
+Task involves: authentication, encryption, compliance
+→ Update: docs/security/README.md
+
+# Development workflow changes
+Task involves: new coding patterns, tools, standards
+→ Update: docs/development/README.md
+
+# API endpoints/features
+Task involves: REST API, FHIR endpoints, integrations
+→ Update: docs/api/README.md (create if needed)
+
+# Database changes
+Task involves: models, migrations, JSONB, queries
+→ Update: docs/database/README.md (create if needed)
+
+# Deployment changes
+Task involves: Docker, production config, DevOps
+→ Update: docs/deployment/README.md (create if needed)
+```
+
+### **Documentation Update Process**
+
+**1. After marking task/subtask as done:**
+```bash
+# ❌ DON'T: Just mark complete and move on
+task-master set-status --id=2.3 --status=done
+
+# ✅ DO: Mark complete AND update docs
+task-master set-status --id=2.3 --status=done
+# Then immediately update relevant documentation files
+```
+
+**2. Required documentation elements:**
+- **What was implemented** (feature description)
+- **Technical details** (code patterns, configurations)
+- **Usage examples** (how to use the new feature)
+- **Integration points** (how it connects to existing system)
+- **Security considerations** (if medical/PHI data involved)
+
+**3. Documentation format standards:**
+```markdown
+## [Feature Name] - Task [ID] Completed
+
+### Implementation Summary
+Brief description of what was built/configured.
+
+### Technical Details
+```python
+# Code examples showing key implementations
+class ExampleModel(models.Model):
+    # Example of implemented patterns
+    pass
+```
+
+### Usage
+How to use this feature in development or production.
+
+### Integration
+How this connects to other system components.
+
+### Security Notes
+Any HIPAA/security considerations (for medical features).
+
+---
+*Updated: [Date] - Task [ID] completion*
+```
+
+### **Specific Update Examples**
+
+**Database Model Task Completed:**
+```markdown
+# Update docs/architecture/README.md
+## Patient Model Implementation - Task 2.1 Completed
+
+### Implementation Summary
+Created comprehensive Patient model with HIPAA-compliant field encryption and FHIR data storage.
+
+### Technical Details
+- Encrypted PHI fields (SSN, names) using django-cryptography
+- JSONB field for cumulative FHIR bundle storage
+- Audit trail tracking for all medical record access
+- PostgreSQL indexes for optimized queries
+
+### Security Notes
+All sensitive patient data encrypted at field level per HIPAA requirements.
+```
+
+**API Endpoint Task Completed:**
+```markdown
+# Update docs/api/README.md (create if needed)
+## Patient Management API - Task 3.2 Completed
+
+### Implementation Summary
+REST endpoints for patient CRUD operations with FHIR compliance.
+
+### Endpoints Added
+- GET /api/patients/ - List patients (paginated, filtered by org)
+- POST /api/patients/ - Create new patient record
+- GET /api/patients/{id}/ - Retrieve patient details
+- PUT /api/patients/{id}/ - Update patient information
+- GET /api/patients/{id}/fhir/ - Get patient FHIR bundle
+```
+
+**Security Feature Task Completed:**
+```markdown
+# Update docs/security/README.md
+## Two-Factor Authentication - Task 4.1 Completed
+
+### Implementation Summary
+Mandatory 2FA for all users accessing medical data using django-otp.
+
+### Technical Details
+- TOTP support with QR code generation
+- Backup static tokens for recovery
+- Integration with django-allauth authentication flow
+- Rate limiting on 2FA attempts
+
+### Security Impact
+Meets HIPAA technical safeguards requirement for user authentication.
+```
+
+### **Automation Workflow**
+
+**Required steps after each task completion:**
+1. ✅ Mark task as done using Task Master
+2. ✅ Identify which documentation sections need updates
+3. ✅ Update relevant docs with implementation details
+4. ✅ Add examples, code snippets, usage instructions
+5. ✅ Update main docs/README.md project status
+6. ✅ Commit documentation updates with descriptive message
+
+### **Documentation Quality Standards**
+
+**✅ DO:**
+- Use clear, concise language
+- Include working code examples
+- Explain integration with existing features
+- Note security/HIPAA implications
+- Update table of contents if needed
+- Use consistent markdown formatting
+
+**❌ DON'T:**
+- Leave documentation stale after feature completion
+- Write vague descriptions without technical details
+- Skip security considerations for medical features
+- Forget to update main project status
+- Use inconsistent formatting
+
+### **Commit Message Pattern**
+
+```bash
+# ✅ DO: Use descriptive commit messages for doc updates
+git add docs/
+git commit -m "docs: Update architecture docs for Patient model (Task 2.1)
+
+- Added Patient model implementation details
+- Documented HIPAA compliance features
+- Updated FHIR data storage patterns
+- Added usage examples and security notes"
+```
+
+---
+
+**Remember:** Good documentation is like a detailed repair manual - it helps everyone understand how the system works and prevents costly mistakes down the road. Keep it current, comprehensive, and practical!
+
+**This rule ensures our medical document parser documentation stays as sharp as our code!**
+
