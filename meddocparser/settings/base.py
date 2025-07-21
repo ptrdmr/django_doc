@@ -39,8 +39,6 @@ THIRD_PARTY_APPS = [
     'allauth.account',
     'django_otp',
     'axes',  # Failed login monitoring
-    # File handling
-    'django_crypto_fields',
     # Development & monitoring
     'debug_toolbar',  # Development only
 ]
@@ -57,23 +55,21 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
-# Path for django-crypto-fields to store encryption keys
-# In a real production environment, this should be outside the project root
-# and have very restrictive permissions.
-DJANGO_CRYPTO_FIELDS_KEY_PATH = BASE_DIR / "keys"
-
-# Auto-create encryption keys on first run (development only)
-AUTO_CREATE_KEYS = True
+# Note: Encryption configuration removed for now
+# TODO: Add field-level encryption in future iterations
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'apps.core.middleware.SecurityHeadersMiddleware',  # Custom security headers & CSP
+    'apps.core.middleware.RateLimitingMiddleware',     # Rate limiting for security
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'allauth.account.middleware.AccountMiddleware',  # Allauth middleware
-    'axes.middleware.AxesMiddleware',  # Failed login monitoring
+    'allauth.account.middleware.AccountMiddleware',    # Allauth middleware
+    'axes.middleware.AxesMiddleware',                   # Failed login monitoring
+    'apps.core.middleware.AuditLoggingMiddleware',     # HIPAA audit logging
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_htmx.middleware.HtmxMiddleware',
@@ -100,7 +96,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'meddocparser.wsgi.application'
 
-# Password validation
+# Password validation - Enhanced for HIPAA compliance
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -116,6 +112,28 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+    # Custom HIPAA-compliant validators
+    {
+        'NAME': 'apps.core.validators.SpecialCharacterValidator',
+    },
+    {
+        'NAME': 'apps.core.validators.UppercaseValidator',
+    },
+    {
+        'NAME': 'apps.core.validators.LowercaseValidator',
+    },
+    {
+        'NAME': 'apps.core.validators.NoSequentialCharactersValidator',
+    },
+    {
+        'NAME': 'apps.core.validators.NoRepeatingCharactersValidator',
+        'OPTIONS': {
+            'max_repeating': 3,
+        }
+    },
+    {
+        'NAME': 'apps.core.validators.NoPersonalInfoValidator',
     },
 ]
 

@@ -26,31 +26,61 @@ When using the `run_terminal_cmd` tool, **ALWAYS** activate the virtual environm
 
 ### **Platform-Specific Activation Commands:**
 
-```bash
-# ✅ DO: Windows Command Prompt
-venv\Scripts\activate && pip install package-name
-
-# ✅ DO: Windows PowerShell
+**Primary Environment: Windows PowerShell**
+```powershell
+# ✅ DO: Windows PowerShell (Our primary environment)
 venv\Scripts\activate; pip install package-name
-
-# ✅ DO: Unix/Linux/macOS  
-source venv/bin/activate && pip install package-name
 
 # ✅ DO: Chain multiple commands (PowerShell)
 venv\Scripts\activate; pip install django; python manage.py migrate
+
+# ✅ DO: Multiple PowerShell commands
+venv\Scripts\activate; python manage.py makemigrations; python manage.py migrate
 ```
+
+**Alternative Environments:**
+```shell
+# Windows Command Prompt (if needed)
+venv\Scripts\activate && pip install package-name
+
+# Unix/Linux/macOS (for reference)
+source venv/bin/activate && pip install package-name
+```
+
+### **Docker Environment Commands:**
+
+**When the Django app is running in Docker containers, use `docker-compose exec` instead of local virtual environment:**
+
+```powershell
+# ✅ DO: Run Django commands in Docker container
+docker-compose exec web python manage.py migrate
+
+# ✅ DO: Create migrations in Docker
+docker-compose exec web python manage.py makemigrations
+
+# ✅ DO: Install packages in Docker (rebuild required)
+docker-compose exec web pip install package-name
+
+# ✅ DO: Run tests in Docker
+docker-compose exec web python manage.py test
+
+# ❌ DON'T: Run local migrations when using Docker
+venv\Scripts\activate; python manage.py migrate  # This affects local DB, not Docker DB!
+```
+
+**Important:** If you see database errors like "relation does not exist" but the Django app is running in Docker, you're likely running migrations locally instead of in the container. The Docker database and local database are separate!
 
 ### **Command Patterns to Follow:**
 
-```bash
-# ✅ DO: Install packages in venv
-venv\Scripts\activate && pip install python-decouple djangorestframework
+```powershell
+# ✅ DO: Install packages in venv (PowerShell)
+venv\Scripts\activate; pip install python-decouple djangorestframework
 
-# ✅ DO: Run Django commands in venv  
-venv\Scripts\activate && python manage.py check
+# ✅ DO: Run Django commands in venv (PowerShell)
+venv\Scripts\activate; python manage.py check
 
-# ✅ DO: Run tests in venv
-venv\Scripts\activate && python manage.py test
+# ✅ DO: Run tests in venv (PowerShell)
+venv\Scripts\activate; python manage.py test
 
 # ❌ DON'T: Run Python commands without activation
 pip install package-name  # This installs globally!

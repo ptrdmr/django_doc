@@ -1,0 +1,395 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Patient Management Development Patterns
+
+## **Small Focused Functions (30 Lines Max)**
+
+Break down complex view methods into small, single-purpose functions. Each function should do exactly one thing and be easily testable.
+
+### **✅ DO: Decompose ListView Methods**
+```python
+class PatientListView(LoginRequiredMixin, ListView):
+    def validate_search_input(self):
+        """Validate search form input from request."""
+        search_form = PatientSearchForm(self.request.GET)
+        if search_form.is_valid():
+            return True, search_form.cleaned_data.get('q', '')
+        else:
+            logger.warning(f"Invalid search form data: {search_form.errors}")
+            messages.warning(self.request, "Invalid search criteria.")
+            return False, ''
+    
+    def filter_patients_by_search(self, queryset, search_query):
+        """Filter patient queryset by search criteria."""
+        if search_query:
+            return queryset.filter(
+                Q(first_name__icontains=search_query) |
+                Q(last_name__icontains=search_query) |
+                Q(mrn__icontains=search_query)
+            )
+        return queryset
+    
+    def get_queryset(self):
+        """Main method orchestrating smaller functions."""
+        queryset = super().get_queryset()
+        is_valid, search_query = self.validate_search_input()
+        if is_valid:
+            queryset = self.filter_patients_by_search(queryset, search_query)
+        return queryset.order_by('last_name', 'first_name')
+```
+
+### **❌ DON'T: Monolithic Methods**
+```python
+def get_queryset(self):
+    """Giant method doing everything at once."""
+    queryset = super().get_queryset()
+    search_query = self.request.GET.get('q', '').strip()
+    
+    # 40+ lines of validation, filtering, error handling, ordering...
+    # Hard to test, debug, and maintain
+```
+
+## **Specific Exception Handling for Medical Data**
+
+Use specific exception types instead of generic `Exception`. Medical applications require precise error handling for audit trails and user safety.
+
+### **✅ DO: Specific Database Exceptions**
+```python
+from django.db import IntegrityError, DatabaseError, OperationalError
+
+def form_valid(self, form):
+    try:
+        response = super().form_valid(form)
+        self.create_patient_history()
+        return response
+        
+    except IntegrityError as integrity_error:
+        # Handle duplicate MRN, constraint violations
+        logger.error(f"Database integrity error: {integrity_error}")
+        messages.error(self.request, "A patient with this MRN already exists.")
+        return self.form_invalid(form)
+        
+    except (DatabaseError, OperationalError) as db_error:
+        # Handle connection issues, timeouts
+        logger.error(f"Database error: {db_error}")
+        messages.error(self.request, "There was an error saving the record.")
+        return self.form_invalid(form)
+```
+
+### **❌ DON'T: Generic Exception Handling**
+```python
+def form_valid(self, form):
+    try:
+        response = super().form_valid(form)
+        return response
+    except Exception as e:  # Too generic!
+        logger.error(f"Something went wrong: {e}")
+        messages.error(self.request, "An error occurred.")
+        return self.form_invalid(form)
+```
+
+## **Input Validation with Django Forms**
+
+Always validate user input through Django forms, especially for medical data searches and patient information.
+
+### **✅ DO: Comprehensive Input Validation**
+```python
+class PatientSearchForm(forms.Form):
+    q = forms.CharField(
+        max_length=100,
+        required=False,
+        strip=True,
+        widget=forms.TextInput(attrs={
+            'placeholder': 'Search by name, MRN, or date of birth...',
+            'class': 'form-input-class'
+        })
+    )
+    
+    def clean_q(self):
+        """Validate and sanitize search input."""
+        query = self.cleaned_data.get('q', '').strip()
+        
+        if len(query) > 100:
+            raise ValidationError("Search query too long.")
+        
+        # Input sanitization for medical data
+        allowed_chars = set('abcdefghijklmnopqrstuvwxyz'
+                          'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                          '0123456789 .-_@')
+        if query and not set(query).issubset(allowed_chars):
+            raise ValidationError("Search query contains invalid characters.")
+        
+        return query
+```
+
+### **❌ DON'T: Direct Request Parameter Usage**
+```python
+def get_queryset(self):
+    # No validation - security risk!
+    search_query = self.request.GET.get('q', '')
+    return Patient.objects.filter(first_name__icontains=search_query)
+```
+
+## **Professional Medical UI Templates**
+
+Create consistent, accessible medical application interfaces with proper error handling and user feedback.
+
+### **✅ DO: Professional Medical Template Structure**
+```html
+{% extends "base.html" %}
+
+<!-- Header with consistent medical styling -->
+<div class="flex justify-between items-center mb-6">
+    <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6 text-blue-600"><!-- Medical icon --></svg>
+        </div>
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Patient Management</h1>
+            <p class="text-gray-600">Manage patient records and medical information</p>
+        </div>
+    </div>
+    <a href="{% url 'patients:add' %}" class="btn-primary">Add New Patient</a>
+</div>
+
+<!-- Search form with validation errors -->
+<form method="get">
+    <div class="relative">
+        {{ search_form.q }}
+        <div class="absolute inset-y-0 left-0 pl-3">
+            <svg class="w-4 h-4 text-gray-400"><!-- Search icon --></svg>
+        </div>
+    </div>
+    {% if search_form.q.errors %}
+        <div class="mt-1 text-sm text-red-600">
+            {{ search_form.q.errors.0 }}
+        </div>
+    {% endif %}
+</form>
+
+<!-- Professional data table -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Patient
+                </th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+            {% for patient in patients %}
+            <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-6 py-4">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                            <span class="text-blue-600 font-medium">
+                                {{ patient.first_name|first }}{{ patient.last_name|first }}
+                            </span>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-900">
+                                {{ patient.first_name }} {{ patient.last_name }}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Empty state handling -->
+{% if not patients %}
+<div class="text-center py-12">
+    <svg class="mx-auto h-12 w-12 text-gray-400"><!-- Empty state icon --></svg>
+    <h3 class="mt-2 text-sm font-medium text-gray-900">No patients found</h3>
+    <p class="mt-1 text-sm text-gray-500">Get started by adding your first patient.</p>
+</div>
+{% endif %}
+```
+
+## **Search with Pagination Pattern**
+
+Implement search functionality that preserves query parameters during pagination and provides user feedback.
+
+### **✅ DO: Search-Aware Pagination**
+```python
+class PatientListView(ListView):
+    paginate_by = 20
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        search_form = PatientSearchForm(self.request.GET)
+        context.update({
+            'search_form': search_form,
+            'search_query': search_form.data.get('q', '') if search_form.data else ''
+        })
+        return context
+```
+
+```html
+<!-- Pagination that preserves search -->
+{% if page_obj.has_previous %}
+<a href="?{% if search_query %}q={{ search_query }}&{% endif %}page={{ page_obj.previous_page_number }}">
+    Previous
+</a>
+{% endif %}
+
+<span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+
+{% if page_obj.has_next %}
+<a href="?{% if search_query %}q={{ search_query }}&{% endif %}page={{ page_obj.next_page_number }}">
+    Next
+</a>
+{% endif %}
+```
+
+## **Graceful Error Handling & User Feedback**
+
+Provide safe fallbacks and meaningful user messages when things go wrong in medical applications.
+
+### **✅ DO: Graceful Degradation**
+```python
+def get_patient_count(self):
+    """Get total patient count with safe fallback."""
+    try:
+        return Patient.objects.count()
+    except (DatabaseError, OperationalError) as count_error:
+        logger.error(f"Error getting patient count: {count_error}")
+        return 0  # Safe fallback - won't break the page
+
+def get_queryset(self):
+    """Patient list with error recovery."""
+    try:
+        queryset = super().get_queryset()
+        # ... filtering logic
+        return queryset.order_by('last_name', 'first_name')
+    except (DatabaseError, OperationalError) as db_error:
+        logger.error(f"Database error in patient list: {db_error}")
+        messages.error(self.request, "There was an error loading patients.")
+        return Patient.objects.none()  # Empty queryset - page still loads
+```
+
+### **❌ DON'T: Let Errors Crash the Page**
+```python
+def get_patient_count(self):
+    return Patient.objects.count()  # Will crash if DB is down
+
+def get_queryset(self):
+    # No error handling - user sees 500 error page
+    return super().get_queryset().filter(...)
+```
+
+## **Medical Data Audit Logging**
+
+Create audit trails for all patient data access and modifications, required for HIPAA compliance.
+
+### **✅ DO: Comprehensive Audit Logging**
+```python
+def create_patient_history(self):
+    """Create audit trail for patient changes."""
+    return PatientHistory.objects.create(
+        patient=self.object,
+        action='created',
+        changed_by=self.request.user,
+        notes=f'Patient record created by {self.request.user.get_full_name()}'
+    )
+
+def form_valid(self, form):
+    """Save patient with audit logging."""
+    response = super().form_valid(form)
+    self.create_patient_history()  # Always log changes
+    self.show_success_message()
+    return response
+
+class PatientListView(ListView):
+    def get(self, request, *args, **kwargs):
+        # Log patient list access
+        logger.info(f"Patient list accessed by user {request.user.id}")
+        return super().get(request, *args, **kwargs)
+```
+
+## **JavaScript Loading States & Accessibility**
+
+Add user feedback and accessibility features to medical application interfaces.
+
+### **✅ DO: Progressive Enhancement**
+```javascript
+document.addEventListener('DOMContentLoaded', function() {
+    // Focus management for accessibility
+    const searchInput = document.querySelector('input[name="q"]');
+    if (searchInput && !searchInput.value) {
+        searchInput.focus();
+    }
+    
+    // Loading states for better UX
+    const searchForm = document.querySelector('form');
+    if (searchForm) {
+        searchForm.addEventListener('submit', function() {
+            const submitButton = this.querySelector('button[type="submit"]');
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.innerHTML = `
+                    <svg class="w-4 h-4 mr-2 animate-spin"><!-- Spinner --></svg>
+                    Searching...
+                `;
+            }
+        });
+    }
+});
+```
+
+## **URL Configuration for Medical Security**
+
+Use secure URL patterns with UUID primary keys and proper namespacing for medical applications.
+
+### **✅ DO: UUID-Based Routing**
+```python
+# apps/patients/urls.py
+from django.urls import path
+from . import views
+
+app_name = 'patients'
+
+urlpatterns = [
+    # UUID provides security through obscurity
+    path('', views.PatientListView.as_view(), name='list'),
+    path('add/', views.PatientCreateView.as_view(), name='add'),
+    path('<uuid:pk>/', views.PatientDetailView.as_view(), name='detail'),
+    path('<uuid:pk>/edit/', views.PatientUpdateView.as_view(), name='edit'),
+]
+```
+
+### **❌ DON'T: Sequential Integer IDs**
+```python
+# Security risk - easy to guess patient IDs
+path('<int:pk>/', views.PatientDetailView.as_view(), name='detail'),
+```
+
+## **Documentation Integration**
+
+Update documentation when completing patient management features, following the documentation automation rule.
+
+### **✅ DO: Update Docs on Completion**
+```markdown
+# When marking patient features complete:
+
+1. Update docs/README.md - Add to "✅ Completed Features"
+2. Update docs/development/README.md - Document new patterns
+3. Add implementation details and code examples
+4. Update progress statistics and next steps
+```
+
+---
+
+**Reference Rules:**
+- [medical_doc_parser.mdc](mdc:.cursor/rules/medical_doc_parser.mdc) - Core medical coding standards
+- [documentation_automation.mdc](mdc:.cursor/rules/documentation_automation.mdc) - Documentation requirements
+- [dev_workflow.mdc](mdc:.cursor/rules/dev_workflow.mdc) - TaskMaster workflow integration
+
+*Created: January 2025 | Patterns established during Task 3.2 patient list implementation*

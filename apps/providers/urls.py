@@ -2,19 +2,15 @@
 URL configuration for providers app.
 """
 from django.urls import path
-from django.http import HttpResponse
+from . import views
 
 app_name = 'providers'
 
-# Placeholder view function
-def placeholder_view(request):
-    """Temporary placeholder for provider views"""
-    return HttpResponse("Provider management features coming soon!")
-
 urlpatterns = [
     # Provider listing and management
-    path('', placeholder_view, name='list'),
-    path('add/', placeholder_view, name='add'),
-    path('<int:pk>/', placeholder_view, name='detail'),
-    path('<int:pk>/edit/', placeholder_view, name='edit'),
+    path('', views.ProviderListView.as_view(), name='list'),
+    path('add/', views.ProviderCreateView.as_view(), name='add'),
+    path('directory/', views.ProviderDirectoryView.as_view(), name='directory'),
+    path('<uuid:pk>/', views.ProviderDetailView.as_view(), name='detail'),
+    path('<uuid:pk>/edit/', views.ProviderUpdateView.as_view(), name='edit'),
 ] 

@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}
+    {% if object %}
+        Edit Dr. {{ object.first_name }} {{ object.last_name }} - Provider
+    {% else %}
+        Add New Provider
+    {% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="flex mb-6" aria-label="Breadcrumb">
+    <ol class="flex items-center space-x-2 text-sm">
+        <li>
+            <a href="{% url 'home' %}" class="text-blue-600 hover:text-blue-800 transition-colors">
+                Home
+            </a>
+        </li>
+        <li class="flex items-center">
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <a href="{% url 'providers:list' %}" class="text-blue-600 hover:text-blue-800 transition-colors">
+                Providers
+            </a>
+        </li>
+        <li class="flex items-center">
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <span class="text-gray-700 font-medium">
+                {% if object %}
+                    Edit Dr. {{ object.first_name }} {{ object.last_name }}
+                {% else %}
+                    Add New Provider
+                {% endif %}
+            </span>
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="p-6">
+    <!-- Header Section -->
+    <div class="mb-6">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {% if object %}
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                    {% else %}
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    {% endif %}
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">
+                    {% if object %}
+                        Edit Provider Record
+                    {% else %}
+                        Add New Provider
+                    {% endif %}
+                </h1>
+                <p class="text-gray-600">
+                    {% if object %}
+                        Update healthcare provider information for Dr. {{ object.first_name }} {{ object.last_name }}
+                    {% else %}
+                        Enter healthcare provider professional and identification information
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form Section -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <form method="post" novalidate id="providerForm">
+            {% csrf_token %}
+            
+            <!-- Form Fields Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Left Column -->
+                <div class="space-y-6">
+                    <h3 class="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
+                        Provider Identification
+                    </h3>
+                    
+                    <!-- NPI Field -->
+                    <div>
+                        <label for="{{ form.npi.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            National Provider Identifier (NPI) <span class="text-red-500">*</span>
+                        </label>
+                        {{ form.npi }}
+                        {% if form.npi.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {{ form.npi.errors.0 }}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">10-digit unique identifier for healthcare providers</p>
+                    </div>
+
+                    <!-- First Name Field -->
+                    <div>
+                        <label for="{{ form.first_name.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            First Name <span class="text-red-500">*</span>
+                        </label>
+                        {{ form.first_name }}
+                        {% if form.first_name.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {{ form.first_name.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Last Name Field -->
+                    <div>
+                        <label for="{{ form.last_name.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            Last Name <span class="text-red-500">*</span>
+                        </label>
+                        {{ form.last_name }}
+                        {% if form.last_name.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {{ form.last_name.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Right Column -->
+                <div class="space-y-6">
+                    <h3 class="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">
+                        Professional Information
+                    </h3>
+                    
+                    <!-- Specialty Field -->
+                    <div>
+                        <label for="{{ form.specialty.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            Medical Specialty
+                        </label>
+                        {{ form.specialty }}
+                        {% if form.specialty.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {{ form.specialty.errors.0 }}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">Provider's area of medical specialization</p>
+                        
+                        <!-- Specialty Suggestions -->
+                        <datalist id="specialty-suggestions">
+                            <option value="Anesthesiology">
+                            <option value="Cardiology">
+                            <option value="Dermatology">
+                            <option value="Emergency Medicine">
+                            <option value="Family Medicine">
+                            <option value="Gastroenterology">
+                            <option value="Internal Medicine">
+                            <option value="Neurology">
+                            <option value="Obstetrics and Gynecology">
+                            <option value="Oncology">
+                            <option value="Orthopedic Surgery">
+                            <option value="Pathology">
+                            <option value="Pediatrics">
+                            <option value="Psychiatry">
+                            <option value="Radiology">
+                            <option value="Surgery">
+                            <option value="Urology">
+                        </datalist>
+                    </div>
+
+                    <!-- Organization Field -->
+                    <div>
+                        <label for="{{ form.organization.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            Organization/Hospital
+                        </label>
+                        {{ form.organization }}
+                        {% if form.organization.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {{ form.organization.errors.0 }}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">Healthcare organization or hospital affiliation</p>
+                    </div>
+
+                    <!-- NPI Validation Status (for editing) -->
+                    {% if object %}
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <div>
+                                <h4 class="text-sm font-medium text-green-800">NPI Verified</h4>
+                                <p class="text-sm text-green-700">This provider's NPI number is registered and valid</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Non-field errors -->
+            {% if form.non_field_errors %}
+                <div class="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="flex">
+                        <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                        </svg>
+                        <div class="ml-3">
+                            <div class="text-sm text-red-800">
+                                {{ form.non_field_errors.0 }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+            <!-- Form Actions -->
+            <div class="mt-8 flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
+                <div class="flex space-x-3">
+                    <button type="submit" 
+                            class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            id="submitBtn">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        {% if object %}Update Provider{% else %}Create Provider{% endif %}
+                    </button>
+                    
+                    <a href="{% url 'providers:list' %}" 
+                       class="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                        Cancel
+                    </a>
+                </div>
+
+                {% if object %}
+                <div class="text-sm text-gray-500">
+                    Provider created: {{ object.created_at|date:"M j, Y g:i A" }}
+                </div>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Provider Information Notice -->
+    <div class="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
+        <div class="flex">
+            <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-green-800">
+                    Healthcare Provider Data Notice
+                </h3>
+                <div class="mt-2 text-sm text-green-700">
+                    <p>This system maintains healthcare provider information for medical document processing. All provider data should be accurate and up-to-date according to your organization's provider directory policies.</p>
+                    <p class="mt-2">
+                        <strong>NPI Verification:</strong> The National Provider Identifier (NPI) must be a valid 10-digit number assigned by the National Plan and Provider Enumeration System (NPPES).
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('providerForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const npiInput = document.getElementById('{{ form.npi.id_for_label }}');
+    
+    // Format and validate NPI input
+    if (npiInput) {
+        npiInput.addEventListener('input', function(e) {
+            // Remove any non-digit characters
+            let value = e.target.value.replace(/\D/g, '');
+            
+            // Limit to 10 digits
+            if (value.length > 10) {
+                value = value.substring(0, 10);
+            }
+            
+            e.target.value = value;
+            
+            // Real-time validation feedback
+            if (value.length === 10) {
+                // Valid NPI length
+                e.target.classList.remove('border-red-500', 'focus:ring-red-500', 'focus:border-red-500');
+                e.target.classList.add('border-green-500', 'focus:ring-green-500', 'focus:border-green-500');
+                
+                // Show validation indicator
+                showNPIValidation(true, 'NPI format is valid');
+            } else if (value.length > 0) {
+                // Invalid NPI length
+                e.target.classList.remove('border-green-500', 'focus:ring-green-500', 'focus:border-green-500');
+                e.target.classList.add('border-red-500', 'focus:ring-red-500', 'focus:border-red-500');
+                
+                showNPIValidation(false, `NPI must be 10 digits (currently ${value.length})`);
+            } else {
+                // Reset to default state
+                e.target.classList.remove('border-red-500', 'focus:ring-red-500', 'focus:border-red-500');
+                e.target.classList.remove('border-green-500', 'focus:ring-green-500', 'focus:border-green-500');
+                e.target.classList.add('border-gray-300', 'focus:ring-green-500', 'focus:border-green-500');
+                
+                hideNPIValidation();
+            }
+        });
+        
+        // Paste handler for NPI
+        npiInput.addEventListener('paste', function(e) {
+            setTimeout(() => {
+                this.dispatchEvent(new Event('input'));
+            }, 10);
+        });
+    }
+    
+    // Form submission handling
+    form.addEventListener('submit', function(e) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `
+            <svg class="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {% if object %}Updating...{% else %}Creating...{% endif %}
+        `;
+    });
+    
+    // Auto-focus first field with error or first required field
+    const firstErrorField = form.querySelector('.border-red-500');
+    if (firstErrorField) {
+        firstErrorField.focus();
+    } else {
+        const firstRequiredField = form.querySelector('input[required]');
+        if (firstRequiredField) {
+            firstRequiredField.focus();
+        }
+    }
+    
+    // Real-time validation feedback for other fields
+    const requiredFields = form.querySelectorAll('input[required]');
+    requiredFields.forEach(field => {
+        field.addEventListener('blur', function() {
+            if (this.value.trim() === '') {
+                this.classList.add('border-red-500', 'focus:ring-red-500', 'focus:border-red-500');
+                this.classList.remove('border-gray-300', 'focus:ring-green-500', 'focus:border-green-500');
+            } else {
+                this.classList.remove('border-red-500', 'focus:ring-red-500', 'focus:border-red-500');
+                this.classList.add('border-gray-300', 'focus:ring-green-500', 'focus:border-green-500');
+            }
+        });
+    });
+    
+    // NPI validation helper functions
+    function showNPIValidation(isValid, message) {
+        let validationDiv = document.getElementById('npi-validation');
+        
+        if (!validationDiv) {
+            validationDiv = document.createElement('div');
+            validationDiv.id = 'npi-validation';
+            validationDiv.className = 'mt-1 text-sm flex items-center';
+            npiInput.parentNode.appendChild(validationDiv);
+        }
+        
+        const iconClass = isValid ? 'text-green-600' : 'text-red-600';
+        const textClass = isValid ? 'text-green-600' : 'text-red-600';
+        const icon = isValid ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' : 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z';
+        
+        validationDiv.innerHTML = `
+            <svg class="w-4 h-4 mr-1 ${iconClass}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${icon}"></path>
+            </svg>
+            <span class="${textClass}">${message}</span>
+        `;
+    }
+    
+    function hideNPIValidation() {
+        const validationDiv = document.getElementById('npi-validation');
+        if (validationDiv) {
+            validationDiv.remove();
+        }
+    }
+    
+    // Specialty suggestions enhancement
+    const specialtyInput = document.getElementById('{{ form.specialty.id_for_label }}');
+    if (specialtyInput) {
+        specialtyInput.addEventListener('input', function(e) {
+            // Auto-capitalize first letter of each word
+            const words = e.target.value.toLowerCase().split(' ');
+            const capitalizedWords = words.map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+            );
+            e.target.value = capitalizedWords.join(' ');
+        });
+    }
+});
+</script>
+{% endblock %} 

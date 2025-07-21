@@ -2,19 +2,17 @@
 URL configuration for documents app.
 """
 from django.urls import path
-from django.http import HttpResponse
+from . import views
 
 app_name = 'documents'
 
-# Placeholder view function
-def placeholder_view(request):
-    """Temporary placeholder for document views"""
-    return HttpResponse("Document processing features coming soon!")
-
 urlpatterns = [
-    # Document upload and management
-    path('', placeholder_view, name='list'),
-    path('upload/', placeholder_view, name='upload'),
-    path('<int:pk>/', placeholder_view, name='detail'),
-    path('<int:pk>/process/', placeholder_view, name='process'),
+    # Document upload
+    path('upload/', views.DocumentUploadView.as_view(), name='upload'),
+    path('upload/success/', views.DocumentUploadSuccessView.as_view(), name='upload-success'),
+    
+    # Document management
+    path('', views.DocumentListView.as_view(), name='list'),
+    path('<int:pk>/', views.DocumentDetailView.as_view(), name='detail'),
+    path('<int:pk>/retry/', views.DocumentRetryView.as_view(), name='retry'),
 ] 

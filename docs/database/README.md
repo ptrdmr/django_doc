@@ -331,4 +331,485 @@ patients = Patient.objects.filter(mrn='12345')  # Uses unique index
 
 ---
 
-*Database documentation updated: January 2025 - Task 3.1 Patient Models Complete* 
+## Provider Management Models - Task 4.1 ✅
+
+### Provider Model
+
+**Table**: `providers_provider`  
+**Purpose**: Healthcare provider information with NPI validation and specialty tracking
+
+```sql
+-- Database Schema
+CREATE TABLE providers_provider (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    npi VARCHAR(10) UNIQUE NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    specialty VARCHAR(100) NOT NULL,
+    organization VARCHAR(200) NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_by_id INTEGER REFERENCES auth_user(id) ON DELETE PROTECT
+);
+```
+
+**Indexes**:
+```sql
+-- Optimized query performance for provider operations
+CREATE UNIQUE INDEX providers_provider_npi_unique ON providers_provider (npi);
+CREATE INDEX providers_provider_specialty_idx ON providers_provider (specialty);
+CREATE INDEX providers_provider_organization_idx ON providers_provider (organization);
+CREATE INDEX providers_provider_name_idx ON providers_provider (last_name, first_name);
+CREATE INDEX providers_provider_active_idx ON providers_provider (deleted_at) WHERE deleted_at IS NULL;
+```
+
+**Field Details**:
+- `id`: UUID primary key for enhanced security and FHIR compatibility
+- `npi`: National Provider Identifier - 10-digit unique identifier (validated)
+- `first_name`, `last_name`: Provider demographics
+- `specialty`: Medical specialty (e.g., "Cardiology", "Internal Medicine")
+- `organization`: Healthcare organization/practice name
+- `deleted_at`: Soft delete timestamp (NULL = active record)
+
+**Django Model Methods**:
+```python
+def __str__(self):
+    return f"Dr. {self.first_name} {self.last_name} ({self.specialty})"
+
+def get_absolute_url(self):
+    return reverse('providers:detail', kwargs={'pk': self.pk})
+
+def get_patients(self):
+    """Return all patients linked to this provider through documents"""
+    # Future implementation when Document model is created
+    pass
+```
+
+**NPI Validation**:
+- Exactly 10 digits required
+- Cannot start with 0
+- Must be unique across all providers
+- Real-time validation in forms
+
+### ProviderHistory Model
+
+**Table**: `providers_providerhistory`  
+**Purpose**: HIPAA-compliant audit trail for all provider data changes
+
+```sql
+-- Database Schema
+CREATE TABLE providers_providerhistory (
+    id SERIAL PRIMARY KEY,
+    provider_id UUID NOT NULL REFERENCES providers_provider(id) ON DELETE PROTECT,
+    action VARCHAR(50) NOT NULL,
+    changed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    changed_by_id INTEGER NOT NULL REFERENCES auth_user(id) ON DELETE PROTECT,
+    changes JSONB DEFAULT '{}',
+    notes TEXT
+);
+```
+
+**Indexes**:
+```sql
+-- Audit trail query optimization
+CREATE INDEX providers_providerhistory_provider_idx ON providers_providerhistory (provider_id, changed_at);
+CREATE INDEX providers_providerhistory_user_idx ON providers_providerhistory (changed_by_id, changed_at);
+CREATE INDEX providers_providerhistory_action_idx ON providers_providerhistory (action);
+```
+
+**Field Details**:
+- `provider_id`: Foreign key to Provider (PROTECT prevents deletion)
+- `action`: Type of change (created, updated, npi_changed, etc.)
+- `changed_at`: Timestamp of the change
+- `changed_by_id`: User who made the change
+- `changes`: JSONB field storing the specific field changes
+- `notes`: Optional text notes about the change
+
+**Action Choices**:
+```python
+ACTION_CHOICES = [
+    ('created', 'Provider Created'),
+    ('updated', 'Provider Updated'),
+    ('npi_changed', 'NPI Number Changed'),
+    ('specialty_changed', 'Specialty Updated'),
+    ('organization_changed', 'Organization Updated'),
+    ('manual_edit', 'Manual Edit'),
+    ('system_update', 'System Update'),
+]
+```
+
+---
+
+## FHIR Data Storage Architecture - Task 5 ✅
+
+### FHIR Bundle Management in PostgreSQL
+
+The FHIR data architecture leverages PostgreSQL's advanced JSONB capabilities to store complete FHIR bundles while maintaining relational integrity and query performance.
+
+### JSONB Storage Strategy
+
+**Cumulative Bundle Approach**:
+- Each patient has ONE cumulative FHIR bundle in `cumulative_fhir_json`
+- New resources are APPENDED, never overwritten
+- Complete medical history preserved with provenance tracking
+- Optimized for temporal queries and clinical summaries
+
+### FHIR Resource Organization
+
+```json
+{
+    "bundle_metadata": {
+        "id": "bundle-uuid-12345",
+        "type": "collection", 
+        "timestamp": "2025-01-20T15:30:00Z",
+        "total_resources": 25,
+        "last_updated": "2025-01-20T15:30:00Z"
+    },
+    "Patient": [{
+        "resourceType": "Patient",
+        "id": "patient-uuid",
+        "identifier": [{"system": "http://example.org/fhir/mrn", "value": "MRN-12345"}],
+        "name": [{"family": "Doe", "given": ["John"]}],
+        "birthDate": "1980-01-15",
+        "gender": "male",
+        "meta": {
+            "source": "document_123",
+            "lastUpdated": "2025-01-20T15:30:00Z",
+            "versionId": "1"
+        }
+    }],
+    "Condition": [{
+        "resourceType": "Condition",
+        "id": "condition-uuid-1",
+        "subject": {"reference": "Patient/patient-uuid"},
+        "clinicalStatus": {
+            "coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active"}]
+        },
+        "code": {
+            "coding": [{
+                "system": "http://snomed.info/sct",
+                "code": "E11.9",
+                "display": "Type 2 diabetes mellitus without complications"
+            }]
+        },
+        "onsetDateTime": "2020-03-15T00:00:00Z",
+        "meta": {
+            "source": "document_123",
+            "lastUpdated": "2025-01-20T15:30:00Z",
+            "versionId": "1"
+        }
+    }],
+    "MedicationStatement": [{
+        "resourceType": "MedicationStatement",
+        "id": "medication-uuid-1",
+        "subject": {"reference": "Patient/patient-uuid"},
+        "status": "active",
+        "medicationCodeableConcept": {
+            "coding": [{
+                "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                "code": "860975",
+                "display": "Metformin 500 MG Oral Tablet"
+            }]
+        },
+        "effectiveDateTime": "2020-03-15T00:00:00Z",
+        "dosage": [{
+            "text": "500 mg twice daily with meals",
+            "timing": {"repeat": {"frequency": 2, "period": 1, "periodUnit": "d"}}
+        }],
+        "meta": {
+            "source": "document_123",
+            "lastUpdated": "2025-01-20T15:30:00Z",
+            "versionId": "1"
+        }
+    }],
+    "Observation": [{
+        "resourceType": "Observation",
+        "id": "observation-uuid-1",
+        "subject": {"reference": "Patient/patient-uuid"},
+        "status": "final",
+        "category": [{
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory"
+            }]
+        }],
+        "code": {
+            "coding": [{
+                "system": "http://loinc.org",
+                "code": "4548-4", 
+                "display": "Hemoglobin A1c"
+            }]
+        },
+        "valueQuantity": {
+            "value": 7.2,
+            "unit": "%",
+            "system": "http://unitsofmeasure.org",
+            "code": "%"
+        },
+        "effectiveDateTime": "2025-01-15T10:30:00Z",
+        "meta": {
+            "source": "document_456",
+            "lastUpdated": "2025-01-20T15:30:00Z",
+            "versionId": "1"
+        }
+    }],
+    "DocumentReference": [{
+        "resourceType": "DocumentReference",
+        "id": "document-uuid-1",
+        "subject": {"reference": "Patient/patient-uuid"},
+        "status": "current",
+        "type": {
+            "coding": [{
+                "system": "http://loinc.org",
+                "code": "34133-9",
+                "display": "Summary of episode note"
+            }]
+        },
+        "content": [{
+            "attachment": {
+                "contentType": "application/pdf",
+                "url": "/media/documents/patient_report_123.pdf",
+                "title": "Patient Medical Summary - Jan 2025"
+            }
+        }],
+        "date": "2025-01-20T15:30:00Z",
+        "meta": {
+            "source": "document_123",
+            "lastUpdated": "2025-01-20T15:30:00Z",
+            "versionId": "1"
+        }
+    }],
+    "Practitioner": [{
+        "resourceType": "Practitioner",
+        "id": "practitioner-uuid-1",
+        "identifier": [{"system": "http://hl7.org/fhir/sid/us-npi", "value": "1234567890"}],
+        "name": [{"family": "Smith", "given": ["John"], "prefix": ["Dr."]}],
+        "qualification": [{
+            "code": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/v2-0360",
+                    "code": "MD",
+                    "display": "Doctor of Medicine"
+                }]
+            }
+        }],
+        "meta": {
+            "source": "document_123",
+            "lastUpdated": "2025-01-20T15:30:00Z",
+            "versionId": "1"
+        }
+    }],
+    "Provenance": [{
+        "resourceType": "Provenance",
+        "id": "provenance-uuid-1",
+        "target": [{"reference": "Condition/condition-uuid-1"}],
+        "occurredDateTime": "2025-01-20T15:30:00Z",
+        "recorded": "2025-01-20T15:30:00Z",
+        "agent": [{
+            "type": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/provenance-participant-type",
+                    "code": "author"
+                }]
+            },
+            "who": {
+                "reference": "Practitioner/practitioner-uuid-1",
+                "display": "Dr. John Smith"
+            }
+        }],
+        "entity": [{
+            "role": "source",
+            "what": {
+                "reference": "DocumentReference/document-uuid-1",
+                "display": "Source Document: Patient Medical Summary"
+            }
+        }]
+    }]
+}
+```
+
+### FHIR Query Optimization
+
+**GIN Indexes for JSONB**:
+```sql
+-- Optimized JSONB queries for FHIR data
+CREATE INDEX patients_patient_fhir_gin_idx ON patients_patient USING GIN (cumulative_fhir_json);
+
+-- Resource-specific indexes for common queries
+CREATE INDEX patients_fhir_conditions_idx ON patients_patient USING GIN ((cumulative_fhir_json->'Condition'));
+CREATE INDEX patients_fhir_medications_idx ON patients_patient USING GIN ((cumulative_fhir_json->'MedicationStatement'));
+CREATE INDEX patients_fhir_observations_idx ON patients_patient USING GIN ((cumulative_fhir_json->'Observation'));
+```
+
+**Common FHIR Queries**:
+```python
+# Find patients with specific condition (Type 2 Diabetes)
+diabetic_patients = Patient.objects.filter(
+    cumulative_fhir_json__Condition__contains=[{
+        'code': {'coding': [{'code': 'E11.9'}]}
+    }]
+)
+
+# Find patients on specific medication (Metformin)
+metformin_patients = Patient.objects.filter(
+    cumulative_fhir_json__MedicationStatement__contains=[{
+        'medicationCodeableConcept': {'coding': [{'code': '860975'}]}
+    }]
+)
+
+# Find patients with recent lab results
+recent_labs = Patient.objects.filter(
+    cumulative_fhir_json__Observation__contains=[{
+        'category': [{'coding': [{'code': 'laboratory'}]}],
+        'effectiveDateTime__gte': '2025-01-01T00:00:00Z'
+    }]
+)
+
+# Count total FHIR resources for a patient
+patient_resource_count = Patient.objects.annotate(
+    total_conditions=Cast(
+        KeyTextTransform('Condition', 'cumulative_fhir_json'), 
+        IntegerField()
+    )
+).filter(total_conditions__gt=0)
+```
+
+### Resource Versioning Schema
+
+**Version Management**:
+Each FHIR resource includes metadata for version tracking:
+
+```json
+{
+    "meta": {
+        "source": "document_123",           // Source document ID
+        "lastUpdated": "2025-01-20T15:30:00Z",  // Timestamp of last update
+        "versionId": "2",                   // Resource version number
+        "profile": ["http://hl7.org/fhir/StructureDefinition/Patient"],
+        "security": [{
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "HTEST"
+        }]
+    }
+}
+```
+
+**Deduplication Strategy**:
+- Clinical equivalence detection prevents true duplicates
+- Similar observations within 1-hour timeframe are updated, not duplicated
+- Identical conditions (same SNOMED code) are versioned, not duplicated
+- Same medications are updated with status changes
+
+### Provenance Tracking Schema
+
+**Complete Audit Trail**:
+Every clinical resource has corresponding Provenance resource:
+
+```json
+{
+    "resourceType": "Provenance", 
+    "target": [{"reference": "Condition/condition-uuid"}],    // What was created/modified
+    "occurredDateTime": "2025-01-20T15:30:00Z",              // When it happened
+    "recorded": "2025-01-20T15:30:00Z",                      // When it was recorded
+    "agent": [{                                               // Who was responsible
+        "who": {"reference": "Practitioner/dr-smith-uuid"}
+    }],
+    "entity": [{                                              // What was the source
+        "role": "source",
+        "what": {"reference": "DocumentReference/doc-uuid"}
+    }]
+}
+```
+
+---
+
+## Migration History
+
+### 0001_initial.py - Patient Models (Task 3.1)
+**Applied**: January 2025  
+**Description**: Initial Patient and PatientHistory models with FHIR integration
+
+### 0001_initial.py - Provider Models (Task 4.1) 
+**Applied**: January 2025  
+**Description**: Provider and ProviderHistory models with NPI validation
+
+**Tables Created**:
+- `providers_provider` with UUID primary key and NPI validation
+- `providers_providerhistory` for audit trail
+- Optimized indexes for provider searches
+
+**Key Features**:
+- 10-digit NPI validation and uniqueness
+- Specialty and organization tracking
+- Soft delete functionality
+- Complete audit trail system
+
+### FHIR Bundle Storage Optimization (Task 5)
+**Applied**: January 2025  
+**Description**: Advanced JSONB indexing for FHIR data
+
+**Indexes Created**:
+- GIN indexes on FHIR resource types
+- Performance optimization for clinical queries
+- Resource-specific query paths
+
+---
+
+## Performance Optimization
+
+### JSONB Query Performance
+
+**Best Practices**:
+```python
+# ✅ DO: Use GIN indexes for JSONB containment queries
+patients = Patient.objects.filter(
+    cumulative_fhir_json__Condition__contains=[condition_criteria]
+)
+
+# ✅ DO: Use resource-specific paths for targeted queries  
+conditions = Patient.objects.filter(
+    cumulative_fhir_json__Condition__0__code__coding__0__code='E11.9'
+)
+
+# ❌ DON'T: Use deep nested queries without indexes
+# This would be slow without proper GIN indexing
+```
+
+### Provider Search Optimization
+
+**Efficient Provider Queries**:
+```python
+# ✅ DO: Use indexed fields for provider searches
+providers = Provider.objects.filter(
+    specialty__icontains='cardio',  # Uses specialty index
+    organization__icontains='mayo'   # Uses organization index
+)
+
+# ✅ DO: Combine with name searches on indexed fields
+providers = Provider.objects.filter(
+    Q(first_name__icontains=query) |
+    Q(last_name__icontains=query) |  # Uses name composite index
+    Q(npi__icontains=query)          # Uses unique NPI index
+)
+```
+
+### Audit Trail Query Optimization
+
+**Efficient History Queries**:
+```python
+# ✅ DO: Use composite indexes for time-based queries
+recent_changes = PatientHistory.objects.filter(
+    patient=patient,                    # Uses patient+time composite index
+    changed_at__gte=last_week
+).select_related('changed_by')         # Avoid N+1 queries
+
+# ✅ DO: Use action-based filtering with indexes
+fhir_updates = PatientHistory.objects.filter(
+    action='fhir_append'               # Uses action index
+).order_by('-changed_at')
+```
+
+---
+
+*Database documentation updated: January 2025 - Tasks 3.1 (Patient), 4.1 (Provider), 5 (FHIR) Complete* 

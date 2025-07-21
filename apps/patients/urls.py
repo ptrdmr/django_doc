@@ -2,19 +2,27 @@
 URL configuration for patients app.
 """
 from django.urls import path
-from django.http import HttpResponse
+from . import views
 
 app_name = 'patients'
 
-# Placeholder view function
-def placeholder_view(request):
-    """Temporary placeholder for patient views"""
-    return HttpResponse("Patient management features coming soon!")
-
 urlpatterns = [
     # Patient listing and management
-    path('', placeholder_view, name='list'),
-    path('add/', placeholder_view, name='add'),
-    path('<int:pk>/', placeholder_view, name='detail'),
-    path('<int:pk>/edit/', placeholder_view, name='edit'),
+    path('', views.PatientListView.as_view(), name='list'),
+    path('add/', views.PatientCreateView.as_view(), name='add'),
+    path('<uuid:pk>/', views.PatientDetailView.as_view(), name='detail'),
+    path('<uuid:pk>/edit/', views.PatientUpdateView.as_view(), name='edit'),
+    
+    # FHIR functionality
+    path('<uuid:pk>/export-fhir/', views.PatientFHIRExportView.as_view(), name='export-fhir'),
+    path('<uuid:pk>/fhir-json/', views.PatientFHIRJSONView.as_view(), name='fhir-json'),
+    
+    # Patient history
+    path('<uuid:pk>/history/', views.PatientHistoryDetailView.as_view(), name='history'),
+    path('history/<int:history_pk>/', views.PatientHistoryItemView.as_view(), name='history-detail'),
+    
+    # Patient merge functionality
+    path('merge/', views.PatientMergeListView.as_view(), name='merge-list'),
+    path('merge/<uuid:source_pk>/<uuid:target_pk>/', views.PatientMergeView.as_view(), name='merge'),
+    path('find-duplicates/', views.FindDuplicatePatientsView.as_view(), name='find-duplicates'),
 ] 

@@ -34,7 +34,7 @@ if db_engine == 'postgresql':
             'CONN_MAX_AGE': 60,
         }
     }
-    print("💾 Using PostgreSQL database for development")
+    print("Using PostgreSQL database for development")
 else:
     # SQLite for development simplicity
     DATABASES = {
@@ -43,7 +43,7 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-    print("💾 Using SQLite database for development")
+    print("Using SQLite database for development")
 
 # Development-friendly security settings (less strict)
 SECURE_SSL_REDIRECT = False

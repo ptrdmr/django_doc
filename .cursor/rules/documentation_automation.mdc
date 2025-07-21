@@ -19,7 +19,7 @@ When using Task Master tools to mark tasks or subtasks as complete, **ALWAYS** u
 
 ### **Task Type → Documentation Mapping**
 
-```bash
+```shell
 # ✅ DO: Update these docs based on task completion type
 
 # Architecture changes
@@ -54,7 +54,7 @@ Task involves: Docker, production config, DevOps
 ### **Documentation Update Process**
 
 **1. After marking task/subtask as done:**
-```bash
+```powershell
 # ❌ DON'T: Just mark complete and move on
 task-master set-status --id=2.3 --status=done
 
@@ -181,7 +181,7 @@ Meets HIPAA technical safeguards requirement for user authentication.
 
 ### **Commit Message Pattern**
 
-```bash
+```powershell
 # ✅ DO: Use descriptive commit messages for doc updates
 git add docs/
 git commit -m "docs: Update architecture docs for Patient model (Task 2.1)

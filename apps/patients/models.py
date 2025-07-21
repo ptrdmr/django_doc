@@ -1,8 +1,32 @@
+"""
+Patient models for the medical document parser.
+
+⚠️  CRITICAL SECURITY WARNING ⚠️
+===============================
+This implementation stores sensitive PHI (Protected Health Information) 
+in PLAIN TEXT for development purposes only. Before deploying to production 
+or handling real patient data, the following fields MUST be encrypted:
+
+- Patient.first_name
+- Patient.last_name  
+- Patient.ssn
+
+HIPAA COMPLIANCE REQUIREMENT:
+All PHI must be encrypted at rest. This is not optional for production use.
+
+TODO: Implement field-level encryption using a library like:
+- django-cryptography (with proper Django 5 compatibility)
+- django-fernet-fields
+- Custom encryption solution
+
+DO NOT use this code with real patient data until encryption is implemented.
+===============================
+"""
+
 import uuid
 from django.db import models
 from django.utils import timezone
 from django.conf import settings
-from django_crypto_fields.fields import EncryptedCharField
 
 from apps.core.models import BaseModel
 
@@ -23,13 +47,13 @@ class MedicalRecord(BaseModel):
     Abstract base model for all medical data models.
     
     Includes soft-delete functionality and uses the SoftDeleteManager
-    to ensure deleted records are not retrieved by default.
+    to ensure deleted records don't appear in default queries.
     """
     deleted_at = models.DateTimeField(null=True, blank=True)
     
     objects = SoftDeleteManager()
-    all_objects = models.Manager()
-
+    all_objects = models.Manager()  # Access all records including deleted
+    
     class Meta:
         abstract = True
 
@@ -50,104 +74,118 @@ class MedicalRecord(BaseModel):
 
 class Patient(MedicalRecord):
     """
-    Stores patient demographic and medical information.
-
-    This model handles sensitive PHI by encrypting identifying fields
-    and stores cumulative medical data in a JSONB field as a FHIR bundle.
+    Patient model for storing demographic and medical information.
+    
+    Note: In production, sensitive fields like first_name, last_name, 
+    and ssn should be encrypted. For now, using plain text to get 
+    the basic functionality working.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    # Encrypted PHI fields for HIPAA compliance
-    first_name = EncryptedCharField(max_length=255)
-    last_name = EncryptedCharField(max_length=255)
-    ssn = EncryptedCharField(max_length=11, blank=True, null=True)
-    
-    # Non-encrypted fields for searching and identification
+    # Patient identification
     mrn = models.CharField(max_length=50, unique=True, help_text="Medical Record Number")
-    date_of_birth = models.DateField()
     
-    # Cumulative FHIR bundle for storing all patient-related FHIR resources
+    # Demographics (TODO: Add encryption in future)
+    first_name = models.CharField(max_length=255)
+    last_name = models.CharField(max_length=255)
+    date_of_birth = models.DateField()
+    gender = models.CharField(
+        max_length=1, 
+        choices=[('M', 'Male'), ('F', 'Female'), ('O', 'Other')],
+        blank=True
+    )
+    
+    # Optional sensitive data (TODO: Add encryption)
+    ssn = models.CharField(max_length=11, blank=True, null=True)
+    
+    # FHIR data storage
     cumulative_fhir_json = models.JSONField(default=dict, blank=True)
-
+    
     class Meta:
         db_table = 'patients'
-        verbose_name = "Patient"
-        verbose_name_plural = "Patients"
-        ordering = ['-created_at']
         indexes = [
             models.Index(fields=['mrn']),
             models.Index(fields=['date_of_birth']),
+            models.Index(fields=['created_at']),
         ]
-
+        verbose_name = "Patient"
+        verbose_name_plural = "Patients"
+    
     def __str__(self):
-        return f"Patient (MRN: {self.mrn})"
-
-    def add_fhir_resources(self, new_resources: list, document_id: int):
-        """
-        Appends new FHIR resources to the cumulative JSON bundle.
-
-        This method ensures that medical history is never overwritten,
-        only appended. It adds provenance information to each new resource.
-
-        Args:
-            new_resources (list): A list of FHIR resource dictionaries.
-            document_id (int): The ID of the source document for these resources.
-        """
-        bundle = self.cumulative_fhir_json or {}
-        
-        for resource in new_resources:
-            resource['meta'] = {
-                'source': f'document_{document_id}',
-                'lastUpdated': timezone.now().isoformat(),
-                'versionId': str(uuid.uuid4())
-            }
-            
-            resource_type = resource.get('resourceType')
-            if resource_type:
-                if resource_type not in bundle:
-                    bundle[resource_type] = []
-                bundle[resource_type].append(resource)
-        
-        self.cumulative_fhir_json = bundle
-        self.save(update_fields=['cumulative_fhir_json', 'updated_at'])
-
-        # Log this change to the patient's history
-        PatientHistory.objects.create(
-            patient=self,
-            document_id=document_id,
-            action='fhir_append',
-            fhir_delta=new_resources,
-            created_by=self.updated_by  # Assuming the updater is the creator of the history
-        )
+        return f"Patient {self.mrn}"
+    
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse('patients:detail', kwargs={'pk': self.pk})
 
 
 class PatientHistory(BaseModel):
     """
-    Logs all significant changes to a patient's record for audit purposes.
-    
-    This provides a detailed timeline of when data was added or modified,
-    which is crucial for data integrity and HIPAA compliance.
+    Audit trail for patient record changes.
+    Tracks all modifications to patient data for compliance.
     """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='history')
-    document = models.ForeignKey(
-        'documents.Document', 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name='patient_history_entries'
+    patient = models.ForeignKey(
+        Patient, 
+        on_delete=models.PROTECT,
+        related_name='history_records'
     )
-    action = models.CharField(max_length=100, help_text="The action performed, e.g., 'fhir_append'")
-    fhir_delta = models.JSONField(default=dict, help_text="The FHIR resources that were added or changed")
-
+    
+    # ============================================================================
+    # DOCUMENT FIELD - TEMPORARILY COMMENTED OUT
+    # ============================================================================
+    # The document field is commented out because the Document model hasn't been
+    # created yet (that's handled in a different task). When we implement the
+    # Document model in the documents app, we'll need to:
+    # 1. Uncomment this field
+    # 2. Create a new migration to add the document relationship
+    # 3. Update any existing PatientHistory records as needed
+    #
+    # TODO: Uncomment when Task 4 (Document Management) is complete
+    # document = models.ForeignKey(
+    #     'documents.Document',
+    #     on_delete=models.PROTECT,
+    #     null=True,
+    #     blank=True,
+    #     help_text="Source document if this change came from document processing"
+    # )
+    # ============================================================================
+    
+    action = models.CharField(
+        max_length=50,
+        choices=[
+            ('created', 'Patient Created'),
+            ('updated', 'Patient Updated'),
+            ('fhir_append', 'FHIR Resources Added'),
+            ('document_processed', 'Document Processed'),
+        ]
+    )
+    fhir_version = models.CharField(max_length=20, default='4.0.1')
+    changed_at = models.DateTimeField(auto_now_add=True)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True
+    )
+    fhir_delta = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="FHIR resources added in this change"
+    )
+    notes = models.TextField(blank=True)
+    
     class Meta:
         db_table = 'patient_history'
+        indexes = [
+            models.Index(fields=['patient', 'changed_at']),
+            models.Index(fields=['action', 'changed_at']),
+        ]
         verbose_name = "Patient History"
         verbose_name_plural = "Patient Histories"
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['patient', '-created_at']),
-        ]
-
+    
     def __str__(self):
-        return f"History for {self.patient} at {self.created_at}"
+        return f"{self.patient.mrn} - {self.action} at {self.changed_at}"
+    
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse('patients:history-detail', kwargs={'pk': self.pk})
