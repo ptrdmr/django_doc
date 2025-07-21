@@ -1,5 +1,33 @@
 # ⚙️ Setup & Installation
 
+## Quick Start (Docker - Recommended) 🚀
+
+For experienced developers who just want to get the Django app running:
+
+```bash
+# Clone and navigate to project
+git clone [repository-url]
+cd doc2db_2025_django
+
+# Start Docker containers (PostgreSQL + Django + Redis + Celery)
+docker-compose up -d
+
+# Verify everything is working
+docker ps
+curl http://localhost:8000
+
+# Access the application
+open http://localhost:8000  # Login/register to get started
+```
+
+**Services Available:**
+- Django App: http://localhost:8000
+- PostgreSQL: localhost:5432 (internal Docker network)
+- Redis: localhost:6379
+- Flower (Celery monitoring): http://localhost:5555
+
+---
+
 ## Prerequisites
 
 - **Python 3.12+** 
@@ -71,12 +99,43 @@ Access at: http://localhost:8000
 ## Docker Setup (Recommended)
 
 ### Development Environment
-```bash
-# Build and start all services
-docker-compose up --build
 
-# Run in background
+**First-Time Setup:**
+```bash
+# Stop any existing containers
+docker-compose down
+
+# Remove any problematic volumes (if this is a fresh setup)
+docker volume rm doc2db_2025_django_static_volume 2>/dev/null || true
+
+# Build and start all services
+docker-compose build
 docker-compose up -d
+
+# Verify everything is running
+docker ps
+```
+
+**Daily Development:**
+```bash
+# Start the environment
+docker-compose up -d
+
+# Check logs if needed
+docker logs doc2db_2025_django-web-1
+```
+
+**Troubleshooting Common Issues:**
+```bash
+# If static files have permission issues:
+docker-compose down
+docker volume rm doc2db_2025_django_static_volume
+docker-compose build --no-cache
+docker-compose up -d
+
+# If database connection fails:
+# Check that DB_ENGINE=postgresql in docker-compose.yml
+# (Not django.db.backends.postgresql)
 ```
 
 ### Production Environment

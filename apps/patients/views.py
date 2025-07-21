@@ -1,3 +1,959 @@
-from django.shortcuts import render
+"""
+Patient management views.
+"""
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import ListView, DetailView, CreateView, UpdateView, TemplateView, View
+from django.db.models import Q, Count
+from django.urls import reverse_lazy
+from django.contrib import messages
+from django import forms
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, DatabaseError, OperationalError, transaction
+from django.http import JsonResponse, HttpResponse, Http404
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+import logging
+import json
+import uuid
+from difflib import SequenceMatcher
 
-# Create your views here.
+from .models import Patient, PatientHistory
+
+logger = logging.getLogger(__name__)
+
+
+class PatientSearchForm(forms.Form):
+    """
+    Form for validating patient search input.
+    
+    Validates search query length and content to prevent
+    malicious input and improve search performance.
+    """
+    q = forms.CharField(
+        max_length=100,
+        required=False,
+        strip=True,
+        widget=forms.TextInput(attrs={
+            'placeholder': 'Search by name, MRN, or date of birth...',
+            'class': 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pl-10'
+        })
+    )
+    
+    def clean_q(self):
+        """
+        Validate search query input.
+        
+        Returns:
+            str: Cleaned search query
+            
+        Raises:
+            ValidationError: If query contains invalid characters
+        """
+        query = self.cleaned_data.get('q', '').strip()
+        
+        if len(query) > 100:
+            raise ValidationError("Search query too long. Maximum 100 characters.")
+        
+        # Basic input sanitization - only allow letters, numbers, spaces, and common punctuation
+        allowed_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-_@')
+        if query and not set(query).issubset(allowed_chars):
+            raise ValidationError("Search query contains invalid characters.")
+        
+        return query
+
+
+class PatientListView(LoginRequiredMixin, ListView):
+    """
+    Display a list of patients with search and pagination functionality.
+    
+    Features:
+    - Search by first name, last name, or MRN
+    - Pagination with 20 patients per page
+    - Sorting by last name
+    - Professional medical UI design
+    """
+    model = Patient
+    template_name = 'patients/patient_list.html'
+    context_object_name = 'patients'
+    paginate_by = 20
+    
+    def validate_search_input(self):
+        """
+        Validate search form input from request.
+        
+        Returns:
+            tuple: (is_valid, search_query)
+        """
+        search_form = PatientSearchForm(self.request.GET)
+        
+        if search_form.is_valid():
+            search_query = search_form.cleaned_data.get('q', '')
+            return True, search_query
+        else:
+            logger.warning(f"Invalid search form data: {search_form.errors}")
+            messages.warning(self.request, "Invalid search criteria. Please try again.")
+            return False, ''
+    
+    def filter_patients_by_search(self, queryset, search_query):
+        """
+        Filter patient queryset by search criteria.
+        
+        Args:
+            queryset: Base patient queryset
+            search_query: Validated search string
+            
+        Returns:
+            QuerySet: Filtered queryset
+        """
+        if search_query:
+            return queryset.filter(
+                Q(first_name__icontains=search_query) |
+                Q(last_name__icontains=search_query) |
+                Q(mrn__icontains=search_query)
+            )
+        return queryset
+    
+    def order_patients(self, queryset):
+        """
+        Apply consistent ordering to patient queryset.
+        
+        Args:
+            queryset: Patient queryset to order
+            
+        Returns:
+            QuerySet: Ordered queryset
+        """
+        return queryset.order_by('last_name', 'first_name')
+    
+    def get_queryset(self):
+        """
+        Get filtered and ordered patient queryset.
+        
+        Returns:
+            QuerySet: Filtered patient queryset
+        """
+        try:
+            queryset = super().get_queryset()
+            is_valid, search_query = self.validate_search_input()
+            
+            if is_valid:
+                queryset = self.filter_patients_by_search(queryset, search_query)
+            
+            return self.order_patients(queryset)
+            
+        except (DatabaseError, OperationalError) as database_error:
+            logger.error(f"Database error in patient list view: {database_error}")
+            messages.error(self.request, "There was an error loading patients. Please try again.")
+            return Patient.objects.none()
+    
+    def build_search_context(self):
+        """
+        Build search-related context data.
+        
+        Returns:
+            dict: Search context data
+        """
+        search_form = PatientSearchForm(self.request.GET)
+        search_query = search_form.data.get('q', '') if search_form.data else ''
+        
+        return {
+            'search_form': search_form,
+            'search_query': search_query
+        }
+    
+    def get_patient_count(self):
+        """
+        Get total patient count safely.
+        
+        Returns:
+            int: Total patient count
+        """
+        try:
+            return Patient.objects.count()
+        except (DatabaseError, OperationalError) as count_error:
+            logger.error(f"Error getting patient count: {count_error}")
+            return 0
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add extra context data for the template.
+        
+        Returns:
+            dict: Context data with search query and form
+        """
+        try:
+            context = super().get_context_data(**kwargs)
+            search_context = self.build_search_context()
+            context.update(search_context)
+            context['total_patients'] = self.get_patient_count()
+            return context
+            
+        except (DatabaseError, OperationalError) as context_error:
+            logger.error(f"Error building context for patient list: {context_error}")
+            return super().get_context_data(**kwargs)
+
+
+class PatientDetailView(LoginRequiredMixin, DetailView):
+    """
+    Display detailed information for a specific patient.
+    
+    Shows patient demographics, FHIR data summary, and complete history timeline.
+    Includes functionality to view specific versions of FHIR data.
+    """
+    model = Patient
+    template_name = 'patients/patient_detail.html'
+    context_object_name = 'patient'
+    
+    def get_patient_history(self):
+        """
+        Get patient history records with related data for efficient display.
+        
+        Returns:
+            QuerySet: Patient history records with related user data
+        """
+        try:
+            return PatientHistory.objects.filter(
+                patient=self.object
+            ).select_related('changed_by').order_by('-changed_at')
+        except (DatabaseError, OperationalError) as history_error:
+            logger.error(f"Error loading patient history for {self.object.id}: {history_error}")
+            messages.warning(self.request, "Some patient history may not be available.")
+            return PatientHistory.objects.none()
+    
+    def get_fhir_summary(self):
+        """
+        Get FHIR data summary with resource counts.
+        
+        Returns:
+            dict: FHIR resource summary with counts and last updated info
+        """
+        try:
+            fhir_data = self.object.cumulative_fhir_json
+            if not fhir_data:
+                return {}
+            
+            summary = {}
+            for resource_type, resources in fhir_data.items():
+                if isinstance(resources, list):
+                    summary[resource_type] = {
+                        'count': len(resources),
+                        'last_updated': self.get_latest_resource_date(resources)
+                    }
+                else:
+                    summary[resource_type] = {
+                        'count': 1,
+                        'last_updated': self.get_latest_resource_date([resources])
+                    }
+            
+            return summary
+        except (TypeError, KeyError) as fhir_error:
+            logger.error(f"Error processing FHIR data for patient {self.object.id}: {fhir_error}")
+            return {}
+    
+    def get_latest_resource_date(self, resources):
+        """
+        Get the latest update date from FHIR resources.
+        
+        Args:
+            resources (list): List of FHIR resources
+            
+        Returns:
+            str: Latest update date or None
+        """
+        try:
+            dates = []
+            for resource in resources:
+                if isinstance(resource, dict) and 'meta' in resource:
+                    if 'lastUpdated' in resource['meta']:
+                        dates.append(resource['meta']['lastUpdated'])
+            
+            if dates:
+                return max(dates)
+            return None
+        except (TypeError, KeyError):
+            return None
+    
+    def get_history_statistics(self):
+        """
+        Get statistics about patient history for display.
+        
+        Returns:
+            dict: History statistics
+        """
+        try:
+            history_queryset = self.get_patient_history()
+            
+            total_count = history_queryset.count()
+            action_counts = {}
+            
+            for history in history_queryset:
+                action = history.action
+                action_counts[action] = action_counts.get(action, 0) + 1
+            
+            return {
+                'total_records': total_count,
+                'action_breakdown': action_counts,
+                'has_fhir_data': bool(self.object.cumulative_fhir_json)
+            }
+        except (DatabaseError, OperationalError) as stats_error:
+            logger.error(f"Error calculating history statistics for {self.object.id}: {stats_error}")
+            return {
+                'total_records': 0,
+                'action_breakdown': {},
+                'has_fhir_data': False
+            }
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add comprehensive patient context data.
+        
+        Returns:
+            dict: Enhanced context data with patient history, FHIR summary, and statistics
+        """
+        try:
+            context = super().get_context_data(**kwargs)
+            
+            # Add patient history
+            context['patient_history'] = self.get_patient_history()
+            
+            # Add FHIR data summary
+            context['fhir_summary'] = self.get_fhir_summary()
+            
+            # Add history statistics
+            context['history_stats'] = self.get_history_statistics()
+            
+            # Add breadcrumb data
+            context['breadcrumbs'] = [
+                {'name': 'Home', 'url': '/'},
+                {'name': 'Patients', 'url': '/patients/'},
+                {'name': f'{self.object.first_name} {self.object.last_name}', 'url': None}
+            ]
+            
+            return context
+            
+        except (DatabaseError, OperationalError) as context_error:
+            logger.error(f"Error building context for patient detail {self.object.id}: {context_error}")
+            return super().get_context_data(**kwargs)
+
+
+class PatientCreateView(LoginRequiredMixin, CreateView):
+    """
+    Create a new patient record.
+    """
+    model = Patient
+    template_name = 'patients/patient_form.html'
+    fields = ['mrn', 'first_name', 'last_name', 'date_of_birth', 'gender', 'ssn']
+    success_url = reverse_lazy('patients:list')
+    
+    def create_patient_history(self):
+        """
+        Create history record for new patient.
+        
+        Returns:
+            PatientHistory: Created history record
+        """
+        return PatientHistory.objects.create(
+            patient=self.object,
+            action='created',
+            changed_by=self.request.user,
+            notes=f'Patient record created by {self.request.user.get_full_name()}'
+        )
+    
+    def show_success_message(self):
+        """
+        Display success message to user.
+        """
+        messages.success(
+            self.request, 
+            f'Patient {self.object.first_name} {self.object.last_name} created successfully.'
+        )
+    
+    def form_valid(self, form):
+        """
+        Save the patient and create a history record.
+        
+        Returns:
+            HttpResponse: Redirect to success URL
+        """
+        try:
+            response = super().form_valid(form)
+            self.create_patient_history()
+            self.show_success_message()
+            return response
+            
+        except IntegrityError as integrity_error:
+            logger.error(f"Database integrity error creating patient: {integrity_error}")
+            messages.error(self.request, "A patient with this MRN already exists.")
+            return self.form_invalid(form)
+            
+        except (DatabaseError, OperationalError) as create_error:
+            logger.error(f"Error creating patient: {create_error}")
+            messages.error(self.request, "There was an error creating the patient record.")
+            return self.form_invalid(form)
+
+
+class PatientUpdateView(LoginRequiredMixin, UpdateView):
+    """
+    Update an existing patient record.
+    """
+    model = Patient
+    template_name = 'patients/patient_form.html'
+    fields = ['mrn', 'first_name', 'last_name', 'date_of_birth', 'gender', 'ssn']
+    success_url = reverse_lazy('patients:list')
+    
+    def create_update_history(self):
+        """
+        Create history record for patient update.
+        
+        Returns:
+            PatientHistory: Created history record
+        """
+        return PatientHistory.objects.create(
+            patient=self.object,
+            action='updated',
+            changed_by=self.request.user,
+            notes=f'Patient record updated by {self.request.user.get_full_name()}'
+        )
+    
+    def show_update_message(self):
+        """
+        Display update success message to user.
+        """
+        messages.success(
+            self.request, 
+            f'Patient {self.object.first_name} {self.object.last_name} updated successfully.'
+        )
+    
+    def form_valid(self, form):
+        """
+        Save the patient and create a history record.
+        
+        Returns:
+            HttpResponse: Redirect to success URL
+        """
+        try:
+            response = super().form_valid(form)
+            self.create_update_history()
+            self.show_update_message()
+            return response
+            
+        except IntegrityError as integrity_error:
+            logger.error(f"Database integrity error updating patient: {integrity_error}")
+            messages.error(self.request, "A patient with this MRN already exists.")
+            return self.form_invalid(form)
+            
+        except (DatabaseError, OperationalError) as update_error:
+            logger.error(f"Error updating patient {self.object.id}: {update_error}")
+            messages.error(self.request, "There was an error updating the patient record.")
+            return self.form_invalid(form)
+
+
+# ============================================================================
+# FHIR Export Views
+# ============================================================================
+
+class PatientFHIRExportView(LoginRequiredMixin, View):
+    """
+    Export patient data as FHIR JSON file download.
+    """
+    
+    def get(self, request, pk):
+        """
+        Generate and download FHIR data for a patient.
+        
+        Args:
+            request: HTTP request
+            pk: Patient UUID
+            
+        Returns:
+            HttpResponse: JSON file download
+        """
+        try:
+            patient = get_object_or_404(Patient, pk=pk)
+            
+            # Create FHIR bundle
+            fhir_bundle = self.create_fhir_bundle(patient)
+            
+            # Create response with JSON file
+            response = HttpResponse(
+                json.dumps(fhir_bundle, indent=2),
+                content_type='application/json'
+            )
+            response['Content-Disposition'] = f'attachment; filename="patient_{patient.mrn}_fhir_export.json"'
+            
+            # Log the export
+            PatientHistory.objects.create(
+                patient=patient,
+                action='fhir_export',
+                changed_by=request.user,
+                notes=f'FHIR data exported by {request.user.get_full_name()}'
+            )
+            
+            return response
+            
+        except Exception as export_error:
+            logger.error(f"Error exporting FHIR data for patient {pk}: {export_error}")
+            messages.error(request, "There was an error exporting the patient data.")
+            return redirect('patients:detail', pk=pk)
+    
+    def create_fhir_bundle(self, patient):
+        """
+        Create a complete FHIR bundle for the patient.
+        
+        Args:
+            patient: Patient instance
+            
+        Returns:
+            dict: FHIR bundle structure
+        """
+        bundle = {
+            "resourceType": "Bundle",
+            "id": str(uuid.uuid4()),
+            "type": "document",
+            "timestamp": timezone.now().isoformat(),
+            "entry": []
+        }
+        
+        # Add patient resource
+        patient_resource = {
+            "resource": {
+                "resourceType": "Patient",
+                "id": str(patient.id),
+                "identifier": [
+                    {
+                        "use": "usual",
+                        "type": {
+                            "coding": [
+                                {
+                                    "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                                    "code": "MR",
+                                    "display": "Medical record number"
+                                }
+                            ]
+                        },
+                        "value": patient.mrn
+                    }
+                ],
+                "name": [
+                    {
+                        "use": "official",
+                        "family": patient.last_name,
+                        "given": [patient.first_name]
+                    }
+                ],
+                "birthDate": patient.date_of_birth.isoformat(),
+                "gender": self.map_gender_to_fhir(patient.gender)
+            }
+        }
+        bundle["entry"].append(patient_resource)
+        
+        # Add existing FHIR data
+        if patient.cumulative_fhir_json:
+            for resource_type, resources in patient.cumulative_fhir_json.items():
+                if isinstance(resources, list):
+                    for resource in resources:
+                        bundle["entry"].append({"resource": resource})
+                else:
+                    bundle["entry"].append({"resource": resources})
+        
+        return bundle
+    
+    def map_gender_to_fhir(self, gender):
+        """
+        Map internal gender codes to FHIR gender values.
+        
+        Args:
+            gender: Internal gender code
+            
+        Returns:
+            str: FHIR gender value
+        """
+        gender_map = {
+            'M': 'male',
+            'F': 'female',
+            'O': 'other'
+        }
+        return gender_map.get(gender, 'unknown')
+
+
+class PatientFHIRJSONView(LoginRequiredMixin, View):
+    """
+    Return patient FHIR data as JSON (for API access).
+    """
+    
+    def get(self, request, pk):
+        """
+        Return FHIR data as JSON response.
+        
+        Args:
+            request: HTTP request
+            pk: Patient UUID
+            
+        Returns:
+            JsonResponse: FHIR data
+        """
+        try:
+            patient = get_object_or_404(Patient, pk=pk)
+            
+            return JsonResponse({
+                'patient_id': str(patient.id),
+                'mrn': patient.mrn,
+                'fhir_data': patient.cumulative_fhir_json,
+                'last_updated': patient.updated_at.isoformat()
+            })
+            
+        except Exception as json_error:
+            logger.error(f"Error returning FHIR JSON for patient {pk}: {json_error}")
+            return JsonResponse({'error': 'Unable to retrieve patient FHIR data'}, status=500)
+
+
+# ============================================================================
+# Patient History Views
+# ============================================================================
+
+class PatientHistoryDetailView(LoginRequiredMixin, DetailView):
+    """
+    Detailed view of patient history timeline.
+    """
+    model = Patient
+    template_name = 'patients/patient_history.html'
+    context_object_name = 'patient'
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add detailed history data to context.
+        
+        Returns:
+            dict: Context with detailed history
+        """
+        context = super().get_context_data(**kwargs)
+        
+        try:
+            # Get all history with related data
+            history = PatientHistory.objects.filter(
+                patient=self.object
+            ).select_related('changed_by').order_by('-changed_at')
+            
+            context['patient_history'] = history
+            context['history_count'] = history.count()
+            
+            # Group history by action type
+            action_summary = {}
+            for record in history:
+                action = record.action
+                if action not in action_summary:
+                    action_summary[action] = 0
+                action_summary[action] += 1
+            
+            context['action_summary'] = action_summary
+            
+        except (DatabaseError, OperationalError) as history_error:
+            logger.error(f"Error loading detailed history for patient {self.object.id}: {history_error}")
+            context['patient_history'] = PatientHistory.objects.none()
+            context['history_count'] = 0
+            context['action_summary'] = {}
+        
+        return context
+
+
+class PatientHistoryItemView(LoginRequiredMixin, DetailView):
+    """
+    View individual history record details.
+    """
+    model = PatientHistory
+    template_name = 'patients/history_item.html'
+    context_object_name = 'history_item'
+    pk_url_kwarg = 'history_pk'
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add patient context to history item.
+        
+        Returns:
+            dict: Context with patient data
+        """
+        context = super().get_context_data(**kwargs)
+        context['patient'] = self.object.patient
+        return context
+
+
+# ============================================================================
+# Patient Merge Views
+# ============================================================================
+
+class FindDuplicatePatientsView(LoginRequiredMixin, TemplateView):
+    """
+    Find and display potential duplicate patient records.
+    """
+    template_name = 'patients/find_duplicates.html'
+    
+    def get_context_data(self, **kwargs):
+        """
+        Find potential duplicate patients.
+        
+        Returns:
+            dict: Context with duplicate candidates
+        """
+        context = super().get_context_data(**kwargs)
+        
+        try:
+            duplicates = self.find_potential_duplicates()
+            context['duplicate_groups'] = duplicates
+            context['total_duplicates'] = sum(len(group) for group in duplicates)
+            
+        except (DatabaseError, OperationalError) as dup_error:
+            logger.error(f"Error finding duplicate patients: {dup_error}")
+            context['duplicate_groups'] = []
+            context['total_duplicates'] = 0
+        
+        return context
+    
+    def find_potential_duplicates(self):
+        """
+        Find potential duplicate patients based on name and DOB similarity.
+        
+        Returns:
+            list: Groups of potential duplicates
+        """
+        patients = Patient.objects.all().order_by('last_name', 'first_name')
+        duplicate_groups = []
+        processed_ids = set()
+        
+        for patient in patients:
+            if patient.id in processed_ids:
+                continue
+            
+            similar_patients = self.find_similar_patients(patient, patients, processed_ids)
+            
+            if similar_patients:
+                duplicate_groups.append(similar_patients)
+                for similar_patient in similar_patients:
+                    processed_ids.add(similar_patient.id)
+        
+        return duplicate_groups
+    
+    def find_similar_patients(self, target_patient, all_patients, processed_ids):
+        """
+        Find patients similar to the target patient.
+        
+        Args:
+            target_patient: Patient to find duplicates for
+            all_patients: All patients to search through
+            processed_ids: IDs already processed
+            
+        Returns:
+            list: Similar patients (including target if matches found)
+        """
+        similar_patients = [target_patient]
+        
+        for patient in all_patients:
+            if patient.id == target_patient.id or patient.id in processed_ids:
+                continue
+            
+            # Check name similarity
+            name_similarity = self.calculate_name_similarity(target_patient, patient)
+            
+            # Check if same DOB
+            same_dob = target_patient.date_of_birth == patient.date_of_birth
+            
+            # Consider as duplicate if high name similarity and same DOB
+            if name_similarity > 0.8 and same_dob:
+                similar_patients.append(patient)
+        
+        # Only return if we found actual duplicates
+        return similar_patients if len(similar_patients) > 1 else []
+    
+    def calculate_name_similarity(self, patient1, patient2):
+        """
+        Calculate similarity score between two patients' names.
+        
+        Args:
+            patient1: First patient
+            patient2: Second patient
+            
+        Returns:
+            float: Similarity score (0.0 to 1.0)
+        """
+        name1 = f"{patient1.first_name.lower()} {patient1.last_name.lower()}"
+        name2 = f"{patient2.first_name.lower()} {patient2.last_name.lower()}"
+        
+        return SequenceMatcher(None, name1, name2).ratio()
+
+
+class PatientMergeListView(LoginRequiredMixin, TemplateView):
+    """
+    List view for selecting patients to merge.
+    """
+    template_name = 'patients/merge_list.html'
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add patients list for merge selection.
+        
+        Returns:
+            dict: Context with patients
+        """
+        context = super().get_context_data(**kwargs)
+        
+        try:
+            # Get search parameters
+            search_query = self.request.GET.get('q', '')
+            
+            patients = Patient.objects.all()
+            
+            if search_query:
+                patients = patients.filter(
+                    Q(first_name__icontains=search_query) |
+                    Q(last_name__icontains=search_query) |
+                    Q(mrn__icontains=search_query)
+                )
+            
+            context['patients'] = patients.order_by('last_name', 'first_name')[:50]  # Limit results
+            context['search_query'] = search_query
+            
+        except (DatabaseError, OperationalError) as merge_error:
+            logger.error(f"Error loading patients for merge: {merge_error}")
+            context['patients'] = Patient.objects.none()
+            context['search_query'] = ''
+        
+        return context
+
+
+class PatientMergeView(LoginRequiredMixin, TemplateView):
+    """
+    Merge two patient records.
+    """
+    template_name = 'patients/merge_confirm.html'
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add source and target patients to context.
+        
+        Returns:
+            dict: Context with patients to merge
+        """
+        context = super().get_context_data(**kwargs)
+        
+        try:
+            source_patient = get_object_or_404(Patient, pk=kwargs['source_pk'])
+            target_patient = get_object_or_404(Patient, pk=kwargs['target_pk'])
+            
+            context['source_patient'] = source_patient
+            context['target_patient'] = target_patient
+            
+            # Compare patients
+            context['comparison'] = self.compare_patients(source_patient, target_patient)
+            
+        except (DatabaseError, OperationalError) as merge_context_error:
+            logger.error(f"Error loading merge context: {merge_context_error}")
+            raise Http404("Unable to load patient data for merge")
+        
+        return context
+    
+    def post(self, request, source_pk, target_pk):
+        """
+        Perform the patient merge operation.
+        
+        Args:
+            request: HTTP request
+            source_pk: Source patient UUID (will be merged into target)
+            target_pk: Target patient UUID (will receive merged data)
+            
+        Returns:
+            HttpResponse: Redirect to target patient
+        """
+        try:
+            with transaction.atomic():
+                source_patient = get_object_or_404(Patient, pk=source_pk)
+                target_patient = get_object_or_404(Patient, pk=target_pk)
+                
+                # Merge FHIR data
+                self.merge_fhir_data(source_patient, target_patient)
+                
+                # Move patient history
+                self.move_patient_history(source_patient, target_patient)
+                
+                # Create merge history record
+                PatientHistory.objects.create(
+                    patient=target_patient,
+                    action='patient_merged',
+                    changed_by=request.user,
+                    notes=f'Patient {source_patient.mrn} merged into {target_patient.mrn} by {request.user.get_full_name()}'
+                )
+                
+                # Soft delete source patient
+                source_patient.delete()
+                
+                messages.success(
+                    request,
+                    f'Patient {source_patient.first_name} {source_patient.last_name} '
+                    f'(MRN: {source_patient.mrn}) has been successfully merged into '
+                    f'{target_patient.first_name} {target_patient.last_name} '
+                    f'(MRN: {target_patient.mrn}).'
+                )
+                
+                return redirect('patients:detail', pk=target_patient.pk)
+                
+        except Exception as merge_error:
+            logger.error(f"Error merging patients {source_pk} -> {target_pk}: {merge_error}")
+            messages.error(request, "There was an error merging the patient records.")
+            return redirect('patients:merge-list')
+    
+    def compare_patients(self, source, target):
+        """
+        Compare two patients for merge review.
+        
+        Args:
+            source: Source patient
+            target: Target patient
+            
+        Returns:
+            dict: Comparison data
+        """
+        return {
+            'names_match': (source.first_name.lower() == target.first_name.lower() and 
+                          source.last_name.lower() == target.last_name.lower()),
+            'dob_match': source.date_of_birth == target.date_of_birth,
+            'gender_match': source.gender == target.gender,
+            'source_fhir_count': len(source.cumulative_fhir_json) if source.cumulative_fhir_json else 0,
+            'target_fhir_count': len(target.cumulative_fhir_json) if target.cumulative_fhir_json else 0,
+            'source_history_count': source.history_records.count(),
+            'target_history_count': target.history_records.count()
+        }
+    
+    def merge_fhir_data(self, source_patient, target_patient):
+        """
+        Merge FHIR data from source into target patient.
+        
+        Args:
+            source_patient: Patient to merge from
+            target_patient: Patient to merge into
+        """
+        if not source_patient.cumulative_fhir_json:
+            return
+        
+        target_fhir = target_patient.cumulative_fhir_json or {}
+        
+        for resource_type, resources in source_patient.cumulative_fhir_json.items():
+            if resource_type not in target_fhir:
+                target_fhir[resource_type] = []
+            
+            if isinstance(resources, list):
+                target_fhir[resource_type].extend(resources)
+            else:
+                target_fhir[resource_type].append(resources)
+        
+        target_patient.cumulative_fhir_json = target_fhir
+        target_patient.save()
+    
+    def move_patient_history(self, source_patient, target_patient):
+        """
+        Move patient history from source to target patient.
+        
+        Args:
+            source_patient: Patient to move history from
+            target_patient: Patient to move history to
+        """
+        PatientHistory.objects.filter(
+            patient=source_patient
+        ).update(patient=target_patient)

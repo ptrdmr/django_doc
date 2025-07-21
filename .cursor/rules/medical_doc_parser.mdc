@@ -10,6 +10,7 @@ alwaysApply: true
 - **Tech Stack:** Django 5.0 + htmx + Alpine.js + Tailwind + PostgreSQL + Celery
 - **Core Purpose:** Transform medical documents into FHIR-compliant patient histories
 - **Development Model:** Solo Developer with AI Assistance
+- **Development Environment:** Windows PowerShell (use `;` for command chaining, Docker for migrations)
 
 ## **Django Project Structure**
 

@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}History Record - {{ patient.first_name }} {{ patient.last_name }}{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="flex mb-6" aria-label="Breadcrumb">
+    <ol class="flex items-center space-x-2 text-sm">
+        <li>
+            <a href="{% url 'home' %}" class="text-blue-600 hover:text-blue-800 transition-colors">
+                Home
+            </a>
+        </li>
+        <li class="flex items-center">
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <a href="{% url 'patients:list' %}" class="text-blue-600 hover:text-blue-800 transition-colors">
+                Patients
+            </a>
+        </li>
+        <li class="flex items-center">
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <a href="{{ patient.get_absolute_url }}" class="text-blue-600 hover:text-blue-800 transition-colors">
+                {{ patient.first_name }} {{ patient.last_name }}
+            </a>
+        </li>
+        <li class="flex items-center">
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <a href="{% url 'patients:history' patient.pk %}" class="text-blue-600 hover:text-blue-800 transition-colors">
+                History
+            </a>
+        </li>
+        <li class="flex items-center">
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <span class="text-gray-700 font-medium">Record Details</span>
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="p-6">
+    <!-- Header Section -->
+    <div class="mb-6">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">History Record Details</h1>
+                    <p class="text-gray-600">{{ history_item.get_action_display }} - {{ history_item.changed_at|date:"M j, Y g:i A" }}</p>
+                </div>
+            </div>
+            
+            <div class="flex space-x-3">
+                <a href="{% url 'patients:history' patient.pk %}" 
+                   class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    Back to Timeline
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Record Details -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Record Information</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Basic Information -->
+            <div>
+                <h3 class="text-sm font-medium text-gray-900 mb-3">Basic Details</h3>
+                <dl class="space-y-3">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Action</dt>
+                        <dd class="mt-1">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                {% if history_item.action == 'created' %}bg-green-100 text-green-800
+                                {% elif history_item.action == 'updated' %}bg-blue-100 text-blue-800
+                                {% elif history_item.action == 'fhir_append' %}bg-purple-100 text-purple-800
+                                {% elif history_item.action == 'fhir_export' %}bg-indigo-100 text-indigo-800
+                                {% elif history_item.action == 'patient_merged' %}bg-orange-100 text-orange-800
+                                {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                {{ history_item.get_action_display }}
+                            </span>
+                        </dd>
+                    </div>
+                    
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Date & Time</dt>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            {{ history_item.changed_at|date:"l, F j, Y" }} at {{ history_item.changed_at|date:"g:i A" }}
+                        </dd>
+                    </div>
+                    
+                    {% if history_item.changed_by %}
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Changed By</dt>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            {{ history_item.changed_by.get_full_name|default:history_item.changed_by.username }}
+                        </dd>
+                    </div>
+                    {% endif %}
+                    
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">FHIR Version</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ history_item.fhir_version }}</dd>
+                    </div>
+                </dl>
+            </div>
+            
+            <!-- Patient Information -->
+            <div>
+                <h3 class="text-sm font-medium text-gray-900 mb-3">Patient Details</h3>
+                <dl class="space-y-3">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Patient Name</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ patient.first_name }} {{ patient.last_name }}</dd>
+                    </div>
+                    
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Medical Record Number</dt>
+                        <dd class="mt-1 text-sm text-gray-900 font-mono">{{ patient.mrn }}</dd>
+                    </div>
+                    
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Date of Birth</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ patient.date_of_birth|date:"F j, Y" }}</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notes Section -->
+    {% if history_item.notes %}
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Notes</h2>
+        <div class="prose prose-sm max-w-none">
+            <p class="text-gray-700">{{ history_item.notes }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- FHIR Data Section -->
+    {% if history_item.fhir_delta %}
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-900">FHIR Resources</h2>
+            <span class="text-sm text-gray-500">{{ history_item.fhir_delta|length }} resource{{ history_item.fhir_delta|length|pluralize }}</span>
+        </div>
+        
+        <div class="space-y-4">
+            {% for resource in history_item.fhir_delta %}
+            <div class="border border-gray-200 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-medium text-gray-900">
+                        {{ resource.resourceType|default:"Unknown Resource" }}
+                    </h3>
+                    <button type="button" onclick="toggleResource({{ forloop.counter0 }})" 
+                            class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                        <span id="toggle-text-{{ forloop.counter0 }}">Show Details</span>
+                    </button>
+                </div>
+                
+                <div id="resource-{{ forloop.counter0 }}" class="hidden">
+                    <pre class="text-xs text-gray-800 bg-gray-50 p-3 rounded overflow-x-auto"><code>{{ resource|safe }}</code></pre>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div class="text-center py-8">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No FHIR Data</h3>
+            <p class="mt-1 text-sm text-gray-500">This history record does not contain FHIR resource data.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleResource(index) {
+    const resourceDiv = document.getElementById(`resource-${index}`);
+    const toggleText = document.getElementById(`toggle-text-${index}`);
+    
+    if (resourceDiv.classList.contains('hidden')) {
+        resourceDiv.classList.remove('hidden');
+        toggleText.textContent = 'Hide Details';
+    } else {
+        resourceDiv.classList.add('hidden');
+        toggleText.textContent = 'Show Details';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Add keyboard navigation for toggle buttons
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            const activeElement = document.activeElement;
+            if (activeElement && activeElement.onclick) {
+                e.preventDefault();
+                activeElement.click();
+            }
+        }
+    });
+});
+</script>
+{% endblock %} 

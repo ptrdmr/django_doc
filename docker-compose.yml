@@ -48,7 +48,7 @@ services:
     restart: unless-stopped
     environment:
       - DJANGO_SETTINGS_MODULE=meddocparser.settings.development
-      - DB_ENGINE=django.db.backends.postgresql
+      - DB_ENGINE=postgresql
       - DB_NAME=meddocparser
       - DB_USER=postgres
       - DB_PASSWORD=${DB_PASSWORD:-postgres123}
@@ -83,7 +83,7 @@ services:
     restart: unless-stopped
     environment:
       - DJANGO_SETTINGS_MODULE=meddocparser.settings.development
-      - DB_ENGINE=django.db.backends.postgresql
+      - DB_ENGINE=postgresql
       - DB_NAME=meddocparser
       - DB_USER=postgres
       - DB_PASSWORD=${DB_PASSWORD:-postgres123}
@@ -111,7 +111,7 @@ services:
     restart: unless-stopped
     environment:
       - DJANGO_SETTINGS_MODULE=meddocparser.settings.development
-      - DB_ENGINE=django.db.backends.postgresql
+      - DB_ENGINE=postgresql
       - DB_NAME=meddocparser
       - DB_USER=postgres
       - DB_PASSWORD=${DB_PASSWORD:-postgres123}

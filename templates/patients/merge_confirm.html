@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Merge Patients - Confirmation{% endblock %}
+
+{% block breadcrumbs %}
+<nav class="flex mb-6" aria-label="Breadcrumb">
+    <ol class="flex items-center space-x-2 text-sm">
+        <li>
+            <a href="{% url 'home' %}" class="text-blue-600 hover:text-blue-800 transition-colors">
+                Home
+            </a>
+        </li>
+        <li class="flex items-center">
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <a href="{% url 'patients:list' %}" class="text-blue-600 hover:text-blue-800 transition-colors">
+                Patients
+            </a>
+        </li>
+        <li class="flex items-center">
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <a href="{% url 'patients:find-duplicates' %}" class="text-blue-600 hover:text-blue-800 transition-colors">
+                Find Duplicates
+            </a>
+        </li>
+        <li class="flex items-center">
+            <svg class="w-4 h-4 text-gray-400 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <span class="text-gray-700 font-medium">Merge Confirmation</span>
+        </li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="p-6">
+    <!-- Header Section -->
+    <div class="mb-6">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Confirm Patient Merge</h1>
+                <p class="text-gray-600">Review and select data to keep when merging these patient records</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Warning Alert -->
+    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                </svg>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-yellow-800">Important: Patient Merge Operation</h3>
+                <div class="mt-2 text-sm text-yellow-700">
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>This action cannot be undone</strong> - one patient record will be permanently removed</li>
+                        <li>All FHIR data will be consolidated into the surviving patient record</li>
+                        <li>All history records will be transferred to the surviving patient</li>
+                        <li>References to the removed patient will be updated throughout the system</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form method="post" id="merge-form">
+        {% csrf_token %}
+        
+        <!-- Patient Comparison -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-6">Select Data to Keep</h2>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Patient A -->
+                <div class="border-2 border-gray-200 rounded-lg p-4" id="patient-a-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-md font-medium text-gray-900">Patient A</h3>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="primary_patient" value="{{ patient_a.id }}" 
+                                   class="form-radio text-blue-600" checked>
+                            <span class="ml-2 text-sm text-gray-700">Keep as Primary</span>
+                        </label>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <!-- Basic Info -->
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-blue-900 mb-3">Basic Information</h4>
+                            <dl class="space-y-2">
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">Full Name:</dt>
+                                    <dd class="text-sm text-gray-900">{{ patient_a.first_name }} {{ patient_a.last_name }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">MRN:</dt>
+                                    <dd class="text-sm text-gray-900 font-mono">{{ patient_a.mrn }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">Date of Birth:</dt>
+                                    <dd class="text-sm text-gray-900">{{ patient_a.date_of_birth|date:"F j, Y" }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">Created:</dt>
+                                    <dd class="text-sm text-gray-900">{{ patient_a.created_at|date:"M j, Y g:i A" }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">Last Updated:</dt>
+                                    <dd class="text-sm text-gray-900">{{ patient_a.updated_at|date:"M j, Y g:i A" }}</dd>
+                                </div>
+                            </dl>
+                        </div>
+                        
+                        <!-- FHIR Data -->
+                        <div class="bg-purple-50 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-purple-900 mb-3">FHIR Resources</h4>
+                            {% if patient_a.cumulative_fhir_json %}
+                            <div class="space-y-2">
+                                {% for resource_type, resources in patient_a.fhir_summary.items %}
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs text-purple-700">{{ resource_type }}:</span>
+                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                        {{ resources|length }} record{{ resources|length|pluralize }}
+                                    </span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="text-xs text-purple-600">No FHIR data available</p>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- History Count -->
+                        <div class="bg-green-50 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-green-900 mb-3">History Records</h4>
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs text-green-700">Total History Entries:</span>
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    {{ patient_a.history_count|default:0 }} record{{ patient_a.history_count|default:0|pluralize }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 flex space-x-2">
+                        <a href="{{ patient_a.get_absolute_url }}" target="_blank"
+                           class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                            View Full Record
+                        </a>
+                        <a href="{% url 'patients:history' patient_a.pk %}" target="_blank"
+                           class="text-xs text-purple-600 hover:text-purple-800 font-medium">
+                            View History
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Patient B -->
+                <div class="border-2 border-gray-200 rounded-lg p-4" id="patient-b-card">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-md font-medium text-gray-900">Patient B</h3>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="primary_patient" value="{{ patient_b.id }}" 
+                                   class="form-radio text-blue-600">
+                            <span class="ml-2 text-sm text-gray-700">Keep as Primary</span>
+                        </label>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <!-- Basic Info -->
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-blue-900 mb-3">Basic Information</h4>
+                            <dl class="space-y-2">
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">Full Name:</dt>
+                                    <dd class="text-sm text-gray-900">{{ patient_b.first_name }} {{ patient_b.last_name }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">MRN:</dt>
+                                    <dd class="text-sm text-gray-900 font-mono">{{ patient_b.mrn }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">Date of Birth:</dt>
+                                    <dd class="text-sm text-gray-900">{{ patient_b.date_of_birth|date:"F j, Y" }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">Created:</dt>
+                                    <dd class="text-sm text-gray-900">{{ patient_b.created_at|date:"M j, Y g:i A" }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium text-blue-700">Last Updated:</dt>
+                                    <dd class="text-sm text-gray-900">{{ patient_b.updated_at|date:"M j, Y g:i A" }}</dd>
+                                </div>
+                            </dl>
+                        </div>
+                        
+                        <!-- FHIR Data -->
+                        <div class="bg-purple-50 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-purple-900 mb-3">FHIR Resources</h4>
+                            {% if patient_b.cumulative_fhir_json %}
+                            <div class="space-y-2">
+                                {% for resource_type, resources in patient_b.fhir_summary.items %}
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs text-purple-700">{{ resource_type }}:</span>
+                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                        {{ resources|length }} record{{ resources|length|pluralize }}
+                                    </span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="text-xs text-purple-600">No FHIR data available</p>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- History Count -->
+                        <div class="bg-green-50 rounded-lg p-4">
+                            <h4 class="text-sm font-medium text-green-900 mb-3">History Records</h4>
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs text-green-700">Total History Entries:</span>
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    {{ patient_b.history_count|default:0 }} record{{ patient_b.history_count|default:0|pluralize }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 flex space-x-2">
+                        <a href="{{ patient_b.get_absolute_url }}" target="_blank"
+                           class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                            View Full Record
+                        </a>
+                        <a href="{% url 'patients:history' patient_b.pk %}" target="_blank"
+                           class="text-xs text-purple-600 hover:text-purple-800 font-medium">
+                            View History
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Merge Options -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Merge Options</h2>
+            
+            <div class="space-y-4">
+                <div class="flex items-start">
+                    <input type="checkbox" id="merge_fhir" name="merge_fhir" checked 
+                           class="form-checkbox mt-1 text-blue-600">
+                    <div class="ml-3">
+                        <label for="merge_fhir" class="text-sm font-medium text-gray-700">
+                            Combine FHIR Resources
+                        </label>
+                        <p class="text-xs text-gray-500">
+                            Merge all FHIR resources from both patients into the primary record
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start">
+                    <input type="checkbox" id="merge_history" name="merge_history" checked 
+                           class="form-checkbox mt-1 text-blue-600">
+                    <div class="ml-3">
+                        <label for="merge_history" class="text-sm font-medium text-gray-700">
+                            Transfer History Records
+                        </label>
+                        <p class="text-xs text-gray-500">
+                            Move all history records from the secondary patient to the primary record
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start">
+                    <input type="checkbox" id="add_merge_note" name="add_merge_note" checked 
+                           class="form-checkbox mt-1 text-blue-600">
+                    <div class="ml-3">
+                        <label for="add_merge_note" class="text-sm font-medium text-gray-700">
+                            Add Merge Note
+                        </label>
+                        <p class="text-xs text-gray-500">
+                            Create a history record documenting this merge operation
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confirmation Text -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Final Confirmation</h2>
+            
+            <div class="flex items-start">
+                <input type="checkbox" id="confirm_merge" name="confirm_merge" required 
+                       class="form-checkbox mt-1 text-red-600">
+                <div class="ml-3">
+                    <label for="confirm_merge" class="text-sm font-medium text-gray-700">
+                        I understand this action cannot be undone
+                    </label>
+                    <p class="text-xs text-gray-500">
+                        I have reviewed both patient records and confirm that these are duplicate patients that should be merged. 
+                        I understand that one patient record will be permanently deleted and all data will be consolidated.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center justify-between">
+            <a href="{% url 'patients:find-duplicates' %}" 
+               class="inline-flex items-center px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+                Cancel
+            </a>
+            
+            <button type="submit" id="merge-submit" disabled
+                    class="inline-flex items-center px-6 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                </svg>
+                <span id="merge-submit-text">Merge Patients</span>
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const confirmCheckbox = document.getElementById('confirm_merge');
+    const mergeSubmit = document.getElementById('merge-submit');
+    const primaryRadios = document.querySelectorAll('input[name="primary_patient"]');
+    const patientACard = document.getElementById('patient-a-card');
+    const patientBCard = document.getElementById('patient-b-card');
+    const mergeForm = document.getElementById('merge-form');
+    
+    // Enable/disable submit button based on confirmation
+    confirmCheckbox.addEventListener('change', function() {
+        mergeSubmit.disabled = !this.checked;
+    });
+    
+    // Highlight selected primary patient
+    primaryRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === '{{ patient_a.id }}') {
+                patientACard.classList.add('border-blue-500', 'bg-blue-50');
+                patientBCard.classList.remove('border-blue-500', 'bg-blue-50');
+                patientACard.classList.remove('border-gray-200');
+                patientBCard.classList.add('border-gray-200');
+            } else {
+                patientBCard.classList.add('border-blue-500', 'bg-blue-50');
+                patientACard.classList.remove('border-blue-500', 'bg-blue-50');
+                patientBCard.classList.remove('border-gray-200');
+                patientACard.classList.add('border-gray-200');
+            }
+        });
+    });
+    
+    // Handle form submission
+    mergeForm.addEventListener('submit', function(e) {
+        const submitButton = mergeSubmit;
+        const submitText = document.getElementById('merge-submit-text');
+        
+        // Show loading state
+        submitButton.disabled = true;
+        submitText.textContent = 'Merging...';
+        
+        // Add spinner to button
+        const spinner = document.createElement('div');
+        spinner.className = 'animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2';
+        submitButton.insertBefore(spinner, submitText);
+    });
+    
+    // Initialize primary patient highlighting
+    const checkedRadio = document.querySelector('input[name="primary_patient"]:checked');
+    if (checkedRadio) {
+        checkedRadio.dispatchEvent(new Event('change'));
+    }
+});
+</script>
+{% endblock %} 

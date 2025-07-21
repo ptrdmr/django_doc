@@ -7,6 +7,11 @@ alwaysApply: true
 
 This guide outlines the typical process for using Task Master to manage software development projects.
 
+## **Environment Context**
+- **Primary Shell:** Windows PowerShell (commands use `;` for chaining)
+- **Docker Integration:** Use `docker-compose exec` for commands in containerized environments
+- **Python Commands:** Always activate virtual environment or use Docker exec (see [`venv_management.mdc`](mdc:.cursor/rules/venv_management.mdc))
+
 ## Primary Interaction: MCP Server vs. CLI
 
 Task Master offers two primary ways to interact:
