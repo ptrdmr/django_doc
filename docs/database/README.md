@@ -724,6 +724,267 @@ Every clinical resource has corresponding Provenance resource:
 
 ---
 
+## Document Processing Models - Task 6.1 ✅
+
+### Document Model
+
+**Table**: `documents_document`  
+**Purpose**: Medical document storage with comprehensive processing tracking and security
+
+```sql
+-- Database Schema
+CREATE TABLE documents_document (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id UUID NOT NULL REFERENCES patients_patient(id) ON DELETE CASCADE,
+    uploaded_by_id UUID NOT NULL REFERENCES accounts_user(id) ON DELETE PROTECT,
+    
+    -- File management
+    file VARCHAR(100) NOT NULL,
+    original_filename VARCHAR(255) NOT NULL,
+    file_size INTEGER NOT NULL,
+    file_hash VARCHAR(64) UNIQUE NOT NULL,
+    
+    -- Processing status
+    status VARCHAR(20) NOT NULL DEFAULT 'uploaded',
+    
+    -- Extracted content
+    original_text TEXT DEFAULT '',
+    processing_metadata JSONB DEFAULT '{}',
+    processed_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT DEFAULT '',
+    
+    -- Audit fields
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    created_by_id UUID REFERENCES accounts_user(id) ON DELETE PROTECT,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes for performance
+CREATE INDEX documents_document_patient_status_idx ON documents_document(patient_id, status);
+CREATE INDEX documents_document_uploaded_by_created_idx ON documents_document(uploaded_by_id, created_at);
+CREATE INDEX documents_document_file_hash_idx ON documents_document(file_hash);
+CREATE INDEX documents_document_status_idx ON documents_document(status);
+```
+
+**Status Choices**:
+- `uploaded`: Document uploaded but not yet processed
+- `processing`: Currently being processed by AI
+- `completed`: Successfully processed and data extracted
+- `failed`: Processing failed with error
+- `manual_review`: Requires manual review due to low confidence
+
+**Security Features**:
+```python
+# HIPAA-compliant file storage
+file = models.FileField(upload_to='documents/patient_%Y/%m/')
+
+# Duplicate detection through file hashing
+file_hash = models.CharField(max_length=64, unique=True)
+
+# Complete audit trail with user attribution
+uploaded_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT)
+```
+
+**Processing Metadata Structure**:
+```json
+{
+    "extraction": {
+        "page_count": 15,
+        "file_size": 2048576,
+        "processing_time": 3.42,
+        "extraction_method": "pdfplumber"
+    },
+    "ai_analysis": {
+        "model_used": "claude-3-sonnet",
+        "processing_time": 12.67,
+        "chunks_processed": 1,
+        "confidence_score": 0.94,
+        "token_count": 8432
+    },
+    "error_details": {
+        "error_type": "api_timeout",
+        "retry_count": 2,
+        "last_error": "2025-01-20T15:30:00Z"
+    }
+}
+```
+
+### ParsedData Model
+
+**Table**: `documents_parsed_data`  
+**Purpose**: Structured medical data extraction results with confidence scoring
+
+```sql
+-- Database Schema  
+CREATE TABLE documents_parsed_data (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id UUID NOT NULL REFERENCES documents_document(id) ON DELETE CASCADE,
+    patient_id UUID NOT NULL REFERENCES patients_patient(id) ON DELETE CASCADE,
+    
+    -- Extracted medical data
+    extraction_json JSONB DEFAULT '{}',
+    confidence_scores JSONB DEFAULT '{}',
+    processing_notes TEXT DEFAULT '',
+    
+    -- FHIR integration tracking
+    fhir_resources_generated JSONB DEFAULT '[]',
+    added_to_patient_bundle BOOLEAN DEFAULT FALSE,
+    
+    -- Audit fields
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    created_by_id UUID REFERENCES accounts_user(id) ON DELETE PROTECT,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes for medical data queries
+CREATE INDEX documents_parsed_data_document_idx ON documents_parsed_data(document_id);
+CREATE INDEX documents_parsed_data_patient_idx ON documents_parsed_data(patient_id);
+CREATE INDEX documents_parsed_data_extraction_gin_idx ON documents_parsed_data USING GIN (extraction_json);
+```
+
+**Extraction JSON Structure**:
+```json
+{
+    "patient_demographics": {
+        "name": "John Doe",
+        "date_of_birth": "1980-01-15",
+        "gender": "male",
+        "medical_record_number": "MRN-12345"
+    },
+    "clinical_data": {
+        "conditions": [
+            {
+                "name": "Type 2 Diabetes Mellitus",
+                "code": "E11.9",
+                "status": "active",
+                "onset_date": "2020-03-15"
+            }
+        ],
+        "medications": [
+            {
+                "name": "Metformin 500mg",
+                "dosage": "500 mg twice daily",
+                "status": "active"
+            }
+        ],
+        "observations": [
+            {
+                "name": "Hemoglobin A1c",
+                "value": "7.2%",
+                "date": "2025-01-15",
+                "category": "laboratory"
+            }
+        ],
+        "allergies": [
+            {
+                "allergen": "Penicillin",
+                "reaction": "Rash",
+                "severity": "moderate"
+            }
+        ]
+    },
+    "providers": [
+        {
+            "name": "Dr. John Smith",
+            "specialty": "Endocrinology",
+            "role": "attending_physician"
+        }
+    ]
+}
+```
+
+**Confidence Scoring Structure**:
+```json
+{
+    "overall_confidence": 0.94,
+    "field_confidence": {
+        "patient_demographics": {
+            "name": 0.98,
+            "date_of_birth": 0.92,
+            "medical_record_number": 0.99
+        },
+        "clinical_data": {
+            "conditions": 0.95,
+            "medications": 0.89,
+            "observations": 0.87
+        }
+    },
+    "extraction_metadata": {
+        "ai_model": "claude-3-sonnet",
+        "chunks_processed": 1,
+        "parsing_strategy": "direct_json",
+        "processing_time": 12.67
+    }
+}
+```
+
+### Document Processing Query Optimization
+
+**Efficient Document Queries**:
+```python
+# ✅ DO: Use status-based filtering with indexes
+pending_docs = Document.objects.filter(
+    status='uploaded'
+).select_related('patient', 'uploaded_by')
+
+# ✅ DO: Query processed documents with extracted data
+completed_docs = Document.objects.filter(
+    status='completed',
+    parsed_data__isnull=False
+).prefetch_related('parsed_data')
+
+# ✅ DO: Use file hash for duplicate detection
+existing_doc = Document.objects.filter(file_hash=new_file_hash).first()
+
+# ✅ DO: Query documents by patient with processing status
+patient_docs = Document.objects.filter(
+    patient=patient,
+    status__in=['completed', 'processing']
+).order_by('-created_at')
+```
+
+**Medical Data Extraction Queries**:
+```python
+# Find documents with specific medical conditions extracted
+diabetes_docs = ParsedData.objects.filter(
+    extraction_json__clinical_data__conditions__contains=[{
+        'code': 'E11.9'
+    }]
+)
+
+# Query by confidence thresholds
+high_confidence_extractions = ParsedData.objects.filter(
+    confidence_scores__overall_confidence__gte=0.9
+)
+
+# Find documents requiring manual review
+low_confidence_docs = Document.objects.filter(
+    status='manual_review',
+    parsed_data__confidence_scores__overall_confidence__lt=0.8
+)
+```
+
+### Document Processing Performance Features
+
+**File Storage Optimization**:
+- Patient-specific directory structure: `documents/patient_2025/01/`
+- File hash-based duplicate detection prevents storage waste
+- Secure file paths prevent unauthorized access
+
+**Processing Monitoring**:
+- Real-time status tracking through document status field
+- Comprehensive metadata for performance analysis
+- Error tracking and retry logic support
+
+**Medical Data Integration**:
+- Direct relationship to patient records for quick access
+- FHIR resource generation tracking for interoperability
+- Confidence scoring enables quality assurance workflows
+
+---
+
 ## Migration History
 
 ### 0001_initial.py - Patient Models (Task 3.1)
@@ -812,4 +1073,4 @@ fhir_updates = PatientHistory.objects.filter(
 
 ---
 
-*Database documentation updated: January 2025 - Tasks 3.1 (Patient), 4.1 (Provider), 5 (FHIR) Complete* 
+*Database documentation updated: January 2025 - Tasks 3.1 (Patient), 4.1 (Provider), 5 (FHIR), 6.1 (Document Processing) Complete* 
