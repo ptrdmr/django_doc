@@ -414,6 +414,35 @@ LOGGING = {
 }
 
 # ============================================================================
+# AI PROCESSING CONFIGURATION
+# ============================================================================
+
+# AI API Keys and Model Configuration
+ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default=None)
+OPENAI_API_KEY = config('OPENAI_API_KEY', default=None)
+
+# AI Model Configuration
+AI_MODEL_PRIMARY = config('AI_MODEL_PRIMARY', default='claude-3-sonnet-20240229')
+AI_MODEL_FALLBACK = config('AI_MODEL_FALLBACK', default='gpt-3.5-turbo')
+
+# Token Limits and Cost Controls
+AI_MAX_TOKENS_PER_REQUEST = config('AI_MAX_TOKENS_PER_REQUEST', default=4096, cast=int)
+AI_TOKEN_THRESHOLD_FOR_CHUNKING = config('AI_TOKEN_THRESHOLD_FOR_CHUNKING', default=30000, cast=int)  # More reasonable threshold
+AI_DAILY_COST_LIMIT = config('AI_DAILY_COST_LIMIT', default=100.00, cast=float)
+
+# Request Timeouts and Retry Configuration
+AI_REQUEST_TIMEOUT = config('AI_REQUEST_TIMEOUT', default=60, cast=int)
+AI_MAX_RETRIES = config('AI_MAX_RETRIES', default=3, cast=int)
+
+# Document Processing Settings
+AI_CHUNK_SIZE = config('AI_CHUNK_SIZE', default=15000, cast=int)  # Characters per chunk - more manageable size
+AI_CHUNK_OVERLAP = config('AI_CHUNK_OVERLAP', default=2000, cast=int)  # Overlap for context
+
+# FHIR Processing Configuration
+FHIR_VALIDATION_ENABLED = config('FHIR_VALIDATION_ENABLED', default=True, cast=bool)
+FHIR_STRICT_MODE = config('FHIR_STRICT_MODE', default=False, cast=bool)
+
+# ============================================================================
 # REST FRAMEWORK CONFIGURATION
 # ============================================================================
 

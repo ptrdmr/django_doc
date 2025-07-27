@@ -139,8 +139,9 @@ class DocumentUploadView(LoginRequiredMixin, CreateView):
                 f"Processing will begin shortly."
             )
             
-            # TODO: Trigger Celery task for processing (Task 6.3)
-            # process_document.delay(self.object.id)
+            # Trigger async PDF processing
+            from .tasks import process_document_async
+            process_document_async.delay(self.object.id)
             
             return response
             
@@ -374,8 +375,9 @@ class DocumentRetryView(LoginRequiredMixin, DetailView):
                     f"Document '{document.filename}' has been queued for reprocessing."
                 )
                 
-                # TODO: Trigger Celery task for processing (Task 6.3)
-                # process_document.delay(document.id)
+                # Trigger async PDF processing
+                from .tasks import process_document_async
+                process_document_async.delay(document.id)
                 
                 logger.info(f"Document {document.id} queued for retry by user {request.user.id}")
                 
