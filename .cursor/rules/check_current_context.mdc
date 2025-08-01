@@ -1,0 +1,28 @@
+# Date/Time Awareness Rule
+
+## **ALWAYS Check Current Date/Time**
+
+Before updating any documentation, **ALWAYS** read the `.current-context` file in the project root to get:
+
+- ✅ **Current Date** - Know what day it is for accurate timestamps
+- ✅ **Current Time** - Know when the context was last updated
+
+## **Usage**
+
+### **When Writing Documentation:**
+```markdown
+# ✅ DO: Use the CURRENT_DATE from .current-context for timestamps
+*Updated: 2025-08-01 - Feature implementation*
+
+# ❌ DON'T: Guess or use wrong dates
+*Updated: January 2025* # Wrong if context shows August!
+```
+
+## **Context File Location**
+- **File:** `.current-context` (project root)
+- **Updates:** Every 5 minutes automatically
+- **Use:** Get current date/time for accurate documentation timestamps
+
+---
+
+**Remember:** Like checking the calendar before writing the date - always look at the context file to know what day it is!

@@ -1,0 +1,14 @@
+# Project Context - Medical Document Parser
+# Auto-updated context for AI assistant sessions
+
+PROJECT_NAME="Medical Document Parser"
+CURRENT_DATE="2025-08-01"
+LAST_UPDATED="2025-08-01 08:54:01"
+
+
+# Technical Context  
+DJANGO_VERSION="5.0"
+DATABASE="PostgreSQL with JSONB"
+AI_INTEGRATION="Claude 3 Sonnet + OpenAI GPT fallback"
+DEPLOYMENT="Docker containerized, Redis + Celery async processing"
+

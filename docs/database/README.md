@@ -291,7 +291,7 @@ ssn = encrypt(models.CharField(max_length=11, blank=True))
 ## Migration History
 
 ### 0001_initial.py - Patient Models (Task 3.1)
-**Applied**: January 2025  
+**Applied**: August 2025  
 **Description**: Initial Patient and PatientHistory models with FHIR integration
 
 **Tables Created**:
@@ -304,6 +304,68 @@ ssn = encrypt(models.CharField(max_length=11, blank=True))
 - FHIR-ready JSONB storage
 - Complete audit trail system
 - Performance-optimized indexes
+
+### 0001_initial.py - Provider Models (Task 4.1) 
+**Applied**: August 2025  
+**Description**: Provider and ProviderHistory models with NPI validation
+
+**Tables Created**:
+- `providers_provider` with UUID primary key and NPI validation
+- `providers_providerhistory` for audit trail
+- Optimized indexes for provider searches
+
+**Key Features**:
+- 10-digit NPI validation and uniqueness
+- Specialty and organization tracking
+- Soft delete functionality
+- Complete audit trail system
+
+### Core App Security & Monitoring Models (Tasks 2, 6.11, 19) ✅
+**Applied**: August 2025  
+**Description**: HIPAA compliance, security monitoring, and AI cost tracking infrastructure
+
+**Migration History**:
+- `0001_initial.py`: Base models and soft delete infrastructure
+- `0002_auditlog_compliancereport_securityevent_and_more.py`: HIPAA compliance models
+- `0003_alter_auditlog_object_id_for_uuid_support.py`: UUID support for audit logging
+- `0004_apiusagelog.py`: AI API cost monitoring and usage analytics
+
+**Tables Created**:
+- `audit_logs`: Comprehensive HIPAA audit trail with 25+ event types
+- `security_events`: Security monitoring and threat detection
+- `compliance_reports`: Automated HIPAA compliance reporting
+- `api_usage_logs`: AI cost tracking and performance analytics
+
+**Key Features**:
+- Complete HIPAA audit trail system
+- Real-time security event monitoring
+- Automated compliance report generation
+- Comprehensive AI API cost tracking with token monitoring
+- Session-based processing correlation for multi-chunk documents
+
+### 0001_initial.py - Document Processing Models (Task 6.1)
+**Applied**: August 2025  
+**Description**: Document upload, processing, and AI extraction infrastructure
+
+**Tables Created**:
+- `documents_document`: Medical document storage with processing status tracking
+- `documents_parsed_data`: AI extraction results with confidence scoring
+
+**Key Features**:
+- UUID-based security architecture
+- Comprehensive processing status tracking
+- AI model usage monitoring
+- FHIR integration readiness
+- Duplicate detection through file hashing
+
+### FHIR Bundle Storage Optimization (Task 5)
+**Applied**: August 2025  
+**Description**: Advanced JSONB indexing for FHIR data
+
+**Indexes Created**:
+- GIN indexes on FHIR resource types
+- Performance optimization for clinical queries
+- Resource-specific query paths
 
 ---
 
@@ -985,35 +1047,154 @@ low_confidence_docs = Document.objects.filter(
 
 ---
 
-## Migration History
+## APIUsageLog Model - Task 6.11 ✅
 
-### 0001_initial.py - Patient Models (Task 3.1)
-**Applied**: January 2025  
-**Description**: Initial Patient and PatientHistory models with FHIR integration
+**Table**: `api_usage_logs`  
+**Purpose**: Comprehensive API usage tracking for cost monitoring and analytics
 
-### 0001_initial.py - Provider Models (Task 4.1) 
-**Applied**: January 2025  
-**Description**: Provider and ProviderHistory models with NPI validation
+```sql
+-- Database Schema
+CREATE TABLE api_usage_logs (
+    id SERIAL PRIMARY KEY,
+    document_id UUID NOT NULL REFERENCES documents_document(id) ON DELETE CASCADE,
+    patient_id UUID REFERENCES patients_patient(id) ON DELETE SET NULL,
+    processing_session UUID NOT NULL,
+    
+    -- API details
+    provider VARCHAR(50) NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    
+    -- Token usage
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    total_tokens INTEGER NOT NULL,
+    
+    -- Cost tracking
+    cost_usd DECIMAL(10,6) NOT NULL,
+    
+    -- Performance metrics
+    processing_started TIMESTAMP WITH TIME ZONE NOT NULL,
+    processing_completed TIMESTAMP WITH TIME ZONE NOT NULL,
+    processing_duration_ms INTEGER NOT NULL,
+    
+    -- Status
+    success BOOLEAN DEFAULT TRUE,
+    error_message TEXT,
+    
+    -- Chunking support
+    chunk_number INTEGER,
+    total_chunks INTEGER,
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
 
-**Tables Created**:
-- `providers_provider` with UUID primary key and NPI validation
-- `providers_providerhistory` for audit trail
-- Optimized indexes for provider searches
+**Indexes**:
+```sql
+-- Performance optimization for cost analytics
+CREATE INDEX api_usage_logs_document_idx ON api_usage_logs (document_id);
+CREATE INDEX api_usage_logs_patient_idx ON api_usage_logs (patient_id);
+CREATE INDEX api_usage_logs_session_idx ON api_usage_logs (processing_session);
+CREATE INDEX api_usage_logs_provider_model_idx ON api_usage_logs (provider, model);
+CREATE INDEX api_usage_logs_created_idx ON api_usage_logs (created_at);
+CREATE INDEX api_usage_logs_success_created_idx ON api_usage_logs (success, created_at);
+CREATE INDEX api_usage_logs_cost_idx ON api_usage_logs (cost_usd);
+```
 
-**Key Features**:
-- 10-digit NPI validation and uniqueness
-- Specialty and organization tracking
-- Soft delete functionality
-- Complete audit trail system
+**Field Details**:
+- `document_id`: Foreign key to Document being processed
+- `patient_id`: Optional patient association (SET NULL on delete)
+- `processing_session`: UUID for correlating multi-chunk processing
+- `provider`: AI service provider ('anthropic', 'openai')
+- `model`: Specific model used (e.g., 'claude-3-sonnet', 'gpt-3.5-turbo')
+- `input_tokens/output_tokens`: Token counts for cost calculation
+- `cost_usd`: Calculated cost in USD with 6 decimal precision
+- `processing_duration_ms`: Performance timing in milliseconds
+- `chunk_number/total_chunks`: Support for large document chunking
 
-### FHIR Bundle Storage Optimization (Task 5)
-**Applied**: January 2025  
-**Description**: Advanced JSONB indexing for FHIR data
+**Django Model Methods**:
+```python
+@property
+def duration_seconds(self):
+    """Get processing duration in seconds."""
+    return self.processing_duration_ms / 1000.0
 
-**Indexes Created**:
-- GIN indexes on FHIR resource types
-- Performance optimization for clinical queries
-- Resource-specific query paths
+@property
+def tokens_per_second(self):
+    """Calculate tokens processed per second."""
+    if self.processing_duration_ms > 0:
+        return (self.total_tokens * 1000) / self.processing_duration_ms
+    return 0
+
+@property
+def cost_per_token(self):
+    """Calculate cost per token in USD."""
+    if self.total_tokens > 0:
+        return float(self.cost_usd) / self.total_tokens
+    return 0.0
+```
+
+### Cost Analytics Query Patterns
+
+**Common API Usage Queries**:
+```python
+# Daily cost tracking
+daily_costs = APIUsageLog.objects.filter(
+    created_at__date=today
+).aggregate(
+    total_cost=Sum('cost_usd'),
+    total_tokens=Sum('total_tokens')
+)
+
+# Model performance comparison
+model_stats = APIUsageLog.objects.values('provider', 'model').annotate(
+    avg_cost=Avg('cost_usd'),
+    avg_duration=Avg('processing_duration_ms'),
+    success_rate=Avg(Case(When(success=True, then=1), default=0))
+)
+
+# Patient-specific usage tracking
+patient_usage = APIUsageLog.objects.filter(
+    patient=patient
+).aggregate(
+    total_documents_processed=Count('document', distinct=True),
+    total_cost=Sum('cost_usd'),
+    avg_confidence=Avg('document__parsed_data__extraction_confidence')
+)
+
+# Session-based chunked document analysis
+session_stats = APIUsageLog.objects.filter(
+    processing_session=session_uuid
+).aggregate(
+    total_chunks=Max('total_chunks'),
+    total_cost=Sum('cost_usd'),
+    processing_time=Sum('processing_duration_ms')
+)
+```
+
+**Cost Optimization Queries**:
+```python
+# Find expensive processing sessions
+expensive_sessions = APIUsageLog.objects.values('processing_session').annotate(
+    session_cost=Sum('cost_usd'),
+    chunk_count=Count('id')
+).filter(session_cost__gt=5.00).order_by('-session_cost')
+
+# Provider cost analysis
+provider_costs = APIUsageLog.objects.values('provider').annotate(
+    total_cost=Sum('cost_usd'),
+    avg_cost_per_token=Avg(F('cost_usd') / F('total_tokens')),
+    success_rate=Avg(Case(When(success=True, then=1), default=0))
+)
+
+# Failed processing analysis
+failed_processing = APIUsageLog.objects.filter(
+    success=False
+).values('error_message').annotate(
+    failure_count=Count('id'),
+    wasted_cost=Sum('cost_usd')
+)
+```
 
 ---
 
@@ -1073,4 +1254,4 @@ fhir_updates = PatientHistory.objects.filter(
 
 ---
 
-*Database documentation updated: January 2025 - Tasks 3.1 (Patient), 4.1 (Provider), 5 (FHIR), 6.1 (Document Processing) Complete* 
+*Database documentation updated: August 2025 - Tasks 3.1 (Patient), 4.1 (Provider), 5 (FHIR), 6.1 (Document Processing), 6.11 (API Usage Monitoring), 19 (Security & Compliance) Complete* 
