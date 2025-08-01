@@ -1,0 +1,17 @@
+# Project Context - Medical Document Parser
+# Auto-updated every 5 minutes with current date/time
+
+PROJECT_NAME="Medical Document Parser"
+CURRENT_DATE="PLACEHOLDER_DATE"
+CURRENT_TIME="PLACEHOLDER_TIME"
+LAST_UPDATED="PLACEHOLDER_DATETIME"
+
+# Development Status (manually update as needed)
+DEVELOPMENT_PHASE="Document Processing Infrastructure Complete"
+ACTIVE_WORK="Database documentation and automation setup"
+
+# Technical Context  
+DJANGO_VERSION="5.0"
+DATABASE="PostgreSQL with JSONB"
+AI_INTEGRATION="Claude 3 Sonnet + OpenAI GPT fallback"
+DEPLOYMENT="Docker containerized, Redis + Celery async processing" 

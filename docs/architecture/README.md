@@ -40,54 +40,164 @@ The Medical Document Parser follows a modern Django architecture optimized for H
 ### Django Applications
 
 - **accounts**: User authentication, profiles, HIPAA-compliant user management ✅ **Complete**
-- **core**: Shared utilities, base models, common functionality ✅ **Complete**
-- **documents**: Document upload, processing, storage management
+- **core**: Shared utilities, base models, API usage monitoring, cost analytics ✅ **Complete**
+- **documents**: Document upload, processing, storage management with comprehensive error recovery and professional UI ✅ **Complete**
 - **patients**: Patient data models, FHIR patient resources ✅ **Complete**
 - **providers**: Healthcare provider management and relationships ✅ **Complete**
-- **fhir**: FHIR resource generation and validation
+- **fhir**: FHIR resource generation and validation ✅ **Complete**
 - **reports**: Report generation and analytics
 
 ### Authentication System - Task 2 Completed ✅
 
-### Authentication System Implementation
-**Complete django-allauth Integration:**
-- Email-only authentication (no username) for HIPAA compliance
-- Strong password requirements (12+ characters minimum)
-- Email verification required for account activation
-- No "remember me" functionality for security compliance
-- Complete password reset workflow with email verification
+### **Authentication System Implementation Status**
 
-**Professional Authentication Templates (7/7):**
-- `login.html` - Professional blue medical login with HIPAA notices
-- `signup.html` - Green registration with email verification requirements
-- `password_reset.html` - Purple password reset request form
-- `password_reset_done.html` - Confirmation and next steps guidance
-- `password_reset_from_key.html` - Set new password form with validation
-- `password_reset_from_key_done.html` - Success confirmation with next actions
-- `logout.html` - Red logout confirmation with security reminders
+**✅ Core django-allauth Integration Complete:**
+- **Email-based authentication** (no username required) configured for HIPAA compliance
+- **Strong password requirements** (12+ characters minimum) with custom validators
+- **Email verification mandatory** for account activation
+- **Professional authentication flow** with proper error handling
+- **Complete password reset workflow** with email verification
+- **Session security** with 1-hour timeout and HIPAA-compliant settings
 
-**Security Features:**
-- CSRF protection on all forms
-- Session security with automatic timeout
-- Account lockout after failed login attempts
-- HIPAA compliance notices throughout authentication flow
-- Audit logging for all authentication events
+**✅ Professional Authentication Templates (7/7 Complete):**
+- `templates/account/login.html` - Blue medical login with HIPAA notices and professional styling
+- `templates/account/signup.html` - Registration form with email verification requirements
+- `templates/account/password_reset.html` - Password reset request form
+- `templates/account/password_reset_done.html` - Confirmation page with next steps
+- `templates/account/password_reset_from_key.html` - New password form with validation
+- `templates/account/password_reset_from_key_done.html` - Success confirmation
+- `templates/account/logout.html` - Logout confirmation with security reminders
+
+**✅ Security Features Implemented:**
+- **Failed login monitoring** via django-axes (5 attempts = 1 hour lockout)
+- **CSRF protection** on all authentication forms
+- **Session security** with automatic timeout and secure cookies
+- **Account lockout system** with dedicated lockout template
+- **HIPAA compliance notices** throughout authentication flow
+- **Comprehensive audit logging** for all authentication events via core.models.AuditLog
+
+**⚠️ Current Authentication Model Status:**
+The system currently uses Django's **default User model** without custom extensions. The apps/accounts/models.py file contains only basic scaffolding:
+
+```python
+# apps/accounts/models.py (Current Implementation)
+from django.db import models
+
+# Create your models here.
+```
+
+**🔄 Authentication Features NOT YET Implemented:**
+- **Custom User model** with organization/role fields
+- **Two-Factor Authentication (2FA)** - django-otp installed but not integrated
+- **User profile extensions** - no organization or role management
+- **QR code generation** for 2FA setup - package installed but unused
+- **Organization-based access control** - referenced in documentation but not implemented
+
+**🛡️ Current Security Configuration:**
+```python
+# Actual settings from meddocparser/settings/base.py
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+    'axes.backends.AxesBackend',  # Failed login monitoring
+]
+
+# HIPAA-compliant allauth settings
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = True
+ACCOUNT_SESSION_REMEMBER = None  # Disable "remember me"
+ACCOUNT_PASSWORD_MIN_LENGTH = 12
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_USERNAME_REQUIRED = False
+```
+
+**🎯 Next Steps for Full Authentication System:**
+1. **Create custom User model** extending AbstractUser with organization/role fields
+2. **Implement 2FA views and templates** using existing django-otp configuration
+3. **Add user profile management** forms and templates
+4. **Implement organization-based access control** throughout the application
+5. **Add QR code generation** for 2FA device setup
 
 ### Dashboard System - Task 2.5 Completed ✅
 
-**Activity Model Implementation:**
+**AuditLog Model Implementation:**
 ```python
 # apps/core/models.py
-class Activity(models.Model):
-    """HIPAA-compliant activity tracking for audit trail"""
-    user = models.ForeignKey(User, on_delete=models.PROTECT)
-    activity_type = models.CharField(max_length=50)  # login, logout, document_upload, etc.
-    description = models.CharField(max_length=255)
-    ip_address = models.GenericIPAddressField()
-    user_agent = models.TextField()
-    timestamp = models.DateTimeField(auto_now_add=True)
-    related_object_type = models.CharField(max_length=50, blank=True)
-    related_object_id = models.CharField(max_length=50, blank=True)
+class AuditLog(models.Model):
+    """
+    Comprehensive HIPAA-compliant audit logging for all system activities.
+    Tracks 25+ event types with full security and compliance features.
+    """
+    # Core audit fields
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    event_type = models.CharField(max_length=50, choices=EVENT_TYPES, db_index=True)
+    category = models.CharField(max_length=50, choices=CATEGORIES, db_index=True)
+    severity = models.CharField(max_length=20, choices=SEVERITY_LEVELS, default='info')
+    
+    # User information
+    user = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True)
+    username = models.CharField(max_length=150, blank=True)  # Preserved if user deleted
+    user_email = models.EmailField(blank=True)
+    
+    # Session and request information
+    session_key = models.CharField(max_length=40, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    request_method = models.CharField(max_length=10, blank=True)
+    request_url = models.URLField(blank=True)
+    
+    # Generic foreign key for related objects (supports both integer IDs and UUIDs)
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, blank=True)
+    object_id = models.CharField(max_length=50, null=True, blank=True)
+    content_object = GenericForeignKey('content_type', 'object_id')
+    
+    # Event details
+    description = models.TextField()
+    details = models.JSONField(default=dict, blank=True)  # Additional event data
+    
+    # HIPAA-specific fields
+    patient_mrn = models.CharField(max_length=50, blank=True, db_index=True)
+    phi_involved = models.BooleanField(default=False, db_index=True)
+    
+    # Outcome and status
+    success = models.BooleanField(default=True)
+    error_message = models.TextField(blank=True)
+
+# 25+ Event Types Including:
+EVENT_TYPES = [
+    ('login', 'User Login'), ('logout', 'User Logout'), ('login_failed', 'Failed Login'),
+    ('password_change', 'Password Change'), ('account_locked', 'Account Locked'),
+    ('phi_access', 'PHI Data Access'), ('phi_create', 'PHI Data Creation'),
+    ('phi_update', 'PHI Data Update'), ('phi_delete', 'PHI Data Deletion'),
+    ('document_upload', 'Document Upload'), ('document_view', 'Document View'),
+    ('patient_create', 'Patient Created'), ('patient_view', 'Patient Viewed'),
+    ('fhir_export', 'FHIR Export'), ('security_violation', 'Security Violation'),
+    # ... and 10+ more for comprehensive tracking
+]
+
+# Usage Example:
+@classmethod
+def log_event(cls, event_type, user=None, request=None, description="", 
+              details=None, patient_mrn=None, phi_involved=False, 
+              content_object=None, severity='info', success=True, error_message=""):
+    """
+    Create comprehensive audit log entry with automatic category mapping,
+    IP address extraction, and HIPAA compliance features.
+    
+    # Example usage:
+    AuditLog.log_event(
+        event_type='patient_view',
+        user=request.user,
+        request=request,
+        description='Patient record accessed via dashboard',
+        patient_mrn=patient.mrn,
+        phi_involved=True,
+        content_object=patient,
+        severity='info'
+    )
+    """
 ```
 
 **BaseModel Abstract Class:**
@@ -103,11 +213,14 @@ class BaseModel(models.Model):
 ```
 
 **Dashboard Backend Features:**
-- Dynamic model counting with graceful error handling
-- Real-time activity feed with 20-entry pagination
-- Safe model operations with fallbacks when models unavailable
-- Performance-optimized database queries with select_related
-- HIPAA-compliant audit logging for all user interactions
+- **Comprehensive Audit Logging**: AuditLog model with 25+ event types and HIPAA compliance
+- **Dynamic Model Counting**: Graceful error handling with safe_model_operation() wrapper
+- **Smart Activity Feed**: Real AuditLog queries with intelligent placeholder fallbacks
+- **Security Event Integration**: High-priority security incidents automatically flagged
+- **Compliance Reporting**: Automated periodic compliance reports and metrics
+- **Performance Optimization**: Database queries optimized with proper indexing and select_related
+- **PHI Protection**: Patient data access tracking with phi_involved flags and MRN logging
+- **Graceful Degradation**: Safe fallback to placeholder data when audit models unavailable
 
 **Frontend Integration:**
 - Alpine.js for client-side interactivity with proper CSP configuration
@@ -1482,4 +1595,284 @@ Document → Type Detection → Specialized Prompt → AI Processing → Confide
 - **Error Recovery**: Progressive prompt strategy reduces processing failures
 - **FHIR Optimization**: Structured output reduces post-processing requirements
 
-*Updated: January 2025 - Task 6.8 completion | MediExtract medical prompt system integration* 
+*Updated: January 2025 - Task 6.8 completion | MediExtract medical prompt system integration*
+
+## Error Recovery & Resilience Architecture - Task 6.12 Completed ✅
+
+**Enterprise-Grade Error Recovery and Circuit Breaker Implementation:**
+The Error Recovery system transforms document processing from basic failure handling to comprehensive resilience patterns, ensuring production-grade reliability for medical document processing.
+
+### Error Recovery Service Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                Error Recovery Control Center                │
+│                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐                │
+│  │ Circuit Breaker │    │ Error           │                │
+│  │ Management      │    │ Categorization  │                │
+│  │                 │    │                 │                │
+│  │ • Service State │    │ • Transient     │                │
+│  │ • Failure Count │    │ • Rate Limit    │                │
+│  │ • Cool-down     │    │ • Authentication│                │
+│  │ • Health Status │    │ • Permanent     │                │
+│  └─────────────────┘    │ • Malformed     │                │
+│           │              └─────────────────┘                │
+│           ▼                       │                         │
+│  ┌─────────────────┐              ▼                         │
+│  │ Retry Strategy  │    ┌─────────────────┐                │
+│  │ Engine          │    │ Context         │                │
+│  │                 │    │ Preservation    │                │
+│  │ • Exponential   │    │                 │                │
+│  │   Backoff       │    │ • Processing    │                │
+│  │ • Jitter        │    │   State         │                │
+│  │ • Max Delays    │    │ • Attempt       │                │
+│  │ • Smart Timing  │    │   History       │                │
+│  └─────────────────┘    │ • 24hr Storage  │                │
+└─────────────────────────│─┴─────────────────┘                │
+                          └─────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│            Enhanced DocumentAnalyzer Processing             │
+│                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐                │
+│  │ Primary Strategy│───►│ Fallback        │                │
+│  │ (Anthropic)     │    │ Strategy        │                │
+│  │                 │    │ (OpenAI)        │                │
+│  │ • Circuit Check │    │                 │                │
+│  │ • Context Save  │    │ • Circuit Check │                │
+│  │ • Recovery Log  │    │ • Alt Prompts   │                │
+│  └─────────────────┘    │ • Error Track   │                │
+│           │              └─────────────────┘                │
+│           │                       │                         │
+│           ▼                       ▼                         │
+│  ┌─────────────────┐    ┌─────────────────┐                │
+│  │ Alternative     │    │ Text Pattern    │                │
+│  │ Prompts         │    │ Extraction      │                │
+│  │                 │    │                 │                │
+│  │ • Simplified    │    │ • Regex Based   │                │
+│  │ • Medical Focus │    │ • Last Resort   │                │
+│  │ • Robust        │    │ • Basic Fields  │                │
+│  └─────────────────┘    └─────────────────┘                │
+│           │                       │                         │
+│           └───────────┬───────────┘                         │
+│                       ▼                                     │
+│           ┌─────────────────┐                               │
+│           │ Graceful        │                               │
+│           │ Degradation     │                               │
+│           │                 │                               │
+│           │ • Partial       │                               │
+│           │   Results       │                               │
+│           │ • Manual Review │                               │
+│           │ • Audit Logs    │                               │
+│           │ • PHI Safe      │                               │
+│           └─────────────────┘                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Circuit Breaker Pattern Implementation
+
+**Service State Management:**
+```python
+# Circuit Breaker States
+CLOSED     → Normal operation, failures counted
+OPEN       → Service blocked, 10-minute cool-down
+HALF_OPEN  → Testing recovery, one attempt allowed
+
+# Thresholds
+failure_threshold = 5        # Open circuit after 5 consecutive failures
+cool_down_period = 10_minutes # Time before testing recovery
+success_reset = True         # Single success closes half-open circuit
+```
+
+**Service Health Monitoring:**
+```python
+{
+    'anthropic': {
+        'state': 'closed',
+        'failure_count': 2,
+        'last_failure': '2025-01-27T10:30:00Z',
+        'healthy': True,
+        'next_attempt': None
+    },
+    'openai': {
+        'state': 'open',
+        'failure_count': 5,
+        'last_failure': '2025-01-27T10:45:00Z',
+        'healthy': False,
+        'next_attempt': '2025-01-27T10:55:00Z',
+        'cooldown_remaining': 423
+    }
+}
+```
+
+### Error Classification & Retry Strategies
+
+**Intelligent Error Categorization:**
+
+| Error Category | Max Retries | Base Delay | Max Delay | Backoff | Jitter |
+|----------------|-------------|------------|-----------|---------|--------|
+| Transient      | 5           | 2s         | 5min      | 2x      | Yes    |
+| Rate Limit     | 3           | 60s        | 15min     | 2x      | No     |
+| Authentication | 1           | 5s         | 30s       | 1x      | No     |
+| Permanent      | 0           | -          | -         | -       | -      |
+| Malformed      | 0           | -          | -         | -       | -      |
+
+**Error Pattern Recognition:**
+```python
+# Examples of error categorization
+"Connection timeout occurred"           → transient
+"Rate limit exceeded - try again"       → rate_limit  
+"Invalid API key provided"              → authentication
+"Model not found"                       → permanent
+"Malformed request data"                → malformed
+"Service temporarily unavailable"       → transient
+```
+
+### 5-Layer Processing Strategy
+
+**Comprehensive Recovery Workflow:**
+```
+Layer 1: Anthropic Claude (Primary)
+         ↓ (if fails)
+Layer 2: OpenAI GPT (Fallback Service)
+         ↓ (if fails)
+Layer 3: Simplified Prompts (Alternative Strategy)
+         ↓ (if fails)
+Layer 4: Text Pattern Extraction (Last Resort)
+         ↓ (if fails)
+Layer 5: Graceful Degradation (Manual Review)
+```
+
+**Processing Flow:**
+1. **Circuit Breaker Check**: Verify service availability before attempting
+2. **Context Preservation**: Save processing state for potential recovery
+3. **Primary Processing**: Attempt with full medical prompts
+4. **Intelligent Fallback**: Switch services based on error type
+5. **Alternative Strategies**: Try simplified approaches if services available
+6. **Pattern Extraction**: Basic regex extraction as emergency fallback
+7. **Graceful Degradation**: Manual review workflow with partial results
+
+### Context Preservation System
+
+**Processing State Management:**
+```python
+context_data = {
+    'document_id': 123,
+    'processing_session': 'uuid-456',
+    'timestamp': '2025-01-27T10:30:00Z',
+    'context_data': {
+        'system_prompt': 'Extract medical data...',
+        'content_length': 15000,
+        'document_type': 'emergency_department',
+        'primary_model': 'claude-3-sonnet'
+    },
+    'attempt_history': [
+        {
+            'timestamp': '2025-01-27T10:30:15Z',
+            'attempt_info': {
+                'attempt_number': 1,
+                'service': 'anthropic',
+                'success': False,
+                'error_type': 'rate_limit_exceeded',
+                'error_category': 'rate_limit'
+            }
+        }
+    ]
+}
+```
+
+**Benefits:**
+- **Complete Troubleshooting**: Full context available for manual review
+- **PHI-Safe Storage**: No sensitive patient data in error contexts
+- **24-Hour Retention**: Sufficient time for manual intervention
+- **Attempt Correlation**: Track retry patterns across services
+
+### Graceful Degradation Response
+
+**Manual Review Workflow:**
+```python
+degradation_response = {
+    'success': False,
+    'degraded': True,
+    'requires_manual_review': True,
+    'document_id': 123,
+    'error_context': 'All AI services failed: Anthropic rate limited, OpenAI auth error',
+    'extraction_status': 'failed_with_degradation',
+    'fields': {
+        'patient_name': 'John Doe',        # Partial results preserved
+        'medical_record_number': 'MRN123'  # from pattern extraction
+    },
+    'recommendations': [
+        'Document requires manual review due to AI processing failure',
+        'Check document quality and format',
+        'Verify API service status',
+        'Consider reprocessing when services are restored'
+    ],
+    'manual_review_priority': 'high',
+    'timestamp': '2025-01-27T10:30:00Z',
+    'processing_history': [...]  # Complete attempt log
+}
+```
+
+### Integration with Celery Tasks
+
+**Enhanced Document Processing:**
+```python
+@shared_task(bind=True)
+def process_document_async(self, document_id):
+    analyzer = DocumentAnalyzer(document=document)
+    
+    # Comprehensive recovery automatically applied
+    ai_result = analyzer.process_with_comprehensive_recovery(
+        content=extracted_text,
+        context=document_context
+    )
+    
+    # Handle graceful degradation
+    if ai_result.get('degraded'):
+        document.status = 'requires_review'
+        document.error_message = f"AI processing degraded: {ai_result.get('error_context')}"
+        
+        # HIPAA-compliant audit logging
+        AuditLog.log_event(
+            event_type='document_requires_review',
+            description=f"Document {document_id} requires manual review",
+            details={
+                'document_id': document_id,
+                'degradation_reason': ai_result.get('error_context'),
+                'partial_results_count': len(ai_result.get('fields', {})),
+                'manual_review_priority': ai_result.get('manual_review_priority', 'medium')
+            },
+            severity='warning'
+        )
+```
+
+### Production Architecture Benefits
+
+**Reliability Enhancements:**
+- **Zero Data Loss**: Partial results always preserved
+- **Service Independence**: Automatic failover between AI providers
+- **Cascading Failure Prevention**: Circuit breakers stop failure propagation
+- **Cost Optimization**: Smart retry logic prevents expensive loops
+
+**HIPAA Compliance Features:**
+- **PHI-Safe Error Logging**: No sensitive data in error messages
+- **Complete Audit Trails**: All degraded processing logged for compliance
+- **Manual Review Integration**: Critical documents get human oversight
+- **Secure Context Storage**: Troubleshooting data without PHI exposure
+
+**Operational Excellence:**
+- **Real-time Health Monitoring**: Service status dashboard integration
+- **Intelligent Retry Strategies**: Different approaches for different error types
+- **Context-Aware Recovery**: Full state preservation for complex failures
+- **Production Monitoring**: Comprehensive metrics and alerting ready
+
+**Performance Optimization:**
+- **Efficient Resource Usage**: Circuit breakers prevent wasted API calls
+- **Smart Service Routing**: Healthy services prioritized automatically
+- **Partial Result Leverage**: Avoid re-processing successful extractions
+- **Adaptive Behavior**: System learns from failure patterns
+
+*Updated: January 2025 - Task 6.12 completion | Enterprise error recovery and circuit breaker implementation* 
