@@ -1,0 +1,287 @@
+# Task ID: 15
+# Title: Implement Reports Infrastructure and Base Classes
+# Status: pending
+# Dependencies: 3, 4
+# Priority: medium
+# Description: Create the foundational reports module with base report classes, PDF/CSV generation utilities, report selection interface, and shared report components.
+# Details:
+Implement the reports infrastructure and base classes:
+
+1. Create a new Django app 'reports' within the project structure:
+```bash
+python manage.py startapp reports
+```
+
+2. Add the app to INSTALLED_APPS in settings.py:
+```python
+INSTALLED_APPS = [
+    # ...
+    'reports',
+]
+```
+
+3. Implement the base ReportGenerator class:
+```python
+class ReportGenerator:
+    """Base class for all report types in the system."""
+    
+    def __init__(self, parameters=None):
+        self.parameters = parameters or {}
+        self.title = "Base Report"
+        self.description = "Base report description"
+        
+    def generate(self):
+        """Method to be implemented by subclasses to generate report data."""
+        raise NotImplementedError("Subclasses must implement generate()")
+        
+    def to_pdf(self):
+        """Convert report data to PDF format."""
+        # Implementation using a PDF library like ReportLab
+        pass
+        
+    def to_csv(self):
+        """Convert report data to CSV format."""
+        # Implementation using Python's csv module
+        pass
+```
+
+4. Create utility classes for PDF and CSV generation:
+```python
+class PDFGenerator:
+    """Utility class for generating PDF reports."""
+    
+    def __init__(self, template=None):
+        self.template = template
+        
+    def generate(self, data, output_path):
+        # Implementation using ReportLab or WeasyPrint
+        pass
+
+class CSVGenerator:
+    """Utility class for generating CSV reports."""
+    
+    def generate(self, data, output_path):
+        # Implementation using Python's csv module
+        pass
+```
+
+5. Implement common report templates:
+```python
+class PatientReportTemplate(ReportGenerator):
+    """Base template for patient-related reports."""
+    
+    def __init__(self, parameters=None):
+        super().__init__(parameters)
+        self.title = "Patient Report"
+        self.description = "Base patient report"
+        
+    def get_patient_data(self, patient_id=None):
+        """Retrieve patient data for the report."""
+        # Implementation to fetch patient data
+        pass
+
+class ProviderReportTemplate(ReportGenerator):
+    """Base template for provider-related reports."""
+    
+    def __init__(self, parameters=None):
+        super().__init__(parameters)
+        self.title = "Provider Report"
+        self.description = "Base provider report"
+        
+    def get_provider_data(self, provider_id=None):
+        """Retrieve provider data for the report."""
+        # Implementation to fetch provider data
+        pass
+```
+
+6. Create models for report configuration and storage:
+```python
+from django.db import models
+from django.contrib.auth.models import User
+
+class ReportConfiguration(models.Model):
+    """Model to store report configurations."""
+    name = models.CharField(max_length=100)
+    report_type = models.CharField(max_length=50)
+    parameters = models.JSONField(default=dict)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.name
+
+class GeneratedReport(models.Model):
+    """Model to store generated reports."""
+    configuration = models.ForeignKey(ReportConfiguration, on_delete=models.CASCADE)
+    file_path = models.CharField(max_length=255)
+    format = models.CharField(max_length=10)  # PDF, CSV, etc.
+    generated_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.configuration.name} - {self.generated_at}"
+```
+
+7. Implement the report selection interface views:
+```python
+from django.views.generic import ListView, DetailView, CreateView
+from django.contrib.auth.mixins import LoginRequiredMixin
+
+class ReportDashboardView(LoginRequiredMixin, ListView):
+    """Main reports dashboard view."""
+    model = ReportConfiguration
+    template_name = 'reports/dashboard.html'
+    context_object_name = 'report_configs'
+    
+    def get_queryset(self):
+        return ReportConfiguration.objects.filter(created_by=self.request.user)
+        
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['recent_reports'] = GeneratedReport.objects.filter(
+            configuration__created_by=self.request.user
+        ).order_by('-generated_at')[:5]
+        return context
+```
+
+8. Create parameter selection forms:
+```python
+from django import forms
+
+class BaseReportParametersForm(forms.Form):
+    """Base form for report parameters."""
+    date_from = forms.DateField(required=False)
+    date_to = forms.DateField(required=False)
+    
+class PatientReportParametersForm(BaseReportParametersForm):
+    """Form for patient report parameters."""
+    patient_id = forms.IntegerField(required=False)
+    include_demographics = forms.BooleanField(required=False)
+    
+class ProviderReportParametersForm(BaseReportParametersForm):
+    """Form for provider report parameters."""
+    provider_id = forms.IntegerField(required=False)
+    specialty = forms.CharField(required=False)
+```
+
+9. Create URL patterns for the reports module:
+```python
+from django.urls import path
+from . import views
+
+app_name = 'reports'
+
+urlpatterns = [
+    path('', views.ReportDashboardView.as_view(), name='dashboard'),
+    path('create/', views.ReportCreateView.as_view(), name='create'),
+    path('generate/<int:pk>/', views.GenerateReportView.as_view(), name='generate'),
+    path('view/<int:pk>/', views.ReportDetailView.as_view(), name='view'),
+]
+```
+
+10. Create templates for the reports module:
+   - dashboard.html (main reports dashboard)
+   - report_form.html (parameter selection form)
+   - report_detail.html (view generated report)
+
+11. Add the reports module to the main navigation in the base template.
+
+# Test Strategy:
+1. Unit Tests:
+   - Create unit tests for the ReportGenerator base class:
+     ```python
+     from django.test import TestCase
+     from reports.generators import ReportGenerator
+     
+     class ReportGeneratorTests(TestCase):
+         def test_base_report_generator_initialization(self):
+             generator = ReportGenerator()
+             self.assertEqual(generator.title, "Base Report")
+             self.assertEqual(generator.description, "Base report description")
+             
+         def test_generate_method_raises_not_implemented(self):
+             generator = ReportGenerator()
+             with self.assertRaises(NotImplementedError):
+                 generator.generate()
+     ```
+   
+   - Test PDF and CSV generation utilities:
+     ```python
+     from reports.generators import PDFGenerator, CSVGenerator
+     import os
+     
+     class PDFGeneratorTests(TestCase):
+         def test_pdf_generation(self):
+             generator = PDFGenerator()
+             test_data = {"title": "Test Report", "content": "Test content"}
+             output_path = "test_report.pdf"
+             generator.generate(test_data, output_path)
+             self.assertTrue(os.path.exists(output_path))
+             # Clean up
+             os.remove(output_path)
+     ```
+   
+   - Test report models:
+     ```python
+     from reports.models import ReportConfiguration, GeneratedReport
+     from django.contrib.auth.models import User
+     
+     class ReportModelTests(TestCase):
+         def setUp(self):
+             self.user = User.objects.create_user(username='testuser', password='12345')
+             
+         def test_report_configuration_creation(self):
+             config = ReportConfiguration.objects.create(
+                 name="Test Report",
+                 report_type="patient_summary",
+                 parameters={"patient_id": 1},
+                 created_by=self.user
+             )
+             self.assertEqual(config.name, "Test Report")
+             self.assertEqual(config.report_type, "patient_summary")
+     ```
+
+2. Integration Tests:
+   - Test the report dashboard view:
+     ```python
+     class ReportViewTests(TestCase):
+         def setUp(self):
+             self.user = User.objects.create_user(username='testuser', password='12345')
+             self.client.login(username='testuser', password='12345')
+             
+         def test_dashboard_view(self):
+             response = self.client.get('/reports/')
+             self.assertEqual(response.status_code, 200)
+             self.assertTemplateUsed(response, 'reports/dashboard.html')
+     ```
+   
+   - Test report generation flow:
+     ```python
+     def test_report_generation_flow(self):
+         # Create a report configuration
+         config = ReportConfiguration.objects.create(
+             name="Test Report",
+             report_type="patient_summary",
+             parameters={"patient_id": 1},
+             created_by=self.user
+         )
+         
+         # Generate the report
+         response = self.client.post(f'/reports/generate/{config.id}/')
+         self.assertEqual(response.status_code, 302)  # Redirect after successful generation
+         
+         # Check that a report was generated
+         self.assertEqual(GeneratedReport.objects.count(), 1)
+     ```
+
+3. Manual Testing:
+   - Navigate to the reports dashboard and verify all UI elements are displayed correctly
+   - Test creating a new report configuration with various parameters
+   - Generate reports in different formats (PDF, CSV) and verify the output
+   - Test the report parameter forms with valid and invalid inputs
+   - Verify that reports are properly associated with the user who created them
+   - Test navigation between the reports module and other parts of the application
+
+4. Performance Testing:
+   - Generate large reports and measure the time taken
+   - Test concurrent report generation by multiple users
+   - Verify that large PDF/CSV files are generated correctly without memory issues

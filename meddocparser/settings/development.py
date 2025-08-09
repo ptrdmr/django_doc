@@ -92,12 +92,12 @@ CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/
 CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
 CELERY_TASK_ALWAYS_EAGER = True  # Execute tasks synchronously in development
 
-# Override Redis settings to prevent connection hanging in development
-# Use memory broker instead of Redis for development
-CELERY_BROKER_URL = 'memory://'
-CELERY_RESULT_BACKEND = 'cache+memory://'
-CELERY_TASK_ALWAYS_EAGER = True  # Execute tasks synchronously
-CELERY_EAGER_PROPAGATES_EXCEPTIONS = True  # Show exceptions immediately
+# Use Redis for Celery in development (needed for async document processing)
+# Comment out the lines below to use Redis instead of memory for task queue testing
+# CELERY_BROKER_URL = 'memory://'
+# CELERY_RESULT_BACKEND = 'cache+memory://'
+# CELERY_TASK_ALWAYS_EAGER = True  # Execute tasks synchronously
+# CELERY_EAGER_PROPAGATES_EXCEPTIONS = True  # Show exceptions immediately
 
 # JSONB Configuration for PostgreSQL
 if db_engine == 'postgresql':

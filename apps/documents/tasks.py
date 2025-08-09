@@ -111,14 +111,14 @@ def process_document_async(self, document_id):
         logger.info(f"PDF extraction successful: {extraction_result['page_count']} pages, "
                    f"{len(extraction_result['text'])} characters")
         
-        # STEP 2: Analyze document with AI (if text was extracted and API keys are available)
+        # STEP 2: Analyze document with AI using comprehensive error recovery
         ai_result = None
         if extraction_result['text'].strip():
             try:
-                logger.info(f"Step 2: Starting AI analysis for document {document_id}")
+                logger.info(f"Step 2: Starting AI analysis with comprehensive error recovery for document {document_id}")
                 
-                # Initialize document analyzer
-                ai_analyzer = DocumentAnalyzer()
+                # Initialize document analyzer with document for cost monitoring
+                ai_analyzer = DocumentAnalyzer(document=document)
                 
                 # Prepare context for AI analysis
                 context = None
@@ -129,24 +129,101 @@ def process_document_async(self, document_id):
                     provider = document.providers.first()
                     context = f"{provider.name} - {provider.specialty}" if hasattr(provider, 'specialty') else provider.name
                 
-                # Perform AI analysis
-                ai_result = ai_analyzer.analyze_document(
-                    document_content=extraction_result['text'],
+                # Perform AI analysis with comprehensive error recovery and graceful degradation
+                ai_result = ai_analyzer.process_with_comprehensive_recovery(
+                    content=extraction_result['text'],
                     context=context
                 )
+                
+                # Handle graceful degradation responses
+                if ai_result.get('degraded'):
+                    logger.warning(f"Document {document_id} processed with degradation: {ai_result.get('error_context', 'Unknown error')}")
+                    
+                    # Mark document for manual review
+                    document.status = 'requires_review'
+                    document.error_message = f"AI processing degraded: {ai_result.get('error_context', 'All AI services failed')}"
+                    
+                    # Log manual review requirement in audit system
+                    from apps.core.models import AuditLog
+                    AuditLog.log_event(
+                        event_type='document_requires_review',
+                        description=f"Document {document_id} requires manual review due to AI processing degradation",
+                        details={
+                            'document_id': document_id,
+                            'degradation_reason': ai_result.get('error_context', 'Unknown'),
+                            'partial_results_count': len(ai_result.get('fields', {})),
+                            'manual_review_priority': ai_result.get('manual_review_priority', 'medium')
+                        },
+                        severity='warning'
+                    )
+                    
+                    # Continue processing with partial results if any were extracted
+                    if ai_result.get('fields'):
+                        logger.info(f"Continuing with {len(ai_result['fields'])} partial results from degraded processing")
+                else:
+                    # Normal successful processing
+                    ai_result = ai_result
                 
                 if ai_result['success']:
                     logger.info(f"AI analysis successful: {len(ai_result['fields'])} fields extracted")
                     
-                    # Convert to FHIR format
-                    fhir_data = ai_analyzer.convert_to_fhir(ai_result['fields'])
+                    # STEP 3: Convert to FHIR format and accumulate to patient record
+                    patient_id = str(document.patient.id) if document.patient else None
+                    fhir_resources = ai_analyzer.convert_to_fhir(ai_result['fields'], patient_id)
                     
-                    # Store AI results (we'll create the ParsedData model in the next subtask)
-                    # For now, we can store in a JSON field if it exists on Document model
+                    # STEP 4: Accumulate FHIR resources to patient record
+                    if document.patient and fhir_resources:
+                        try:
+                            from apps.fhir.services import FHIRAccumulator
+                            
+                            logger.info(f"Step 3: Accumulating {len(fhir_resources)} FHIR resources to patient {document.patient.mrn}")
+                            
+                            accumulator = FHIRAccumulator()
+                            accumulation_result = accumulator.add_resources_to_patient(
+                                patient=document.patient,
+                                fhir_resources=fhir_resources,
+                                source_system="DocumentAnalyzer",
+                                responsible_user=document.uploaded_by,
+                                source_document_id=str(document.id),
+                                reason="Medical document processing",
+                                validate_fhir=True,
+                                resolve_conflicts=True
+                            )
+                            
+                            if accumulation_result['success']:
+                                logger.info(
+                                    f"FHIR accumulation successful: {accumulation_result['resources_added']} "
+                                    f"resources added, {accumulation_result['resources_skipped']} skipped, "
+                                    f"{accumulation_result['conflicts_resolved']} conflicts resolved"
+                                )
+                                
+                                # Store accumulation result for task response
+                                ai_result['fhir_accumulation'] = {
+                                    'success': True,
+                                    'resources_added': accumulation_result['resources_added'],
+                                    'resources_skipped': accumulation_result['resources_skipped'],
+                                    'conflicts_resolved': accumulation_result['conflicts_resolved'],
+                                    'bundle_version': accumulation_result['bundle_version']
+                                }
+                            else:
+                                logger.error(f"FHIR accumulation failed: {accumulation_result.get('errors', [])}")
+                                ai_result['fhir_accumulation'] = {
+                                    'success': False,
+                                    'errors': accumulation_result.get('errors', [])
+                                }
+                        
+                        except Exception as fhir_exc:
+                            logger.error(f"FHIR accumulation error for document {document_id}: {fhir_exc}")
+                            ai_result['fhir_accumulation'] = {
+                                'success': False,
+                                'error': str(fhir_exc)
+                            }
+                    
+                    # Store AI results (for backward compatibility and debugging)
                     if hasattr(document, 'ai_extracted_data'):
                         document.ai_extracted_data = ai_result['fields']
                     if hasattr(document, 'fhir_data'):
-                        document.fhir_data = fhir_data
+                        document.fhir_data = fhir_resources
                     
                     # Store AI usage information
                     if hasattr(document, 'ai_tokens_used'):

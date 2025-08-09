@@ -1,0 +1,231 @@
+# Task ID: 20
+# Title: Implement HIPAA Audit Logging System
+# Status: pending
+# Dependencies: 3, 4
+# Priority: high
+# Description: Create comprehensive audit logging for all patient data access and modifications as required by HIPAA, including AuditLog models, audit middleware, and audit trail reports.
+# Details:
+Implement a HIPAA-compliant audit logging system:
+
+1. Create AuditLog model:
+```python
+class AuditLog(models.Model):
+    timestamp = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    action = models.CharField(max_length=50)  # CREATE, READ, UPDATE, DELETE
+    resource_type = models.CharField(max_length=100)  # Patient, Provider, Document, etc.
+    resource_id = models.CharField(max_length=100)
+    data_accessed = models.JSONField(null=True, blank=True)  # Fields accessed/modified
+    ip_address = models.GenericIPAddressField()
+    user_agent = models.TextField()
+    request_method = models.CharField(max_length=10)  # GET, POST, PUT, DELETE
+    request_path = models.TextField()
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['timestamp']),
+            models.Index(fields=['user']),
+            models.Index(fields=['resource_type', 'resource_id']),
+        ]
+```
+
+2. Create Django middleware for automatic audit logging:
+```python
+class HIPAAAuditMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+        
+    def __call__(self, request):
+        # Process request before view is called
+        response = self.get_response(request)
+        # Process response after view is called
+        return response
+        
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        # Skip logging for non-PHI views
+        if not self._contains_phi(request.path):
+            return None
+            
+        # Log the access
+        if request.user.is_authenticated:
+            AuditLog.objects.create(
+                user=request.user,
+                action=self._determine_action(request.method),
+                resource_type=self._determine_resource_type(request.path),
+                resource_id=self._extract_resource_id(request.path, view_kwargs),
+                data_accessed=self._extract_data_accessed(request),
+                ip_address=self._get_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                request_method=request.method,
+                request_path=request.path,
+            )
+        return None
+```
+
+3. Implement model signals for automatic logging of model changes:
+```python
+@receiver(post_save, sender=Patient)
+def log_patient_changes(sender, instance, created, **kwargs):
+    request = get_current_request()  # Use middleware to store request in thread local
+    if request and request.user.is_authenticated:
+        AuditLog.objects.create(
+            user=request.user,
+            action='CREATE' if created else 'UPDATE',
+            resource_type='Patient',
+            resource_id=instance.id,
+            data_accessed=model_to_dict(instance),
+            ip_address=_get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request_method=request.method,
+            request_path=request.path,
+        )
+```
+
+4. Create similar signal handlers for Provider and other PHI-containing models
+
+5. Implement thread-local storage for request context:
+```python
+# In core/middleware.py
+_thread_locals = threading.local()
+
+class RequestMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+        
+    def __call__(self, request):
+        _thread_locals.request = request
+        response = self.get_response(request)
+        del _thread_locals.request
+        return response
+        
+def get_current_request():
+    return getattr(_thread_locals, 'request', None)
+```
+
+6. Create audit trail report views and templates:
+```python
+class AuditTrailReportView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    permission_required = 'core.view_audit_logs'
+    model = AuditLog
+    template_name = 'core/audit_trail_report.html'
+    paginate_by = 50
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Apply filters from request
+        resource_type = self.request.GET.get('resource_type')
+        if resource_type:
+            queryset = queryset.filter(resource_type=resource_type)
+            
+        user_id = self.request.GET.get('user_id')
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+            
+        start_date = self.request.GET.get('start_date')
+        if start_date:
+            queryset = queryset.filter(timestamp__gte=start_date)
+            
+        end_date = self.request.GET.get('end_date')
+        if end_date:
+            queryset = queryset.filter(timestamp__lte=end_date)
+            
+        return queryset.order_by('-timestamp')
+```
+
+7. Add audit log export functionality for compliance reporting:
+```python
+class AuditLogExportView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'core.export_audit_logs'
+    
+    def get(self, request):
+        # Apply same filters as report view
+        queryset = AuditLog.objects.all()
+        
+        # Filter logic here...
+        
+        # Create CSV response
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="audit_log_export.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow(['Timestamp', 'User', 'Action', 'Resource Type', 'Resource ID', 
+                         'Data Accessed', 'IP Address', 'User Agent', 'Request Method', 'Request Path'])
+        
+        for log in queryset:
+            writer.writerow([
+                log.timestamp,
+                log.user.username if log.user else 'Anonymous',
+                log.action,
+                log.resource_type,
+                log.resource_id,
+                json.dumps(log.data_accessed),
+                log.ip_address,
+                log.user_agent,
+                log.request_method,
+                log.request_path
+            ])
+            
+        return response
+```
+
+8. Update settings.py to include the middleware:
+```python
+MIDDLEWARE = [
+    # ... existing middleware
+    'core.middleware.RequestMiddleware',
+    'core.middleware.HIPAAAuditMiddleware',
+]
+```
+
+9. Add URL patterns for audit reports:
+```python
+urlpatterns = [
+    # ... existing URLs
+    path('audit-trail/', AuditTrailReportView.as_view(), name='audit_trail_report'),
+    path('audit-trail/export/', AuditLogExportView.as_view(), name='audit_trail_export'),
+]
+```
+
+10. Create templates for audit trail reports with filtering options and pagination
+
+# Test Strategy:
+1. Unit Tests:
+   - Create test cases for AuditLog model to verify all fields are correctly defined
+   - Test the middleware to ensure it correctly logs different types of actions
+   - Test signal handlers to verify they capture model changes
+   - Test the thread-local request storage mechanism
+
+2. Integration Tests:
+   - Create test cases that perform CRUD operations on Patient and Provider models
+   - Verify that each operation creates appropriate audit log entries
+   - Test that all required HIPAA fields are captured (user, timestamp, action, etc.)
+   - Test filtering and pagination of audit reports
+
+3. Manual Testing:
+   - Log in as different user types and perform various actions on PHI data
+   - Verify audit logs are created with correct information
+   - Check that IP addresses and user agents are correctly recorded
+   - Test the audit trail report interface with various filter combinations
+   - Export audit logs and verify CSV format is correct and contains all required fields
+
+4. Security Testing:
+   - Verify that users without appropriate permissions cannot access audit logs
+   - Ensure audit logs cannot be modified or deleted through the application
+   - Test that sensitive PHI in audit logs is appropriately protected
+
+5. Performance Testing:
+   - Test system performance with high volume of audit logs
+   - Verify that indexes are properly created for efficient querying
+   - Test export functionality with large datasets
+
+6. Compliance Verification:
+   - Review audit logging against HIPAA requirements checklist
+   - Verify all required elements are captured:
+     * Date and time of activity
+     * Patient or subject identity
+     * User performing the activity
+     * Description of activity
+     * Success/failure of activity
+   - Ensure logs are retained for the required period (typically 6 years)
+   - Verify logs are protected from unauthorized access or modification

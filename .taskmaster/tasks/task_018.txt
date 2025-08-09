@@ -1,0 +1,531 @@
+# Task ID: 18
+# Title: Implement Document Processing Reports
+# Status: pending
+# Dependencies: 15
+# Priority: low
+# Description: Create reports focused on document processing metrics, status tracking, and system performance, including processing time analytics, success/failure rates, document volume trends, AI processing costs, error tracking, and audit trail reports.
+# Details:
+Implement document processing reports by extending the reports infrastructure:
+
+1. Create specific report classes for document processing metrics:
+
+```python
+from reports.base import ReportGenerator
+from documents.models import Document, ProcessingLog
+from django.db.models import Avg, Count, Sum, F, ExpressionWrapper, fields
+from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
+
+class DocumentProcessingTimeReport(ReportGenerator):
+    """Report showing document processing time analytics"""
+    title = "Document Processing Time Analytics"
+    
+    def generate_data(self, start_date=None, end_date=None, **kwargs):
+        queryset = ProcessingLog.objects.filter(
+            created_at__range=(start_date, end_date)
+        ).annotate(
+            processing_time=ExpressionWrapper(
+                F('completed_at') - F('started_at'),
+                output_field=fields.DurationField()
+            )
+        )
+        
+        return {
+            'average_processing_time': queryset.aggregate(avg=Avg('processing_time'))['avg'],
+            'processing_time_by_day': queryset.annotate(
+                day=TruncDay('created_at')
+            ).values('day').annotate(
+                avg_time=Avg('processing_time'),
+                count=Count('id')
+            ).order_by('day'),
+            'processing_time_by_document_type': queryset.values(
+                'document__document_type'
+            ).annotate(
+                avg_time=Avg('processing_time'),
+                count=Count('id')
+            )
+        }
+
+class DocumentSuccessRateReport(ReportGenerator):
+    """Report showing document processing success/failure rates"""
+    title = "Document Processing Success/Failure Rates"
+    
+    def generate_data(self, start_date=None, end_date=None, **kwargs):
+        queryset = ProcessingLog.objects.filter(
+            created_at__range=(start_date, end_date)
+        )
+        
+        total = queryset.count()
+        success = queryset.filter(status='success').count()
+        failure = queryset.filter(status='failure').count()
+        
+        return {
+            'total_documents': total,
+            'success_count': success,
+            'failure_count': failure,
+            'success_rate': (success / total * 100) if total > 0 else 0,
+            'failure_rate': (failure / total * 100) if total > 0 else 0,
+            'trend_by_day': queryset.annotate(
+                day=TruncDay('created_at')
+            ).values('day').annotate(
+                total=Count('id'),
+                success=Count('id', filter=F('status')=='success'),
+                failure=Count('id', filter=F('status')=='failure')
+            ).order_by('day')
+        }
+
+class DocumentVolumeReport(ReportGenerator):
+    """Report showing document volume trends"""
+    title = "Document Volume Trends"
+    
+    def generate_data(self, start_date=None, end_date=None, **kwargs):
+        queryset = Document.objects.filter(
+            created_at__range=(start_date, end_date)
+        )
+        
+        return {
+            'total_documents': queryset.count(),
+            'by_day': queryset.annotate(
+                day=TruncDay('created_at')
+            ).values('day').annotate(
+                count=Count('id')
+            ).order_by('day'),
+            'by_week': queryset.annotate(
+                week=TruncWeek('created_at')
+            ).values('week').annotate(
+                count=Count('id')
+            ).order_by('week'),
+            'by_month': queryset.annotate(
+                month=TruncMonth('created_at')
+            ).values('month').annotate(
+                count=Count('id')
+            ).order_by('month'),
+            'by_document_type': queryset.values(
+                'document_type'
+            ).annotate(
+                count=Count('id')
+            ).order_by('-count')
+        }
+
+class AIProcessingCostReport(ReportGenerator):
+    """Report showing AI processing costs"""
+    title = "AI Processing Costs"
+    
+    def generate_data(self, start_date=None, end_date=None, **kwargs):
+        queryset = ProcessingLog.objects.filter(
+            created_at__range=(start_date, end_date),
+            ai_cost__isnull=False
+        )
+        
+        return {
+            'total_cost': queryset.aggregate(total=Sum('ai_cost'))['total'],
+            'cost_by_day': queryset.annotate(
+                day=TruncDay('created_at')
+            ).values('day').annotate(
+                total=Sum('ai_cost'),
+                count=Count('id'),
+                avg_cost=Avg('ai_cost')
+            ).order_by('day'),
+            'cost_by_document_type': queryset.values(
+                'document__document_type'
+            ).annotate(
+                total=Sum('ai_cost'),
+                count=Count('id'),
+                avg_cost=Avg('ai_cost')
+            ).order_by('-total')
+        }
+
+class ErrorTrackingReport(ReportGenerator):
+    """Report showing error tracking for document processing"""
+    title = "Error Tracking Report"
+    
+    def generate_data(self, start_date=None, end_date=None, **kwargs):
+        queryset = ProcessingLog.objects.filter(
+            created_at__range=(start_date, end_date),
+            status='failure'
+        )
+        
+        return {
+            'total_errors': queryset.count(),
+            'errors_by_day': queryset.annotate(
+                day=TruncDay('created_at')
+            ).values('day').annotate(
+                count=Count('id')
+            ).order_by('day'),
+            'errors_by_type': queryset.values(
+                'error_type'
+            ).annotate(
+                count=Count('id')
+            ).order_by('-count'),
+            'errors_by_document_type': queryset.values(
+                'document__document_type'
+            ).annotate(
+                count=Count('id')
+            ).order_by('-count'),
+            'most_recent_errors': queryset.order_by('-created_at')[:10].values(
+                'id', 'document__id', 'document__filename', 'error_type', 
+                'error_message', 'created_at'
+            )
+        }
+
+class AuditTrailReport(ReportGenerator):
+    """Report showing audit trail for compliance purposes"""
+    title = "Audit Trail Report"
+    
+    def generate_data(self, start_date=None, end_date=None, **kwargs):
+        queryset = ProcessingLog.objects.filter(
+            created_at__range=(start_date, end_date)
+        ).select_related('document', 'user')
+        
+        return {
+            'total_entries': queryset.count(),
+            'entries_by_day': queryset.annotate(
+                day=TruncDay('created_at')
+            ).values('day').annotate(
+                count=Count('id')
+            ).order_by('day'),
+            'entries_by_user': queryset.values(
+                'user__username'
+            ).annotate(
+                count=Count('id')
+            ).order_by('-count'),
+            'entries_by_action': queryset.values(
+                'action_type'
+            ).annotate(
+                count=Count('id')
+            ).order_by('-count'),
+            'recent_entries': queryset.order_by('-created_at')[:50].values(
+                'id', 'document__id', 'document__filename', 'user__username',
+                'action_type', 'status', 'created_at', 'completed_at'
+            )
+        }
+
+2. Register the new report classes in the reports registry:
+
+```python
+# reports/registry.py
+from reports.document_reports import (
+    DocumentProcessingTimeReport,
+    DocumentSuccessRateReport,
+    DocumentVolumeReport,
+    AIProcessingCostReport,
+    ErrorTrackingReport,
+    AuditTrailReport
+)
+
+def register_document_reports():
+    from reports.registry import report_registry
+    
+    report_registry.register(DocumentProcessingTimeReport)
+    report_registry.register(DocumentSuccessRateReport)
+    report_registry.register(DocumentVolumeReport)
+    report_registry.register(AIProcessingCostReport)
+    report_registry.register(ErrorTrackingReport)
+    report_registry.register(AuditTrailReport)
+```
+
+3. Create templates for each report type:
+
+```html
+<!-- reports/templates/reports/document_processing_time.html -->
+{% extends "reports/base_report.html" %}
+
+{% block report_content %}
+<div class="report-section">
+    <h3>Average Processing Time</h3>
+    <div class="metric-card">
+        <span class="metric-value">{{ data.average_processing_time|format_duration }}</span>
+        <span class="metric-label">Average Processing Time</span>
+    </div>
+</div>
+
+<div class="report-section">
+    <h3>Processing Time Trends</h3>
+    <canvas id="processingTimeChart"></canvas>
+</div>
+
+<div class="report-section">
+    <h3>Processing Time by Document Type</h3>
+    <canvas id="processingTimeByTypeChart"></canvas>
+</div>
+
+<script>
+    // JavaScript to render charts using Chart.js
+    document.addEventListener('DOMContentLoaded', function() {
+        const timeData = {{ data.processing_time_by_day|safe }};
+        const typeData = {{ data.processing_time_by_document_type|safe }};
+        
+        // Render line chart for processing time trends
+        renderLineChart('processingTimeChart', timeData);
+        
+        // Render bar chart for processing time by document type
+        renderBarChart('processingTimeByTypeChart', typeData);
+    });
+</script>
+{% endblock %}
+```
+
+4. Create URL patterns for the document processing reports:
+
+```python
+# reports/urls.py
+from django.urls import path
+from reports.views import ReportView
+
+urlpatterns = [
+    # ... existing report URLs
+    path('document-processing-time/', ReportView.as_view(report_class='DocumentProcessingTimeReport'), name='document_processing_time_report'),
+    path('document-success-rate/', ReportView.as_view(report_class='DocumentSuccessRateReport'), name='document_success_rate_report'),
+    path('document-volume/', ReportView.as_view(report_class='DocumentVolumeReport'), name='document_volume_report'),
+    path('ai-processing-cost/', ReportView.as_view(report_class='AIProcessingCostReport'), name='ai_processing_cost_report'),
+    path('error-tracking/', ReportView.as_view(report_class='ErrorTrackingReport'), name='error_tracking_report'),
+    path('audit-trail/', ReportView.as_view(report_class='AuditTrailReport'), name='audit_trail_report'),
+]
+```
+
+5. Add the document processing reports to the reports dashboard:
+
+```python
+# reports/views.py
+def reports_dashboard(request):
+    document_reports = [
+        {
+            'title': 'Document Processing Time Analytics',
+            'description': 'View analytics on document processing times',
+            'url': reverse('document_processing_time_report'),
+            'icon': 'clock'
+        },
+        {
+            'title': 'Document Success/Failure Rates',
+            'description': 'Track success and failure rates of document processing',
+            'url': reverse('document_success_rate_report'),
+            'icon': 'check-circle'
+        },
+        {
+            'title': 'Document Volume Trends',
+            'description': 'Analyze document volume trends over time',
+            'url': reverse('document_volume_report'),
+            'icon': 'chart-line'
+        },
+        {
+            'title': 'AI Processing Costs',
+            'description': 'Monitor AI processing costs',
+            'url': reverse('ai_processing_cost_report'),
+            'icon': 'dollar-sign'
+        },
+        {
+            'title': 'Error Tracking',
+            'description': 'Track and analyze processing errors',
+            'url': reverse('error_tracking_report'),
+            'icon': 'exclamation-triangle'
+        },
+        {
+            'title': 'Audit Trail',
+            'description': 'View audit trail for compliance purposes',
+            'url': reverse('audit_trail_report'),
+            'icon': 'history'
+        }
+    ]
+    
+    context = {
+        'document_reports': document_reports,
+        # ... other report categories
+    }
+    
+    return render(request, 'reports/dashboard.html', context)
+```
+
+6. Implement export functionality for each report type:
+
+```python
+# Add to each report class
+def export_csv(self, data):
+    # Implement CSV export specific to each report type
+    pass
+
+def export_pdf(self, data):
+    # Implement PDF export specific to each report type
+    pass
+```
+
+7. Add filtering capabilities to the report views:
+
+```python
+# reports/forms.py
+class DocumentReportFilterForm(forms.Form):
+    start_date = forms.DateField(widget=forms.DateInput(attrs={'type': 'date'}))
+    end_date = forms.DateField(widget=forms.DateInput(attrs={'type': 'date'}))
+    document_type = forms.ChoiceField(choices=[], required=False)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Dynamically populate document type choices
+        from documents.models import Document
+        self.fields['document_type'].choices = [('', 'All Types')] + [
+            (dt, dt) for dt in Document.objects.values_list('document_type', flat=True).distinct()
+        ]
+```
+
+# Test Strategy:
+To verify the correct implementation of the Document Processing Reports:
+
+1. Unit Tests:
+   - Create unit tests for each report class to verify data generation logic:
+   ```python
+   from django.test import TestCase
+   from django.utils import timezone
+   from datetime import timedelta
+   from reports.document_reports import DocumentProcessingTimeReport, DocumentSuccessRateReport
+   from documents.models import Document, ProcessingLog
+   from django.contrib.auth.models import User
+
+   class DocumentReportTests(TestCase):
+       def setUp(self):
+           # Create test user
+           self.user = User.objects.create_user(username='testuser', password='password')
+           
+           # Create test documents
+           self.doc1 = Document.objects.create(
+               filename='test1.pdf',
+               document_type='Lab Report',
+               status='processed'
+           )
+           self.doc2 = Document.objects.create(
+               filename='test2.pdf',
+               document_type='Clinical Note',
+               status='processed'
+           )
+           
+           # Create processing logs
+           now = timezone.now()
+           ProcessingLog.objects.create(
+               document=self.doc1,
+               user=self.user,
+               status='success',
+               started_at=now - timedelta(minutes=5),
+               completed_at=now,
+               ai_cost=0.05
+           )
+           ProcessingLog.objects.create(
+               document=self.doc2,
+               user=self.user,
+               status='failure',
+               started_at=now - timedelta(minutes=3),
+               completed_at=now,
+               error_type='parsing_error',
+               error_message='Failed to parse document',
+               ai_cost=0.02
+           )
+       
+       def test_processing_time_report(self):
+           report = DocumentProcessingTimeReport()
+           start_date = timezone.now() - timedelta(days=1)
+           end_date = timezone.now() + timedelta(days=1)
+           data = report.generate_data(start_date=start_date, end_date=end_date)
+           
+           self.assertIsNotNone(data['average_processing_time'])
+           self.assertEqual(len(data['processing_time_by_day']), 1)
+           self.assertEqual(len(data['processing_time_by_document_type']), 2)
+       
+       def test_success_rate_report(self):
+           report = DocumentSuccessRateReport()
+           start_date = timezone.now() - timedelta(days=1)
+           end_date = timezone.now() + timedelta(days=1)
+           data = report.generate_data(start_date=start_date, end_date=end_date)
+           
+           self.assertEqual(data['total_documents'], 2)
+           self.assertEqual(data['success_count'], 1)
+           self.assertEqual(data['failure_count'], 1)
+           self.assertEqual(data['success_rate'], 50.0)
+           self.assertEqual(data['failure_rate'], 50.0)
+   ```
+
+2. Integration Tests:
+   - Test the report views to ensure they render correctly:
+   ```python
+   from django.test import TestCase, Client
+   from django.urls import reverse
+   from django.contrib.auth.models import User
+
+   class DocumentReportViewTests(TestCase):
+       def setUp(self):
+           self.client = Client()
+           self.user = User.objects.create_user(username='testuser', password='password')
+           self.client.login(username='testuser', password='password')
+       
+       def test_document_processing_time_report_view(self):
+           response = self.client.get(reverse('document_processing_time_report'))
+           self.assertEqual(response.status_code, 200)
+           self.assertTemplateUsed(response, 'reports/document_processing_time.html')
+       
+       def test_document_success_rate_report_view(self):
+           response = self.client.get(reverse('document_success_rate_report'))
+           self.assertEqual(response.status_code, 200)
+           self.assertTemplateUsed(response, 'reports/document_success_rate.html')
+       
+       def test_report_with_date_filters(self):
+           url = reverse('document_processing_time_report')
+           response = self.client.get(f"{url}?start_date=2023-01-01&end_date=2023-12-31")
+           self.assertEqual(response.status_code, 200)
+   ```
+
+3. Export Functionality Tests:
+   - Test the CSV and PDF export functionality:
+   ```python
+   def test_csv_export(self):
+       url = reverse('document_processing_time_report')
+       response = self.client.get(f"{url}?format=csv")
+       self.assertEqual(response.status_code, 200)
+       self.assertEqual(response['Content-Type'], 'text/csv')
+       self.assertIn('attachment; filename=', response['Content-Disposition'])
+   
+   def test_pdf_export(self):
+       url = reverse('document_processing_time_report')
+       response = self.client.get(f"{url}?format=pdf")
+       self.assertEqual(response.status_code, 200)
+       self.assertEqual(response['Content-Type'], 'application/pdf')
+       self.assertIn('attachment; filename=', response['Content-Disposition'])
+   ```
+
+4. Manual Testing:
+   - Create test data with various document types, processing times, and statuses
+   - Verify each report displays the correct data:
+     - Check that processing time analytics show correct average times
+     - Verify success/failure rates match the test data
+     - Confirm document volume trends display correctly
+     - Validate AI processing costs are calculated accurately
+     - Ensure error tracking shows the correct error types and frequencies
+     - Verify audit trail contains all required information
+   - Test filtering functionality:
+     - Apply date range filters and verify results
+     - Filter by document type and verify results
+   - Test export functionality:
+     - Export each report as CSV and verify the data is correct
+     - Export each report as PDF and verify the formatting and data
+
+5. Performance Testing:
+   - Test report generation with large datasets:
+   ```python
+   def test_report_performance_with_large_dataset(self):
+       # Create 1000 test documents and processing logs
+       self.create_test_data(1000)
+       
+       # Measure time to generate report
+       import time
+       start_time = time.time()
+       
+       report = DocumentProcessingTimeReport()
+       start_date = timezone.now() - timedelta(days=30)
+       end_date = timezone.now()
+       data = report.generate_data(start_date=start_date, end_date=end_date)
+       
+       execution_time = time.time() - start_time
+       
+       # Report should generate in under 2 seconds
+       self.assertLess(execution_time, 2.0)
+   ```
+
+6. UI/UX Testing:
+   - Verify charts and visualizations render correctly
+   - Check responsive design on different screen sizes
+   - Verify accessibility compliance
+   - Test navigation between different report types

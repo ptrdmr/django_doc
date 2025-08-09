@@ -1,13 +1,30 @@
----
-description: 
-globs: 
-alwaysApply: true
----
 # Documentation Automation Rule
 
 ## **CRITICAL: Always Update Documentation When Tasks Complete**
 
 When using Task Master tools to mark tasks or subtasks as complete, **ALWAYS** update the relevant documentation in the `docs/` directory.
+
+### **Documentation Date & Time Reference**
+
+**Before updating any documentation:**
+1. **Read `.current-context`** file to get the current date and time
+2. **Use the LAST_UPDATED timestamp** from that file for all documentation updates
+3. **Format as**: `*Updated: YYYY-MM-DD HH:MM:SS | Description of changes*`
+
+**Example Process:**
+```bash
+# Step 1: Read .current-context for timestamp
+CURRENT_DATE="2025-08-05"
+LAST_UPDATED="2025-08-05 20:14:02"
+
+# Step 2: Update documentation with proper footer
+*Updated: 2025-08-05 20:14:02 | Added Task X implementation details*
+```
+
+**Required Format:**
+- Always use the exact `LAST_UPDATED` timestamp from `.current-context`
+- Include a brief description of what was added/changed
+- Place at the bottom of each documentation file that gets updated
 
 ### **Required Documentation Updates**
 
@@ -195,6 +212,8 @@ git commit -m "docs: Update architecture docs for Patient model (Task 2.1)
 ---
 
 **Remember:** Good documentation is like a detailed repair manual - it helps everyone understand how the system works and prevents costly mistakes down the road. Keep it current, comprehensive, and practical!
+
+**This rule ensures our medical document parser documentation stays as sharp as our code!**
 
 **This rule ensures our medical document parser documentation stays as sharp as our code!**
 

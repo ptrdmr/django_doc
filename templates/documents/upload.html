@@ -3,26 +3,146 @@
 {% block title %}Upload Medical Document{% endblock %}
 
 {% block extra_css %}
-<!-- Tom Select for searchable dropdowns -->
-<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css" rel="stylesheet" 
-      onerror="this.href='https://unpkg.com/tom-select@2.3.1/dist/css/tom-select.css'">
 <style>
-    .ts-control {
-        border: 1px solid #d1d5db !important;
-        border-radius: 0.5rem !important;
-        padding: 0.5rem 0.75rem !important;
+    /* Upload Progress Styles */
+    .upload-progress {
+        height: 8px;
+        background-color: #e5e7eb;
+        border-radius: 4px;
+        overflow: hidden;
+        transition: all 0.3s ease;
     }
-    .ts-control.focus {
-        border-color: #3b82f6 !important;
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5) !important;
+    
+    .upload-progress-bar {
+        height: 100%;
+        background: linear-gradient(45deg, #3b82f6, #1d4ed8);
+        border-radius: 4px;
+        transition: width 0.3s ease;
+        position: relative;
+    }
+    
+    .upload-progress-bar::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+        animation: shimmer 1.5s infinite;
+    }
+    
+    @keyframes shimmer {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+    }
+    
+    /* Drag and Drop Styles */
+    .drop-zone {
+        border: 2px dashed #d1d5db;
+        border-radius: 0.75rem;
+        transition: all 0.3s ease;
+        background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .drop-zone:hover {
+        border-color: #3b82f6;
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        transform: scale(1.02);
+    }
+    
+    .drop-zone.drag-over {
+        border-color: #1d4ed8;
+        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        transform: scale(1.02);
+    }
+    
+    .drop-zone.has-file {
+        border-color: #10b981;
+        background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    }
+    
+    /* File Preview Styles */
+    .file-preview {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Toast Notification Styles */
+    .toast {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        max-width: 400px;
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+    }
+    
+    .toast.show {
+        transform: translateX(0);
+    }
+    
+    .toast-success {
+        border-left: 4px solid #10b981;
+    }
+    
+    .toast-error {
+        border-left: 4px solid #ef4444;
+    }
+    
+    .toast-warning {
+        border-left: 4px solid #f59e0b;
+    }
+    
+    /* Processing Status Indicators */
+    .status-indicator {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    
+    .status-pending {
+        background-color: #fef3c7;
+        color: #92400e;
+    }
+    
+    .status-processing {
+        background-color: #dbeafe;
+        color: #1e40af;
+    }
+    
+    .status-completed {
+        background-color: #d1fae5;
+        color: #065f46;
+    }
+    
+    .status-failed {
+        background-color: #fecaca;
+        color: #991b1b;
+    }
+    
+    /* Pulse Animation for Processing */
+    .pulse-processing {
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
     }
 </style>
-{% endblock %}
-
-{% block extra_js %}
-<!-- Tom Select JavaScript - load before other scripts -->
-<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js" 
-        onerror="this.src='https://unpkg.com/tom-select@2.3.1/dist/js/tom-select.complete.min.js'"></script>
 {% endblock %}
 
 {% block content %}
@@ -94,7 +214,7 @@
             <div class="p-6">
                 <h2 class="text-lg font-semibold text-gray-900 mb-4">Document Upload</h2>
                 
-                <form method="post" enctype="multipart/form-data" @submit="handleSubmit">
+                <form method="post" enctype="multipart/form-data" @submit="handleSubmit" id="upload-form">
                     {% csrf_token %}
                     
                     <!-- Patient Selection -->
@@ -108,51 +228,66 @@
                                 {{ form.patient.errors.0 }}
                             </div>
                         {% endif %}
-                        {% if form.patient.help_text %}
-                            <p class="mt-1 text-sm text-gray-500">{{ form.patient.help_text }}</p>
-                        {% endif %}
                     </div>
                     
-                    <!-- File Upload -->
+                    <!-- Enhanced Drag-and-Drop File Upload -->
                     <div class="mb-6">
-                        <label for="{{ form.file.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
                             Document File *
                         </label>
                         
-                        <!-- File Upload Button -->
-                        <div class="flex items-center space-x-4">
-                            <button 
-                                type="button" 
-                                id="upload-button"
-                                onclick="document.getElementById('{{ form.file.id_for_label }}').click();"
-                                class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                            >
-                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                        <!-- Drop Zone -->
+                        <div 
+                            class="drop-zone p-8 text-center cursor-pointer"
+                            :class="{
+                                'drag-over': isDragOver,
+                                'has-file': selectedFile
+                            }"
+                            @drop.prevent="handleFileDrop($event)"
+                            @dragover.prevent="handleDragOver($event)" 
+                            @dragleave.prevent="handleDragLeave($event)"
+                            @click="console.log('Drop zone clicked'); $refs.fileInput.click()"
+                            x-ref="dropZone"
+                        >
+                            <!-- Upload Icon and Text -->
+                            <div x-show="!selectedFile">
+                                <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
-                                Choose PDF File
-                            </button>
+                                <div class="space-y-2">
+                                    <p class="text-lg font-medium text-gray-900">Drop your PDF here</p>
+                                    <p class="text-sm text-gray-500">or click to browse files</p>
+                                    <p class="text-xs text-gray-400">PDF files only, up to 50MB</p>
+                                </div>
+                            </div>
                             
-                            <!-- Selected File Display -->
-                            <div id="file-display" class="flex items-center space-x-3" style="display: none;">
-                                <div class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-                                    <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                    </svg>
+                            <!-- File Preview -->
+                            <div x-show="selectedFile" class="file-preview p-4">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                        </svg>
+                                    </div>
+                                    <div class="flex-1 text-left">
+                                        <p class="text-sm font-medium text-gray-900" x-text="selectedFile ? selectedFile.name : ''"></p>
+                                        <p class="text-xs text-gray-500" x-text="selectedFile ? formatFileSize(selectedFile.size) : ''"></p>
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        @click.stop="clearFile()" 
+                                        class="text-red-600 hover:text-red-800 p-1"
+                                        title="Remove file"
+                                    >
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                    </button>
                                 </div>
-                                <div class="text-left">
-                                    <p id="file-name" class="text-sm font-medium text-gray-900"></p>
-                                    <p id="file-size" class="text-xs text-gray-500"></p>
-                                </div>
-                                <button type="button" onclick="clearFile()" class="text-red-600 hover:text-red-800">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                    </svg>
-                                </button>
                             </div>
                         </div>
                         
-                        <!-- File Input -->
+                        <!-- Hidden File Input -->
                         <input 
                             type="file" 
                             x-ref="fileInput"
@@ -160,11 +295,22 @@
                             name="{{ form.file.name }}"
                             accept=".pdf"
                             class="hidden"
-                            @change="handleFileSelect"
-                            onchange="handleFileChange(this)"
+                            @change="handleFileSelect($event)"
                         />
                         
-                        <p class="mt-2 text-xs text-gray-500">PDF files only, up to 50MB</p>
+                        <!-- Upload Progress -->
+                        <div x-show="uploading" class="mt-4">
+                            <div class="flex justify-between text-sm text-gray-600 mb-2">
+                                <span>Uploading...</span>
+                                <span x-text="uploadProgress + '%'"></span>
+                            </div>
+                            <div class="upload-progress">
+                                <div 
+                                    class="upload-progress-bar" 
+                                    :style="`width: ${uploadProgress}%`"
+                                ></div>
+                            </div>
+                        </div>
                         
                         {% if form.file.errors %}
                             <div class="mt-2 text-sm text-red-600">
@@ -184,9 +330,6 @@
                                 {{ form.providers.errors.0 }}
                             </div>
                         {% endif %}
-                        {% if form.providers.help_text %}
-                            <p class="mt-1 text-sm text-gray-500">{{ form.providers.help_text }}</p>
-                        {% endif %}
                     </div>
                     
                     <!-- Notes -->
@@ -199,9 +342,6 @@
                             <div class="mt-1 text-sm text-red-600">
                                 {{ form.notes.errors.0 }}
                             </div>
-                        {% endif %}
-                        {% if form.notes.help_text %}
-                            <p class="mt-1 text-sm text-gray-500">{{ form.notes.help_text }}</p>
                         {% endif %}
                     </div>
                     
@@ -230,9 +370,8 @@
                     <div class="flex justify-end">
                         <button 
                             type="submit" 
-                            class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             :disabled="uploading || !selectedFile"
-                            :class="{ 'opacity-50 cursor-not-allowed': uploading || !selectedFile }"
                         >
                             <svg x-show="uploading" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -245,20 +384,31 @@
             </div>
         </div>
         
-        <!-- Recent Uploads Sidebar -->
+        <!-- Enhanced Recent Uploads Sidebar -->
         <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
             <div class="p-6">
-                <h2 class="text-lg font-semibold text-gray-900 mb-4">Recent Uploads</h2>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-gray-900">Recent Uploads</h2>
+                    <button 
+                        @click="refreshRecentUploads()" 
+                        class="text-blue-600 hover:text-blue-800 p-1"
+                        title="Refresh"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                    </button>
+                </div>
                 
                 {% if recent_uploads %}
-                    <div class="space-y-4">
+                    <div class="space-y-4" id="recent-uploads-list">
                         {% for upload in recent_uploads %}
-                            <div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                            <div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg" data-document-id="{{ upload.id }}">
                                 <div class="flex-shrink-0">
                                     <div class="w-8 h-8 rounded-full flex items-center justify-center
                                         {% if upload.status == 'completed' %}bg-green-100 text-green-600
                                         {% elif upload.status == 'failed' %}bg-red-100 text-red-600
-                                        {% elif upload.status == 'processing' %}bg-blue-100 text-blue-600
+                                        {% elif upload.status == 'processing' %}bg-blue-100 text-blue-600 pulse-processing
                                         {% else %}bg-gray-100 text-gray-600{% endif %}">
                                         {% if upload.status == 'completed' %}
                                             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -282,7 +432,37 @@
                                 <div class="flex-1 min-w-0">
                                     <p class="text-sm font-medium text-gray-900 truncate">{{ upload.filename }}</p>
                                     <p class="text-xs text-gray-500">{{ upload.patient.first_name }} {{ upload.patient.last_name }}</p>
-                                    <p class="text-xs text-gray-400">{{ upload.uploaded_at|date:"M j, g:i A" }}</p>
+                                    <div class="flex items-center space-x-2 mt-1">
+                                        <span class="status-indicator status-{{ upload.status }}">
+                                            {{ upload.get_status_display }}
+                                        </span>
+                                        <span class="text-xs text-gray-400">{{ upload.uploaded_at|date:"M j, g:i A" }}</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Action Buttons -->
+                                <div class="flex space-x-1">
+                                    {% if upload.status == 'failed' %}
+                                        <button 
+                                            @click="retryDocument({{ upload.id }})"
+                                            class="text-blue-600 hover:text-blue-800 p-1"
+                                            title="Retry processing"
+                                        >
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                            </svg>
+                                        </button>
+                                    {% endif %}
+                                    <a 
+                                        href="{% url 'documents:detail' upload.pk %}"
+                                        class="text-gray-600 hover:text-gray-800 p-1"
+                                        title="View details"
+                                    >
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                        </svg>
+                                    </a>
                                 </div>
                             </div>
                         {% endfor %}
@@ -298,6 +478,9 @@
             </div>
         </div>
     </div>
+    
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
 </div>
 
 <script>
@@ -305,33 +488,79 @@ function documentUpload() {
     return {
         selectedFile: null,
         uploading: false,
+        uploadProgress: 0,
+        isDragOver: false,
+        processingDocuments: [],
         
         init() {
-            // Initialize component
-            console.log('Document upload initialized');
+            console.log('Enhanced document upload initialized');
+            this.startProcessingMonitor();
+            // Removed global drop handler to avoid conflicts
+        },
+        
+        handleDragOver(event) {
+            // Only set isDragOver if it's not already true to reduce console spam
+            if (!this.isDragOver) {
+                console.log('Drag over detected');
+                this.isDragOver = true;
+            }
+        },
+        
+        handleDragLeave(event) {
+            // Only set to false if we're actually leaving the drop zone
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+                console.log('Drag leave detected');
+                this.isDragOver = false;
+            }
+        },
+        
+        handleFileDrop(event) {
+            console.log('File drop detected', event);
+            this.isDragOver = false;
+            
+            const files = event.dataTransfer.files;
+            console.log('Files dropped:', files.length);
+            if (files.length > 0) {
+                this.handleFileSelection(files[0]);
+            }
         },
         
         handleFileSelect(event) {
+            console.log('File select detected', event);
             const file = event.target.files[0];
+            console.log('Selected file:', file);
             if (file) {
+                this.handleFileSelection(file);
+            }
+        },
+        
+        handleFileSelection(file) {
+            console.log('Processing file selection:', file.name);
+            if (this.validateFile(file)) {
                 this.selectedFile = file;
-                this.validateFile(file);
+                console.log('File set successfully:', this.selectedFile.name);
+                this.showToast('File selected successfully', 'success');
             }
         },
         
         validateFile(file) {
             // Check file type
             if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
-                this.showError('Please select a PDF file.');
-                this.clearFile();
+                this.showToast('Please select a PDF file. Other file types are not supported.', 'error');
                 return false;
             }
             
             // Check file size (50MB limit)
             const maxSize = 50 * 1024 * 1024; // 50MB
             if (file.size > maxSize) {
-                this.showError('File size exceeds 50MB limit.');
-                this.clearFile();
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+                this.showToast(`File size (${sizeMB}MB) exceeds the 50MB limit. Please select a smaller file.`, 'error');
+                return false;
+            }
+            
+            // Check for empty file
+            if (file.size === 0) {
+                this.showToast('The selected file is empty. Please select a valid PDF file.', 'error');
                 return false;
             }
             
@@ -341,17 +570,38 @@ function documentUpload() {
         clearFile() {
             this.selectedFile = null;
             this.$refs.fileInput.value = '';
+            this.showToast('File removed', 'warning');
         },
         
-        handleSubmit(event) {
+        async handleSubmit(event) {
             if (!this.selectedFile) {
                 event.preventDefault();
-                this.showError('Please select a file to upload.');
+                this.showToast('Please select a file to upload.', 'error');
                 return;
             }
             
             this.uploading = true;
-            // Form will submit normally, uploading state will be reset on page reload
+            this.uploadProgress = 0;
+            
+            // Simulate upload progress for better UX
+            this.simulateUploadProgress();
+            
+            // Let the form submit normally for now
+            // In a future enhancement, we could use AJAX with real progress tracking
+        },
+        
+        simulateUploadProgress() {
+            const interval = setInterval(() => {
+                if (this.uploadProgress < 90) {
+                    this.uploadProgress += Math.random() * 20;
+                    if (this.uploadProgress > 90) {
+                        this.uploadProgress = 90;
+                    }
+                } else {
+                    clearInterval(interval);
+                    // The remaining 10% will be filled when the form actually submits
+                }
+            }, 200);
         },
         
         formatFileSize(bytes) {
@@ -362,182 +612,154 @@ function documentUpload() {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         },
         
-        showError(message) {
-            // Basic error display - could be enhanced with a toast notification system
-            alert(message);
-        }
-    }
-}
-
-// Fallback JavaScript function for file selection
-function handleFileChange(input) {
-    const file = input.files[0];
-    if (file) {
-        // Basic validation first
-        if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
-            alert('Please select a PDF file.');
-            input.value = '';
-            return;
-        }
+        showToast(message, type = 'info') {
+            const toastId = 'toast-' + Date.now();
+            const toast = document.createElement('div');
+            toast.id = toastId;
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <div class="p-4">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            ${this.getToastIcon(type)}
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">${message}</p>
+                        </div>
+                        <div class="ml-auto pl-3">
+                            <button onclick="this.parentElement.parentElement.parentElement.remove()" class="text-gray-400 hover:text-gray-600">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('toast-container').appendChild(toast);
+            
+            // Show toast
+            setTimeout(() => toast.classList.add('show'), 100);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        },
         
-        const maxSize = 50 * 1024 * 1024; // 50MB
-        if (file.size > maxSize) {
-            alert('File size exceeds 50MB limit.');
-            input.value = '';
-            return;
-        }
+        getToastIcon(type) {
+            const icons = {
+                success: '<svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>',
+                error: '<svg class="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>',
+                warning: '<svg class="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>',
+                info: '<svg class="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>'
+            };
+            return icons[type] || icons.info;
+        },
         
-        // Show file name and size
-        const fileName = file.name;
-        const fileSize = formatFileSize(file.size);
+        startProcessingMonitor() {
+            // Monitor processing status every 5 seconds
+            setInterval(() => {
+                this.checkProcessingStatus();
+            }, 5000);
+        },
         
-        // Update the display elements
-        const fileDisplay = document.getElementById('file-display');
-        const fileNameEl = document.getElementById('file-name');
-        const fileSizeEl = document.getElementById('file-size');
+        async checkProcessingStatus() {
+            try {
+                const response = await fetch('/documents/api/processing-status/');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.updateProcessingDocuments(data.processing_documents);
+                }
+            } catch (error) {
+                console.log('Error checking processing status:', error);
+            }
+        },
         
-        if (fileDisplay && fileNameEl && fileSizeEl) {
-            fileNameEl.textContent = fileName;
-            fileSizeEl.textContent = fileSize;
-            fileDisplay.style.display = 'flex';
-        }
-        
-        console.log('File selected:', fileName, fileSize);
-    }
-}
-
-function clearFile() {
-    const fileInput = document.querySelector('input[type="file"]');
-    const fileDisplay = document.getElementById('file-display');
-    
-    if (fileInput) {
-        fileInput.value = '';
-    }
-    
-    if (fileDisplay) {
-        fileDisplay.style.display = 'none';
-    }
-}
-
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-// Initialize Tom Select for searchable dropdowns
-function initializeTomSelect() {
-    console.log('=== TomSelect Initialization Debug ===');
-    
-    // Check if Tom Select is available
-    if (typeof TomSelect === 'undefined') {
-        console.error('❌ TomSelect is not loaded! Check CDN connection.');
-        // Try to load from alternative CDN
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/tom-select@2.3.1/dist/js/tom-select.complete.min.js';
-        script.onload = function() {
-            console.log('✅ TomSelect loaded from backup CDN');
-            initializeTomSelect(); // Retry initialization
-        };
-        script.onerror = function() {
-            console.error('❌ Failed to load TomSelect from backup CDN');
-        };
-        document.head.appendChild(script);
-        return;
-    }
-    
-    console.log('✅ TomSelect is available:', TomSelect);
-    
-    // Initialize patient select
-    const patientSelect = document.getElementById('patient-select');
-    console.log('Patient select element:', patientSelect);
-    
-    if (patientSelect) {
-        console.log('🔧 Initializing patient select...');
-        console.log('Patient select options count:', patientSelect.options.length);
-        
-        try {
-            const patientTomSelect = new TomSelect(patientSelect, {
-                create: false,
-                sortField: 'text',
-                placeholder: 'Search for a patient...',
-                searchField: ['text'],
-                maxOptions: 50,
-                plugins: {
-                    clear_button: {
-                        title: 'Clear selection'
+        updateProcessingDocuments(processingDocs) {
+            processingDocs.forEach(doc => {
+                const element = document.querySelector(`[data-document-id="${doc.id}"]`);
+                if (element) {
+                    // Update status indicator
+                    const statusIndicator = element.querySelector('.status-indicator');
+                    if (statusIndicator) {
+                        statusIndicator.className = `status-indicator status-${doc.status}`;
+                        statusIndicator.textContent = doc.status_display;
+                    }
+                    
+                    // Update icon
+                    const iconContainer = element.querySelector('.flex-shrink-0 > div');
+                    if (iconContainer && doc.status === 'completed') {
+                        iconContainer.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-green-100 text-green-600';
+                        iconContainer.innerHTML = '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>';
+                        iconContainer.classList.remove('pulse-processing');
+                        
+                        this.showToast(`Document "${doc.filename}" processing completed!`, 'success');
+                    } else if (iconContainer && doc.status === 'failed') {
+                        iconContainer.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-red-100 text-red-600';
+                        iconContainer.innerHTML = '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>';
+                        iconContainer.classList.remove('pulse-processing');
+                        
+                        this.showToast(`Document "${doc.filename}" processing failed. You can retry from the sidebar.`, 'error');
                     }
                 }
             });
-            console.log('✅ Patient select initialized successfully:', patientTomSelect);
-        } catch (error) {
-            console.error('❌ Error initializing patient select:', error);
-            console.error('Error stack:', error.stack);
-        }
-    } else {
-        console.error('❌ Patient select element not found! Looking for #patient-select');
-        // Debug: show all select elements
-        const allSelects = document.querySelectorAll('select');
-        console.log('All select elements found:', allSelects);
-        allSelects.forEach((select, index) => {
-            console.log(`Select ${index}:`, select.id, select.name, select);
-        });
-    }
-    
-    // Initialize provider select
-    const providerSelect = document.getElementById('provider-select');
-    console.log('Provider select element:', providerSelect);
-    
-    if (providerSelect) {
-        console.log('🔧 Initializing provider select...');
-        console.log('Provider select options count:', providerSelect.options.length);
+        },
         
-        try {
-            const providerTomSelect = new TomSelect(providerSelect, {
-                create: false,
-                sortField: 'text',
-                placeholder: 'Search for providers...',
-                searchField: ['text'],
-                maxOptions: 50,
-                plugins: {
-                    remove_button: {
-                        title: 'Remove this provider'
+        async retryDocument(documentId) {
+            try {
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const response = await fetch(`/documents/${documentId}/retry/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrfToken,
+                        'Content-Type': 'application/json',
                     },
-                    clear_button: {
-                        title: 'Clear all providers'
+                });
+                
+                if (response.ok) {
+                    this.showToast('Document reprocessing started', 'success');
+                    // Update UI to show processing status
+                    const element = document.querySelector(`[data-document-id="${documentId}"]`);
+                    if (element) {
+                        const iconContainer = element.querySelector('.flex-shrink-0 > div');
+                        const statusIndicator = element.querySelector('.status-indicator');
+                        
+                        if (iconContainer) {
+                            iconContainer.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-blue-100 text-blue-600 pulse-processing';
+                            iconContainer.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>';
+                        }
+                        
+                        if (statusIndicator) {
+                            statusIndicator.className = 'status-indicator status-processing';
+                            statusIndicator.textContent = 'Processing';
+                        }
                     }
+                } else {
+                    this.showToast('Failed to retry document processing', 'error');
                 }
-            });
-            console.log('✅ Provider select initialized successfully:', providerTomSelect);
-        } catch (error) {
-            console.error('❌ Error initializing provider select:', error);
-            console.error('Error stack:', error.stack);
+            } catch (error) {
+                console.error('Error retrying document:', error);
+                this.showToast('Error retrying document processing', 'error');
+            }
+        },
+        
+        async refreshRecentUploads() {
+            try {
+                const response = await fetch('/documents/api/recent-uploads/');
+                if (response.ok) {
+                    const html = await response.text();
+                    document.getElementById('recent-uploads-list').innerHTML = html;
+                    this.showToast('Recent uploads refreshed', 'success');
+                }
+            } catch (error) {
+                console.error('Error refreshing uploads:', error);
+                this.showToast('Error refreshing recent uploads', 'error');
+            }
         }
-    } else {
-        console.error('❌ Provider select element not found! Looking for #provider-select');
-        // Debug: show all select elements
-        const allSelects = document.querySelectorAll('select');
-        console.log('All select elements found:', allSelects);
-        allSelects.forEach((select, index) => {
-            console.log(`Select ${index}:`, select.id, select.name, select);
-        });
     }
-    
-    console.log('=== TomSelect Initialization Complete ===');
 }
-
-// Multiple initialization attempts for reliability
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 DOM loaded, attempting TomSelect initialization...');
-    initializeTomSelect();
-});
-
-// Fallback initialization after a short delay
-setTimeout(function() {
-    console.log('⏱️ Fallback initialization after 1 second...');
-    initializeTomSelect();
-}, 1000);
 </script>
 {% endblock %} 

@@ -1,0 +1,825 @@
+# Task ID: 21
+# Title: Implement Data Encryption for PHI
+# Status: pending
+# Dependencies: 3, 4
+# Priority: high
+# Description: Implement a hybrid encryption strategy for Protected Health Information (PHI) using django-cryptography, with dual storage approach for both complete encrypted FHIR data and searchable non-PHI medical codes.
+# Details:
+Implement a comprehensive hybrid data encryption system for Protected Health Information (PHI) using the Option 2 Hybrid Strategy:
+
+1. Set up django-cryptography for better Django integration:
+```python
+# requirements.txt
+django-cryptography==1.1.0
+```
+
+2. Update Patient model with the dual storage approach:
+```python
+# patients/models.py
+from django.db import models
+from django_cryptography.fields import encrypt
+
+class Patient(models.Model):
+    mrn = models.CharField(max_length=50, unique=True)
+    first_name = encrypt(models.CharField(max_length=100))
+    last_name = encrypt(models.CharField(max_length=100))
+    dob = encrypt(models.CharField(max_length=10))  # Store as string for encryption
+    ssn = encrypt(models.CharField(max_length=11, null=True, blank=True))
+    address = encrypt(models.TextField(null=True, blank=True))
+    phone = encrypt(models.CharField(max_length=20, null=True, blank=True))
+    email = encrypt(models.CharField(max_length=100, null=True, blank=True))
+    
+    # Dual storage approach
+    encrypted_fhir_bundle = encrypt(models.JSONField(default=dict))  # Complete FHIR data with PHI (encrypted)
+    searchable_medical_codes = models.JSONField(default=dict)  # Extracted codes without PHI (unencrypted)
+    
+    # Additional searchable fields (non-PHI)
+    encounter_dates = models.JSONField(default=list)  # List of encounter dates for quick searching
+    provider_references = models.JSONField(default=list)  # List of provider references
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def add_fhir_resources(self, fhir_resources):
+        """Append new FHIR resources to the encrypted bundle and extract searchable metadata"""
+        # Get current bundle or initialize empty one
+        current_bundle = self.encrypted_fhir_bundle or {"entry": []}
+        
+        # Add new resources to the bundle
+        if isinstance(fhir_resources, list):
+            for resource in fhir_resources:
+                current_bundle["entry"].append({"resource": resource})
+        else:
+            current_bundle["entry"].append({"resource": fhir_resources})
+        
+        # Update the encrypted bundle
+        self.encrypted_fhir_bundle = current_bundle
+        
+        # Extract and update searchable metadata
+        self.extract_searchable_metadata(fhir_resources)
+        
+        self.save()
+    
+    def extract_searchable_metadata(self, fhir_resources):
+        """Extract searchable metadata from FHIR resources without including PHI"""
+        resources = fhir_resources if isinstance(fhir_resources, list) else [fhir_resources]
+        
+        # Initialize searchable fields if needed
+        if not self.searchable_medical_codes:
+            self.searchable_medical_codes = {
+                "conditions": [],
+                "procedures": [],
+                "medications": [],
+                "observations": []
+            }
+        
+        # Extract dates and codes without PHI
+        for resource in resources:
+            resource_type = resource.get("resourceType")
+            
+            # Extract encounter dates
+            if resource_type == "Encounter":
+                if "period" in resource and "start" in resource["period"]:
+                    if resource["period"]["start"] not in self.encounter_dates:
+                        self.encounter_dates.append(resource["period"]["start"])
+            
+            # Extract condition codes
+            elif resource_type == "Condition":
+                if "code" in resource and "coding" in resource["code"]:
+                    for coding in resource["code"]["coding"]:
+                        code_data = {
+                            "system": coding.get("system"),
+                            "code": coding.get("code"),
+                            "display": coding.get("display")
+                        }
+                        if code_data not in self.searchable_medical_codes["conditions"]:
+                            self.searchable_medical_codes["conditions"].append(code_data)
+            
+            # Extract procedure codes
+            elif resource_type == "Procedure":
+                if "code" in resource and "coding" in resource["code"]:
+                    for coding in resource["code"]["coding"]:
+                        code_data = {
+                            "system": coding.get("system"),
+                            "code": coding.get("code"),
+                            "display": coding.get("display")
+                        }
+                        if code_data not in self.searchable_medical_codes["procedures"]:
+                            self.searchable_medical_codes["procedures"].append(code_data)
+            
+            # Extract medication codes
+            elif resource_type == "MedicationRequest":
+                if "medicationCodeableConcept" in resource and "coding" in resource["medicationCodeableConcept"]:
+                    for coding in resource["medicationCodeableConcept"]["coding"]:
+                        code_data = {
+                            "system": coding.get("system"),
+                            "code": coding.get("code"),
+                            "display": coding.get("display")
+                        }
+                        if code_data not in self.searchable_medical_codes["medications"]:
+                            self.searchable_medical_codes["medications"].append(code_data)
+            
+            # Extract observation codes
+            elif resource_type == "Observation":
+                if "code" in resource and "coding" in resource["code"]:
+                    for coding in resource["code"]["coding"]:
+                        code_data = {
+                            "system": coding.get("system"),
+                            "code": coding.get("code"),
+                            "display": coding.get("display"),
+                            "value": resource.get("valueQuantity", {}).get("value"),
+                            "unit": resource.get("valueQuantity", {}).get("unit")
+                        }
+                        if code_data not in self.searchable_medical_codes["observations"]:
+                            self.searchable_medical_codes["observations"].append(code_data)
+            
+            # Extract provider references
+            if "practitioner" in resource:
+                practitioner_ref = resource["practitioner"].get("reference")
+                if practitioner_ref and practitioner_ref not in self.provider_references:
+                    self.provider_references.append(practitioner_ref)
+    
+    def get_comprehensive_report(self):
+        """Generate a comprehensive medical report from the encrypted FHIR bundle"""
+        if not self.encrypted_fhir_bundle:
+            return {"message": "No medical data available"}
+        
+        # Process the encrypted FHIR bundle to generate a comprehensive report
+        # This accesses the encrypted data and formats it for display
+        report = {
+            "patient": {
+                "name": f"{self.first_name} {self.last_name}",
+                "dob": self.dob,
+                "mrn": self.mrn
+            },
+            "conditions": [],
+            "procedures": [],
+            "medications": [],
+            "observations": [],
+            "encounters": []
+        }
+        
+        # Extract data from the encrypted bundle
+        for entry in self.encrypted_fhir_bundle.get("entry", []):
+            resource = entry.get("resource", {})
+            resource_type = resource.get("resourceType")
+            
+            if resource_type == "Condition":
+                report["conditions"].append({
+                    "code": resource.get("code", {}).get("text"),
+                    "onset": resource.get("onsetDateTime"),
+                    "status": resource.get("clinicalStatus", {}).get("text")
+                })
+            
+            elif resource_type == "Procedure":
+                report["procedures"].append({
+                    "code": resource.get("code", {}).get("text"),
+                    "date": resource.get("performedDateTime"),
+                    "status": resource.get("status")
+                })
+            
+            # Add other resource types as needed
+        
+        return report
+```
+
+3. Update Document model to use django-cryptography for file encryption:
+```python
+# documents/models.py
+from django.db import models
+from django_cryptography.fields import encrypt
+from django.core.files.storage import FileSystemStorage
+import os
+
+class EncryptedFileField(models.FileField):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Custom file handling could be implemented here if needed
+
+class Document(models.Model):
+    title = models.CharField(max_length=255)
+    file = EncryptedFileField(upload_to='documents/')
+    notes = encrypt(models.TextField(null=True, blank=True))
+    patient = models.ForeignKey('patients.Patient', on_delete=models.CASCADE, related_name='documents')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+```
+
+4. Create utility functions for working with the encrypted data:
+```python
+# patients/utils.py
+from .models import Patient
+
+def search_patients_by_medical_code(code_system, code):
+    """Search for patients with a specific medical code"""
+    # This search uses the unencrypted searchable_medical_codes field
+    patients = []
+    
+    # Search in conditions
+    condition_patients = Patient.objects.filter(
+        searchable_medical_codes__conditions__contains=[
+            {"system": code_system, "code": code}
+        ]
+    )
+    patients.extend(condition_patients)
+    
+    # Search in procedures
+    procedure_patients = Patient.objects.filter(
+        searchable_medical_codes__procedures__contains=[
+            {"system": code_system, "code": code}
+        ]
+    )
+    patients.extend(procedure_patients)
+    
+    # Search in medications
+    medication_patients = Patient.objects.filter(
+        searchable_medical_codes__medications__contains=[
+            {"system": code_system, "code": code}
+        ]
+    )
+    patients.extend(medication_patients)
+    
+    # Search in observations
+    observation_patients = Patient.objects.filter(
+        searchable_medical_codes__observations__contains=[
+            {"system": code_system, "code": code}
+        ]
+    )
+    patients.extend(observation_patients)
+    
+    # Remove duplicates
+    return list(set(patients))
+
+def search_patients_by_date_range(start_date, end_date):
+    """Search for patients with encounters in a specific date range"""
+    # This search uses the unencrypted encounter_dates field
+    return Patient.objects.filter(
+        encounter_dates__contains=[start_date, end_date]
+    )
+
+def search_patients_by_provider(provider_reference):
+    """Search for patients seen by a specific provider"""
+    # This search uses the unencrypted provider_references field
+    return Patient.objects.filter(
+        provider_references__contains=[provider_reference]
+    )
+```
+
+5. Add settings for django-cryptography in Django settings:
+```python
+# settings/base.py
+# Encryption settings for django-cryptography
+FIELD_ENCRYPTION_KEYS = [
+    # Primary key used for encryption
+    "f164ec6bd77d4423ab5c2b4a99c73a5a5c6856744e7148b6a307e8060d624a45",
+]
+```
+
+6. Create database indexes for the searchable fields:
+```python
+# patients/migrations/xxxx_add_indexes.py
+from django.db import migrations
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ('patients', 'previous_migration'),
+    ]
+
+    operations = [
+        migrations.AddIndex(
+            model_name='patient',
+            index=migrations.Index(
+                fields=['searchable_medical_codes'],
+                name='idx_medical_codes'
+            ),
+        ),
+        migrations.AddIndex(
+            model_name='patient',
+            index=migrations.Index(
+                fields=['encounter_dates'],
+                name='idx_encounter_dates'
+            ),
+        ),
+        migrations.AddIndex(
+            model_name='patient',
+            index=migrations.Index(
+                fields=['provider_references'],
+                name='idx_provider_refs'
+            ),
+        ),
+    ]
+```
+
+7. Create a data migration to convert existing data to the new format:
+```python
+# patients/migrations/xxxx_convert_to_hybrid_encryption.py
+from django.db import migrations
+
+def convert_data_forward(apps, schema_editor):
+    Patient = apps.get_model('patients', 'Patient')
+    for patient in Patient.objects.all():
+        # Convert existing cumulative_fhir_json to encrypted_fhir_bundle
+        if hasattr(patient, 'cumulative_fhir_json') and patient.cumulative_fhir_json:
+            patient.encrypted_fhir_bundle = patient.cumulative_fhir_json
+            
+            # Extract searchable metadata
+            # This is a simplified version for migration purposes
+            searchable_codes = {
+                "conditions": [],
+                "procedures": [],
+                "medications": [],
+                "observations": []
+            }
+            
+            # Extract encounter dates
+            encounter_dates = []
+            
+            # Extract provider references
+            provider_refs = []
+            
+            # Process each entry in the FHIR bundle
+            for entry in patient.cumulative_fhir_json.get('entry', []):
+                resource = entry.get('resource', {})
+                resource_type = resource.get('resourceType')
+                
+                # Extract basic metadata based on resource type
+                # This is simplified and would need to be expanded based on actual data structure
+                if resource_type == 'Encounter' and 'period' in resource:
+                    if 'start' in resource['period'] and resource['period']['start'] not in encounter_dates:
+                        encounter_dates.append(resource['period']['start'])
+                
+                # Save extracted data
+                patient.searchable_medical_codes = searchable_codes
+                patient.encounter_dates = encounter_dates
+                patient.provider_references = provider_refs
+                patient.save()
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ('patients', 'previous_migration'),
+    ]
+
+    operations = [
+        migrations.RunPython(convert_data_forward, migrations.RunPython.noop),
+    ]
+```
+
+8. Document the hybrid encryption approach in project documentation:
+```markdown
+# PHI Encryption Strategy
+
+## Hybrid Encryption Approach
+
+Our application uses a hybrid encryption strategy for Protected Health Information (PHI):
+
+1. **Field-level encryption** for direct PHI (names, DOB, SSN, etc.) using django-cryptography
+2. **Dual storage approach** for FHIR data:
+   - Complete FHIR data with PHI stored in encrypted form
+   - Searchable medical codes and metadata extracted and stored unencrypted
+
+### Benefits
+
+- Full HIPAA compliance through encryption of all PHI
+- Fast search capabilities via unencrypted medical codes
+- Complete patient reports generated from encrypted FHIR bundle
+- Optimized database performance through proper indexing
+
+### Implementation Details
+
+- Patient PHI fields (name, DOB, etc.) are encrypted at rest
+- Complete FHIR bundles are encrypted in the `encrypted_fhir_bundle` field
+- Searchable metadata without PHI is stored in `searchable_medical_codes`
+- Additional searchable fields include `encounter_dates` and `provider_references`
+
+### Key Management
+
+- Encryption keys are managed through Django settings
+- Keys should be stored securely outside of version control
+- Key rotation procedures should be followed according to security policy
+```
+
+# Test Strategy:
+To verify the correct implementation of the hybrid PHI data encryption strategy:
+
+1. Unit test the django-cryptography integration:
+```python
+# patients/tests/test_encryption.py
+from django.test import TestCase
+from patients.models import Patient
+
+class PatientEncryptionTests(TestCase):
+    def test_field_encryption(self):
+        # Create a patient with PHI
+        patient = Patient.objects.create(
+            mrn="12345",
+            first_name="John",
+            last_name="Doe",
+            dob="1980-01-01",
+            ssn="123-45-6789",
+            address="123 Main St, Anytown, USA",
+            phone="555-123-4567",
+            email="john.doe@example.com"
+        )
+        
+        # Get the patient from the database
+        retrieved = Patient.objects.get(mrn="12345")
+        
+        # Verify decrypted fields are accessible
+        self.assertEqual("John", retrieved.first_name)
+        self.assertEqual("Doe", retrieved.last_name)
+        self.assertEqual("1980-01-01", retrieved.dob)
+        self.assertEqual("123-45-6789", retrieved.ssn)
+        
+        # Verify data is actually encrypted in the database
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT first_name, last_name, dob, ssn FROM patients_patient WHERE mrn = %s", 
+                ["12345"]
+            )
+            raw_data = cursor.fetchone()
+        
+        # Verify raw data is encrypted
+        self.assertNotEqual("John", raw_data[0])
+        self.assertNotEqual("Doe", raw_data[1])
+        self.assertNotEqual("1980-01-01", raw_data[2])
+        self.assertNotEqual("123-45-6789", raw_data[3])
+```
+
+2. Test the dual storage approach with FHIR data:
+```python
+# patients/tests/test_fhir_encryption.py
+from django.test import TestCase
+from patients.models import Patient
+import json
+
+class FHIREncryptionTests(TestCase):
+    def setUp(self):
+        # Create a test patient
+        self.patient = Patient.objects.create(
+            mrn="67890",
+            first_name="Jane",
+            last_name="Smith",
+            dob="1985-05-15"
+        )
+        
+        # Sample FHIR resource
+        self.condition_resource = {
+            "resourceType": "Condition",
+            "id": "example",
+            "clinicalStatus": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                    "code": "active"
+                }],
+                "text": "Active"
+            },
+            "code": {
+                "coding": [{
+                    "system": "http://snomed.info/sct",
+                    "code": "73211009",
+                    "display": "Diabetes mellitus"
+                }],
+                "text": "Diabetes mellitus"
+            },
+            "subject": {
+                "reference": "Patient/67890"
+            },
+            "onsetDateTime": "2020-01-01"
+        }
+    
+    def test_add_fhir_resources(self):
+        # Add FHIR resource to patient
+        self.patient.add_fhir_resources(self.condition_resource)
+        
+        # Verify the resource was added to encrypted bundle
+        self.assertIsNotNone(self.patient.encrypted_fhir_bundle)
+        self.assertEqual(1, len(self.patient.encrypted_fhir_bundle.get("entry", [])))
+        
+        # Verify searchable metadata was extracted
+        self.assertEqual(1, len(self.patient.searchable_medical_codes.get("conditions", [])))
+        extracted_code = self.patient.searchable_medical_codes["conditions"][0]
+        self.assertEqual("73211009", extracted_code.get("code"))
+        self.assertEqual("http://snomed.info/sct", extracted_code.get("system"))
+        
+        # Verify the data in the database is encrypted
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT encrypted_fhir_bundle FROM patients_patient WHERE mrn = %s", 
+                ["67890"]
+            )
+            raw_data = cursor.fetchone()[0]
+        
+        # The raw data should not contain the plaintext condition
+        self.assertNotIn("Diabetes mellitus", json.dumps(raw_data))
+        
+        # But the searchable codes should be accessible
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT searchable_medical_codes FROM patients_patient WHERE mrn = %s", 
+                ["67890"]
+            )
+            searchable_data = cursor.fetchone()[0]
+        
+        # Verify searchable data contains the code but not PHI
+        self.assertIn("73211009", json.dumps(searchable_data))
+    
+    def test_comprehensive_report(self):
+        # Add FHIR resource to patient
+        self.patient.add_fhir_resources(self.condition_resource)
+        
+        # Generate comprehensive report
+        report = self.patient.get_comprehensive_report()
+        
+        # Verify report contains patient info
+        self.assertEqual("Jane Smith", report["patient"]["name"])
+        self.assertEqual("67890", report["patient"]["mrn"])
+        
+        # Verify report contains condition
+        self.assertEqual(1, len(report["conditions"]))
+        self.assertEqual("Diabetes mellitus", report["conditions"][0]["code"])
+        self.assertEqual("2020-01-01", report["conditions"][0]["onset"])
+```
+
+3. Test search functionality with the dual storage approach:
+```python
+# patients/tests/test_search.py
+from django.test import TestCase
+from patients.models import Patient
+from patients.utils import search_patients_by_medical_code, search_patients_by_date_range
+
+class SearchFunctionalityTests(TestCase):
+    def setUp(self):
+        # Create test patients
+        self.patient1 = Patient.objects.create(mrn="12345", first_name="John", last_name="Doe")
+        self.patient2 = Patient.objects.create(mrn="67890", first_name="Jane", last_name="Smith")
+        
+        # Add FHIR resources with different codes
+        condition1 = {
+            "resourceType": "Condition",
+            "code": {
+                "coding": [{
+                    "system": "http://snomed.info/sct",
+                    "code": "73211009",
+                    "display": "Diabetes mellitus"
+                }]
+            }
+        }
+        
+        condition2 = {
+            "resourceType": "Condition",
+            "code": {
+                "coding": [{
+                    "system": "http://snomed.info/sct",
+                    "code": "195967001",
+                    "display": "Asthma"
+                }]
+            }
+        }
+        
+        encounter1 = {
+            "resourceType": "Encounter",
+            "period": {
+                "start": "2023-01-15"
+            }
+        }
+        
+        encounter2 = {
+            "resourceType": "Encounter",
+            "period": {
+                "start": "2023-02-20"
+            }
+        }
+        
+        # Add resources to patients
+        self.patient1.add_fhir_resources(condition1)
+        self.patient1.add_fhir_resources(encounter1)
+        self.patient2.add_fhir_resources(condition2)
+        self.patient2.add_fhir_resources(encounter2)
+    
+    def test_search_by_medical_code(self):
+        # Search for patients with diabetes
+        diabetes_patients = search_patients_by_medical_code("http://snomed.info/sct", "73211009")
+        self.assertEqual(1, len(diabetes_patients))
+        self.assertEqual("12345", diabetes_patients[0].mrn)
+        
+        # Search for patients with asthma
+        asthma_patients = search_patients_by_medical_code("http://snomed.info/sct", "195967001")
+        self.assertEqual(1, len(asthma_patients))
+        self.assertEqual("67890", asthma_patients[0].mrn)
+    
+    def test_search_by_date_range(self):
+        # Search for patients with encounters in January 2023
+        jan_patients = search_patients_by_date_range("2023-01-01", "2023-01-31")
+        self.assertEqual(1, len(jan_patients))
+        self.assertEqual("12345", jan_patients[0].mrn)
+        
+        # Search for patients with encounters in February 2023
+        feb_patients = search_patients_by_date_range("2023-02-01", "2023-02-28")
+        self.assertEqual(1, len(feb_patients))
+        self.assertEqual("67890", feb_patients[0].mrn)
+```
+
+4. Test document encryption:
+```python
+# documents/tests/test_document_encryption.py
+from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from patients.models import Patient
+from documents.models import Document
+import os
+
+class DocumentEncryptionTests(TestCase):
+    def setUp(self):
+        # Create a test patient
+        self.patient = Patient.objects.create(
+            mrn="12345",
+            first_name="John",
+            last_name="Doe"
+        )
+        
+        # Create test file content
+        self.test_content = b"This is a test document with PHI information."
+        self.test_file = SimpleUploadedFile("test_doc.txt", self.test_content)
+    
+    def test_document_encryption(self):
+        # Create a document with the test file
+        document = Document.objects.create(
+            title="Test Document",
+            file=self.test_file,
+            notes="Contains sensitive PHI",
+            patient=self.patient
+        )
+        
+        # Verify we can retrieve the document
+        retrieved_doc = Document.objects.get(id=document.id)
+        self.assertEqual("Test Document", retrieved_doc.title)
+        
+        # Verify notes are encrypted in the database
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT notes FROM documents_document WHERE id = %s", 
+                [document.id]
+            )
+            raw_notes = cursor.fetchone()[0]
+        
+        # Verify notes are encrypted
+        self.assertNotEqual("Contains sensitive PHI", raw_notes)
+        
+        # Verify we can access the decrypted notes through the model
+        self.assertEqual("Contains sensitive PHI", retrieved_doc.notes)
+    
+    def tearDown(self):
+        # Clean up test files
+        for document in Document.objects.all():
+            if document.file and os.path.exists(document.file.path):
+                os.remove(document.file.path)
+```
+
+5. Integration tests for the complete hybrid encryption system:
+```python
+# patients/tests/test_hybrid_encryption_integration.py
+from django.test import TestCase
+from patients.models import Patient
+from django.core.files.uploadedfile import SimpleUploadedFile
+from documents.models import Document
+
+class HybridEncryptionIntegrationTests(TestCase):
+    def test_complete_patient_workflow(self):
+        # 1. Create a patient with PHI
+        patient = Patient.objects.create(
+            mrn="12345",
+            first_name="John",
+            last_name="Doe",
+            dob="1980-01-01",
+            ssn="123-45-6789",
+            address="123 Main St, Anytown, USA"
+        )
+        
+        # 2. Add FHIR resources
+        condition = {
+            "resourceType": "Condition",
+            "code": {
+                "coding": [{
+                    "system": "http://snomed.info/sct",
+                    "code": "73211009",
+                    "display": "Diabetes mellitus"
+                }]
+            },
+            "subject": {"reference": "Patient/12345"},
+            "onsetDateTime": "2020-01-01"
+        }
+        
+        encounter = {
+            "resourceType": "Encounter",
+            "period": {"start": "2023-01-15"},
+            "practitioner": {"reference": "Practitioner/123"}
+        }
+        
+        patient.add_fhir_resources([condition, encounter])
+        
+        # 3. Add a document
+        test_content = b"This is a test document with PHI information."
+        test_file = SimpleUploadedFile("test_doc.txt", test_content)
+        
+        document = Document.objects.create(
+            title="Test Document",
+            file=test_file,
+            notes="Contains sensitive PHI",
+            patient=patient
+        )
+        
+        # 4. Verify we can search for the patient by medical code
+        from patients.utils import search_patients_by_medical_code
+        diabetes_patients = search_patients_by_medical_code("http://snomed.info/sct", "73211009")
+        self.assertEqual(1, len(diabetes_patients))
+        self.assertEqual("12345", diabetes_patients[0].mrn)
+        
+        # 5. Verify we can search by date range
+        from patients.utils import search_patients_by_date_range
+        jan_patients = search_patients_by_date_range("2023-01-01", "2023-01-31")
+        self.assertEqual(1, len(jan_patients))
+        self.assertEqual("12345", jan_patients[0].mrn)
+        
+        # 6. Verify we can search by provider
+        from patients.utils import search_patients_by_provider
+        provider_patients = search_patients_by_provider("Practitioner/123")
+        self.assertEqual(1, len(provider_patients))
+        self.assertEqual("12345", provider_patients[0].mrn)
+        
+        # 7. Verify we can generate a comprehensive report
+        report = patient.get_comprehensive_report()
+        self.assertEqual("John Doe", report["patient"]["name"])
+        self.assertEqual(1, len(report["conditions"]))
+        self.assertEqual(1, len(report["encounters"]))
+```
+
+6. Manual testing checklist:
+   - Create a new patient with PHI and verify it displays correctly in the UI
+   - Add FHIR resources to a patient and verify they are stored correctly
+   - Verify the database contains encrypted values for PHI fields
+   - Verify searchable metadata is stored unencrypted for fast queries
+   - Test search functionality by medical code, date range, and provider
+   - Generate comprehensive patient reports and verify they contain all necessary information
+   - Upload a document with PHI and verify it can be downloaded and viewed correctly
+   - Verify that database backups contain encrypted PHI
+
+7. Security audit:
+   - Review key management procedures for django-cryptography
+   - Verify encryption keys are properly secured outside of version control
+   - Check for any PHI leakage in logs or error messages
+   - Verify all PHI fields are properly identified and encrypted
+   - Verify that searchable metadata does not contain any PHI
+   - Conduct penetration testing to ensure encrypted data cannot be easily compromised
+
+# Subtasks:
+## 1. Set up django-cryptography package [pending]
+### Dependencies: None
+### Description: Install django-cryptography and configure encryption keys in Django settings
+### Details:
+Add django-cryptography to requirements.txt, install it, and configure FIELD_ENCRYPTION_KEYS in settings/base.py with a secure primary key. Ensure the key is properly managed and not committed to version control.
+
+## 2. Update Patient model with encrypted fields [pending]
+### Dependencies: 21.1
+### Description: Modify the Patient model to use encrypted fields for PHI data and implement the dual storage approach
+### Details:
+Update the Patient model with encrypt() wrapper for PHI fields (first_name, last_name, dob, ssn, etc.). Add encrypted_fhir_bundle field for complete FHIR data and searchable_medical_codes field for non-PHI data. Include encounter_dates and provider_references fields for quick searching.
+
+## 3. Implement FHIR resource processing methods [pending]
+### Dependencies: 21.2
+### Description: Create methods to add FHIR resources to the encrypted bundle and extract searchable metadata
+### Details:
+Implement add_fhir_resources() method to append new FHIR resources to the encrypted bundle. Create extract_searchable_metadata() method to extract codes, dates, and provider references without PHI. Ensure proper handling of different resource types (Condition, Procedure, MedicationRequest, Observation, Encounter).
+
+## 4. Create comprehensive report generation method [pending]
+### Dependencies: 21.3
+### Description: Implement get_comprehensive_report() method to generate patient reports from encrypted data
+### Details:
+Build the get_comprehensive_report() method to access and decrypt the encrypted_fhir_bundle, extract relevant clinical information, and format it into a structured report with patient details, conditions, procedures, medications, observations, and encounters.
+
+## 5. Update Document model with encrypted file handling [pending]
+### Dependencies: 21.1
+### Description: Modify the Document model to use encryption for file storage and notes
+### Details:
+Create an EncryptedFileField class extending FileField for document encryption. Update the Document model to use this field for the file attribute and encrypt the notes field. Ensure proper relationship with the Patient model.
+
+## 6. Implement search utility functions [pending]
+### Dependencies: 21.3
+### Description: Create utility functions for searching patients using the unencrypted searchable fields
+### Details:
+Implement search_patients_by_medical_code(), search_patients_by_date_range(), and search_patients_by_provider() functions in patients/utils.py. These functions should use the unencrypted searchable fields to efficiently find patients matching specific criteria.
+
+## 7. Create database indexes and migrations [pending]
+### Dependencies: 21.2, 21.3, 21.5
+### Description: Add database indexes for searchable fields and create data migration for existing records
+### Details:
+Create a migration to add indexes on searchable_medical_codes, encounter_dates, and provider_references fields. Implement a data migration to convert existing patient data to the new hybrid encryption format, extracting searchable metadata from existing FHIR data.
+
+## 8. Create documentation and integration tests [pending]
+### Dependencies: 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7
+### Description: Document the hybrid encryption approach and create comprehensive integration tests
+### Details:
+Create detailed documentation explaining the hybrid encryption strategy, key management, and implementation details. Develop integration tests that verify the entire encryption system works together correctly, including data storage, retrieval, searching, and report generation.
+

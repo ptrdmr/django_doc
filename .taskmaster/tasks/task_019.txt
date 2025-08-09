@@ -1,0 +1,94 @@
+# Task ID: 19
+# Title: Implement Django Security Configuration for HIPAA Compliance
+# Status: done
+# Dependencies: 1
+# Priority: high
+# Description: Configure core Django security settings to ensure HIPAA compliance, including SSL/TLS settings, session security, password validation, CSRF protection, clickjacking protection, and other security middleware.
+# Details:
+This task involves implementing comprehensive security configurations in the Django project to meet HIPAA compliance requirements:
+
+1. SSL/TLS Configuration:
+   - Set `SECURE_SSL_REDIRECT = True` to force HTTPS
+   - Configure `SECURE_PROXY_SSL_HEADER` for proper SSL detection behind proxies
+   - Set `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS`, and `SECURE_HSTS_PRELOAD` for HTTP Strict Transport Security
+
+2. Session Security:
+   - Configure `SESSION_COOKIE_SECURE = True` to ensure cookies are only sent over HTTPS
+   - Set `SESSION_COOKIE_HTTPONLY = True` to prevent JavaScript access to cookies
+   - Implement `SESSION_COOKIE_SAMESITE = 'Strict'` to prevent CSRF attacks
+   - Set appropriate `SESSION_COOKIE_AGE` (e.g., 1800 seconds/30 minutes) for session timeout
+   - Implement session regeneration on login/privilege change
+
+3. Password Validation:
+   - Configure Django's password validators in `AUTH_PASSWORD_VALIDATORS`:
+     - MinimumLengthValidator (minimum 12 characters)
+     - UserAttributeSimilarityValidator
+     - CommonPasswordValidator
+     - NumericPasswordValidator
+   - Add custom validators for special characters and password rotation
+
+4. CSRF Protection:
+   - Ensure `CSRF_COOKIE_SECURE = True`
+   - Set `CSRF_COOKIE_HTTPONLY = True`
+   - Configure `CSRF_COOKIE_SAMESITE = 'Strict'`
+   - Verify CSRF middleware is enabled
+
+5. Clickjacking Protection:
+   - Set `X_FRAME_OPTIONS = 'DENY'`
+   - Configure CSP headers to prevent framing
+
+6. Security Middleware:
+   - Ensure the following middleware is properly ordered in MIDDLEWARE setting:
+     - 'django.middleware.security.SecurityMiddleware'
+     - 'django.contrib.sessions.middleware.SessionMiddleware'
+     - 'django.middleware.csrf.CsrfViewMiddleware'
+     - 'django.middleware.clickjacking.XFrameOptionsMiddleware'
+   - Add Content-Security-Policy middleware
+
+7. Secure Headers:
+   - Implement Content-Security-Policy headers
+   - Configure X-Content-Type-Options: nosniff
+   - Set Referrer-Policy headers
+   - Add Feature-Policy/Permissions-Policy headers
+
+8. Audit Logging:
+   - Configure Django to log security-related events
+   - Implement audit logging for authentication events, data access, and modifications
+
+9. Update settings files:
+   - Modify base.py with shared security settings
+   - Configure development.py with appropriate testing exceptions
+   - Ensure production.py has strict security settings
+
+All configurations should be implemented in the settings module created during the project setup.
+
+# Test Strategy:
+1. Automated Testing:
+   - Write unit tests to verify security settings are correctly applied
+   - Create tests that attempt to bypass security measures
+   - Implement tests for session timeout functionality
+
+2. Manual Testing:
+   - Use browser developer tools to inspect cookies and verify secure flags
+   - Test session timeout by waiting for the configured period
+   - Attempt to access protected resources after session expiration
+   - Verify HTTPS redirection works correctly
+
+3. Security Scanning:
+   - Run Django's built-in security check command: `python manage.py check --deploy`
+   - Use OWASP ZAP or similar tool to scan for security vulnerabilities
+   - Verify headers using online tools like securityheaders.com
+
+4. Compliance Verification:
+   - Create a checklist mapping each HIPAA security requirement to the implemented configuration
+   - Document how each security measure addresses specific HIPAA requirements
+   - Verify all required security headers are present in HTTP responses
+
+5. Edge Case Testing:
+   - Test behavior when cookies are disabled
+   - Verify security with different browsers
+   - Test with various proxy configurations
+
+6. Documentation Review:
+   - Ensure all security configurations are properly documented
+   - Verify documentation includes rationale for security choices

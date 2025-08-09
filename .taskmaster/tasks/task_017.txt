@@ -1,0 +1,403 @@
+# Task ID: 17
+# Title: Implement Provider Activity Reports
+# Status: pending
+# Dependencies: 15
+# Priority: medium
+# Description: Create provider-focused reports showing provider activity, patient caseloads, document processing statistics, and provider-patient relationships for the reports module.
+# Details:
+Implement the Provider Activity Reports functionality:
+
+1. Create the provider report models in `reports/models.py`:
+```python
+class ProviderActivityReport(BaseReport):
+    provider = models.ForeignKey('providers.Provider', on_delete=models.CASCADE)
+    date_range_start = models.DateField()
+    date_range_end = models.DateField()
+    report_type = models.CharField(max_length=50, choices=[
+        ('caseload', 'Patient Caseload'),
+        ('document_stats', 'Document Processing Statistics'),
+        ('relationships', 'Provider-Patient Relationships'),
+        ('directory', 'Provider Directory Export')
+    ])
+    
+    class Meta:
+        ordering = ['-created_at']
+```
+
+2. Implement the provider report generators in `reports/generators.py`:
+```python
+class ProviderCaseloadReportGenerator(ReportGenerator):
+    """Generates reports showing which patients each provider has treated"""
+    
+    def generate(self, provider_id, start_date, end_date):
+        provider = Provider.objects.get(id=provider_id)
+        patients = Patient.objects.filter(
+            providerpatientrelationship__provider=provider,
+            providerpatientrelationship__created_at__range=[start_date, end_date]
+        ).distinct()
+        
+        data = {
+            'provider': {
+                'name': f"{provider.first_name} {provider.last_name}",
+                'npi': provider.npi,
+                'specialty': provider.specialty
+            },
+            'date_range': {
+                'start': start_date,
+                'end': end_date
+            },
+            'patient_count': patients.count(),
+            'patients': [{
+                'mrn': patient.mrn,
+                'name': f"{patient.first_name} {patient.last_name}",
+                'dob': patient.dob,
+                'last_visit': patient.providerpatientrelationship_set.filter(
+                    provider=provider
+                ).latest('created_at').created_at
+            } for patient in patients]
+        }
+        
+        return self.format_report(data)
+
+class DocumentStatisticsReportGenerator(ReportGenerator):
+    """Generates document volume per provider reports"""
+    
+    def generate(self, provider_id, start_date, end_date):
+        provider = Provider.objects.get(id=provider_id)
+        documents = Document.objects.filter(
+            provider=provider,
+            created_at__range=[start_date, end_date]
+        )
+        
+        # Group documents by type
+        document_types = {}
+        for doc in documents:
+            doc_type = doc.document_type
+            if doc_type not in document_types:
+                document_types[doc_type] = 0
+            document_types[doc_type] += 1
+        
+        data = {
+            'provider': {
+                'name': f"{provider.first_name} {provider.last_name}",
+                'npi': provider.npi,
+                'specialty': provider.specialty
+            },
+            'date_range': {
+                'start': start_date,
+                'end': end_date
+            },
+            'total_documents': documents.count(),
+            'document_types': [{'type': k, 'count': v} for k, v in document_types.items()],
+            'processing_time_avg': documents.aggregate(Avg('processing_time'))['processing_time__avg']
+        }
+        
+        return self.format_report(data)
+
+class ProviderRelationshipsReportGenerator(ReportGenerator):
+    """Generates provider-patient relationship reports"""
+    
+    def generate(self, provider_id, start_date, end_date):
+        provider = Provider.objects.get(id=provider_id)
+        relationships = ProviderPatientRelationship.objects.filter(
+            provider=provider,
+            created_at__range=[start_date, end_date]
+        ).select_related('patient')
+        
+        data = {
+            'provider': {
+                'name': f"{provider.first_name} {provider.last_name}",
+                'npi': provider.npi,
+                'specialty': provider.specialty
+            },
+            'date_range': {
+                'start': start_date,
+                'end': end_date
+            },
+            'relationship_count': relationships.count(),
+            'relationships': [{
+                'patient_name': f"{rel.patient.first_name} {rel.patient.last_name}",
+                'patient_mrn': rel.patient.mrn,
+                'relationship_type': rel.relationship_type,
+                'start_date': rel.created_at
+            } for rel in relationships]
+        }
+        
+        return self.format_report(data)
+
+class ProviderDirectoryReportGenerator(ReportGenerator):
+    """Generates provider directory export reports"""
+    
+    def generate(self, specialty=None):
+        providers_query = Provider.objects.all()
+        
+        if specialty:
+            providers_query = providers_query.filter(specialty=specialty)
+            
+        providers = providers_query.order_by('last_name', 'first_name')
+        
+        data = {
+            'generated_at': timezone.now(),
+            'specialty_filter': specialty,
+            'provider_count': providers.count(),
+            'providers': [{
+                'name': f"{provider.first_name} {provider.last_name}",
+                'npi': provider.npi,
+                'specialty': provider.specialty,
+                'organization': provider.organization,
+                'contact_info': provider.contact_info
+            } for provider in providers]
+        }
+        
+        return self.format_report(data)
+```
+
+3. Create the provider report views in `reports/views.py`:
+```python
+class ProviderReportSelectionView(LoginRequiredMixin, FormView):
+    template_name = 'reports/provider_report_selection.html'
+    form_class = ProviderReportSelectionForm
+    success_url = reverse_lazy('reports:provider_report_result')
+    
+    def form_valid(self, form):
+        # Store form data in session for the result view
+        self.request.session['provider_report_data'] = form.cleaned_data
+        return super().form_valid(form)
+
+class ProviderReportResultView(LoginRequiredMixin, TemplateView):
+    template_name = 'reports/provider_report_result.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        report_data = self.request.session.get('provider_report_data', {})
+        
+        if not report_data:
+            return context
+            
+        report_type = report_data.get('report_type')
+        provider_id = report_data.get('provider')
+        start_date = report_data.get('start_date')
+        end_date = report_data.get('end_date')
+        specialty = report_data.get('specialty')
+        
+        if report_type == 'caseload':
+            generator = ProviderCaseloadReportGenerator()
+            report = generator.generate(provider_id, start_date, end_date)
+        elif report_type == 'document_stats':
+            generator = DocumentStatisticsReportGenerator()
+            report = generator.generate(provider_id, start_date, end_date)
+        elif report_type == 'relationships':
+            generator = ProviderRelationshipsReportGenerator()
+            report = generator.generate(provider_id, start_date, end_date)
+        elif report_type == 'directory':
+            generator = ProviderDirectoryReportGenerator()
+            report = generator.generate(specialty)
+        else:
+            report = None
+            
+        context['report'] = report
+        context['report_type'] = report_type
+        
+        return context
+```
+
+4. Create the provider report forms in `reports/forms.py`:
+```python
+class ProviderReportSelectionForm(forms.Form):
+    report_type = forms.ChoiceField(
+        choices=[
+            ('caseload', 'Patient Caseload'),
+            ('document_stats', 'Document Processing Statistics'),
+            ('relationships', 'Provider-Patient Relationships'),
+            ('directory', 'Provider Directory Export')
+        ],
+        widget=forms.RadioSelect
+    )
+    provider = forms.ModelChoiceField(
+        queryset=Provider.objects.all(),
+        required=False,
+        empty_label="All Providers"
+    )
+    start_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'})
+    )
+    end_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'})
+    )
+    specialty = forms.ChoiceField(
+        required=False,
+        choices=[]
+    )
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Dynamically populate specialty choices from existing providers
+        specialties = Provider.objects.values_list('specialty', flat=True).distinct()
+        self.fields['specialty'].choices = [('', 'All Specialties')] + [(s, s) for s in specialties]
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        report_type = cleaned_data.get('report_type')
+        provider = cleaned_data.get('provider')
+        start_date = cleaned_data.get('start_date')
+        end_date = cleaned_data.get('end_date')
+        
+        # Validate that provider is selected for provider-specific reports
+        if report_type in ['caseload', 'document_stats', 'relationships'] and not provider:
+            self.add_error('provider', 'Provider selection is required for this report type')
+            
+        # Validate date range for date-based reports
+        if report_type in ['caseload', 'document_stats', 'relationships']:
+            if not start_date:
+                self.add_error('start_date', 'Start date is required for this report type')
+            if not end_date:
+                self.add_error('end_date', 'End date is required for this report type')
+            if start_date and end_date and start_date > end_date:
+                self.add_error('end_date', 'End date must be after start date')
+                
+        return cleaned_data
+```
+
+5. Create the provider report templates:
+   - `reports/templates/reports/provider_report_selection.html` - Form for selecting report parameters
+   - `reports/templates/reports/provider_report_result.html` - Display of report results
+   - `reports/templates/reports/pdf/provider_caseload.html` - PDF template for caseload reports
+   - `reports/templates/reports/pdf/document_statistics.html` - PDF template for document statistics
+   - `reports/templates/reports/pdf/provider_relationships.html` - PDF template for relationship reports
+   - `reports/templates/reports/pdf/provider_directory.html` - PDF template for directory exports
+
+6. Update the URL configuration in `reports/urls.py`:
+```python
+from django.urls import path
+from . import views
+
+app_name = 'reports'
+
+urlpatterns = [
+    # Existing report URLs...
+    path('provider/', views.ProviderReportSelectionView.as_view(), name='provider_report_selection'),
+    path('provider/result/', views.ProviderReportResultView.as_view(), name='provider_report_result'),
+    path('provider/download/<int:report_id>/', views.ProviderReportDownloadView.as_view(), name='provider_report_download'),
+]
+```
+
+7. Add provider report links to the reports dashboard in `reports/templates/reports/dashboard.html`:
+```html
+<div class="report-category">
+    <h3>Provider Reports</h3>
+    <div class="report-options">
+        <a href="{% url 'reports:provider_report_selection' %}" class="report-option">
+            <i class="fas fa-user-md"></i>
+            <span>Provider Activity Reports</span>
+        </a>
+    </div>
+</div>
+```
+
+8. Implement specialty-based analytics in the provider reports by adding aggregation functions to the report generators that group data by provider specialty.
+
+# Test Strategy:
+To verify the Provider Activity Reports implementation:
+
+1. Unit Tests:
+   - Create test cases for each report generator class:
+   ```python
+   class ProviderReportGeneratorsTests(TestCase):
+       @classmethod
+       def setUpTestData(cls):
+           # Create test providers, patients, and documents
+           cls.provider1 = Provider.objects.create(
+               npi="1234567890", 
+               first_name="John", 
+               last_name="Doe", 
+               specialty="Cardiology"
+           )
+           cls.provider2 = Provider.objects.create(
+               npi="0987654321", 
+               first_name="Jane", 
+               last_name="Smith", 
+               specialty="Neurology"
+           )
+           # Create patients and relationships
+           # Create documents linked to providers
+           
+       def test_caseload_report_generator(self):
+           generator = ProviderCaseloadReportGenerator()
+           start_date = date.today() - timedelta(days=30)
+           end_date = date.today()
+           report = generator.generate(self.provider1.id, start_date, end_date)
+           
+           self.assertIsNotNone(report)
+           self.assertEqual(report['provider']['name'], "John Doe")
+           self.assertEqual(report['provider']['specialty'], "Cardiology")
+           # Verify patient count and data
+           
+       # Similar tests for other report generators
+   ```
+
+2. Integration Tests:
+   - Test the form validation and view rendering:
+   ```python
+   class ProviderReportViewsTests(TestCase):
+       @classmethod
+       def setUpTestData(cls):
+           # Create test user, providers, patients, and documents
+           
+       def setUp(self):
+           self.client.login(username='testuser', password='password')
+           
+       def test_report_selection_form_display(self):
+           response = self.client.get(reverse('reports:provider_report_selection'))
+           self.assertEqual(response.status_code, 200)
+           self.assertContains(response, 'Patient Caseload')
+           self.assertContains(response, 'Document Processing Statistics')
+           
+       def test_caseload_report_generation(self):
+           # Submit form with caseload report parameters
+           form_data = {
+               'report_type': 'caseload',
+               'provider': self.provider1.id,
+               'start_date': '2023-01-01',
+               'end_date': '2023-12-31'
+           }
+           response = self.client.post(
+               reverse('reports:provider_report_selection'),
+               form_data,
+               follow=True
+           )
+           self.assertEqual(response.status_code, 200)
+           self.assertContains(response, 'John Doe')
+           self.assertContains(response, 'Patient Caseload')
+           
+       # Similar tests for other report types
+   ```
+
+3. Manual Testing:
+   - Log in as an administrator
+   - Navigate to the Reports section
+   - Select "Provider Activity Reports"
+   - Test each report type with different parameters:
+     - Patient Caseload: Select a provider and date range, verify patient list
+     - Document Statistics: Select a provider and date range, verify document counts
+     - Provider-Patient Relationships: Select a provider and date range, verify relationship data
+     - Provider Directory: Test with and without specialty filters
+   - Verify PDF and CSV export functionality for each report type
+   - Verify that reports correctly display all required data fields
+   - Test with edge cases:
+     - Providers with no patients
+     - Date ranges with no activity
+     - Very large date ranges with many records
+
+4. Performance Testing:
+   - Generate test data with a large number of providers, patients, and documents
+   - Measure report generation time for different report types
+   - Verify that reports with large datasets still perform acceptably
+   - Check memory usage during report generation
+
+5. UI/UX Testing:
+   - Verify that report selection form is intuitive and validates inputs correctly
+   - Check that report results are well-formatted and readable
+   - Test responsive design on different screen sizes
+   - Verify that PDF exports are properly formatted for printing

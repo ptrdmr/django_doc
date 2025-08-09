@@ -1,0 +1,148 @@
+# Task ID: 13
+# Title: Implement Document Review Interface
+# Status: pending
+# Dependencies: 6
+# Priority: medium
+# Description: Create the frontend user interface for reviewing extracted document data, allowing users to view, edit, and approve the extracted information before it gets merged into patient records.
+# Details:
+Implement the document review interface with the following components:
+
+1. Create a new Django template for the document review page:
+```html
+{% extends "base.html" %}
+{% block content %}
+<div class="document-review-container">
+  <div class="document-preview">
+    <!-- Document preview panel -->
+  </div>
+  <div class="extraction-review">
+    <!-- Extracted data review forms -->
+  </div>
+</div>
+{% endblock %}
+```
+
+2. Implement the document preview panel:
+   - Display the original document using PDF.js or a similar viewer
+   - Add highlighting capabilities to show where data was extracted from
+   - Implement zoom and navigation controls
+
+3. Create the extracted data review forms:
+   - Build Django forms for each data category (patient info, medications, diagnoses, etc.)
+   - Implement form validation for medical data types
+   - Add UI elements to mark fields as verified, incorrect, or needs review
+
+4. Implement htmx integration for interactive editing:
+   - Add htmx attributes to form elements for real-time validation
+   - Create Django view endpoints for partial updates
+   - Implement optimistic UI updates with proper error handling
+   ```html
+   <input type="text" name="medication_name" 
+          hx-post="{% url 'update_medication_field' %}"
+          hx-trigger="keyup changed delay:500ms"
+          hx-target="#medication-feedback">
+   <div id="medication-feedback"></div>
+   ```
+
+5. Build the approval workflow UI:
+   - Create approval buttons (Approve, Reject, Request Changes)
+   - Implement confirmation dialogs for key actions
+   - Add comment/notes field for reviewers
+   - Build status indicators showing review progress
+
+6. Implement the review context sidebar:
+   - Display patient context information
+   - Show document metadata (upload date, document type, etc.)
+   - List previous documents for comparison
+
+7. Create the controller view in views.py:
+   ```python
+   def document_review(request, document_id):
+       document = get_object_or_404(Document, id=document_id)
+       extracted_data = document.extracted_data.all()
+       
+       if request.method == 'POST':
+           # Handle form submission and approval actions
+           if 'approve' in request.POST:
+               document.status = 'approved'
+               document.save()
+               # Trigger merge to patient record
+               merge_to_patient_record.delay(document.id)
+               messages.success(request, "Document approved and data merged.")
+               return redirect('document_list')
+       
+       context = {
+           'document': document,
+           'extracted_data': extracted_data,
+           'patient': document.patient,
+       }
+       return render(request, 'documents/review.html', context)
+   ```
+
+8. Add URL routing in urls.py:
+   ```python
+   path('documents/<int:document_id>/review/', views.document_review, name='document_review'),
+   path('documents/update-field/', views.update_field, name='update_field'),
+   ```
+
+9. Implement CSS styles for the review interface:
+   - Create responsive layout for side-by-side document and form view
+   - Style form elements for clear data entry
+   - Design approval workflow buttons and status indicators
+   - Implement highlighting styles for extracted data fields
+
+# Test Strategy:
+1. Unit Tests:
+   - Write tests for the document review view
+   - Test form validation for each data category
+   - Test htmx endpoints for field updates
+   - Test approval workflow state transitions
+
+```python
+def test_document_review_view():
+    # Setup test document with extracted data
+    document = create_test_document()
+    
+    # Test GET request
+    response = client.get(reverse('document_review', args=[document.id]))
+    assert response.status_code == 200
+    assert 'document' in response.context
+    
+    # Test approval POST request
+    response = client.post(
+        reverse('document_review', args=[document.id]),
+        {'approve': 'true'}
+    )
+    assert response.status_code == 302  # Redirect after success
+    document.refresh_from_db()
+    assert document.status == 'approved'
+```
+
+2. Integration Tests:
+   - Test the complete review workflow from document upload to approval
+   - Verify extracted data is correctly displayed in the review interface
+   - Test that approved data is properly merged into patient records
+
+3. UI/UX Testing:
+   - Verify the document preview displays correctly for different document types
+   - Test the responsive layout on different screen sizes
+   - Verify form validation provides clear feedback to users
+   - Test keyboard navigation and accessibility features
+
+4. Manual Testing Checklist:
+   - Upload a test document and navigate to the review interface
+   - Verify all extracted data is displayed correctly
+   - Edit several fields and confirm changes are saved
+   - Test the approval workflow (approve, reject, request changes)
+   - Verify patient context information is accurate
+   - Test with different document types and sizes
+   - Verify error handling for invalid data entry
+
+5. Browser Compatibility:
+   - Test in Chrome, Firefox, Safari, and Edge
+   - Verify htmx interactions work consistently across browsers
+
+6. Performance Testing:
+   - Measure load time for documents of various sizes
+   - Test with a large number of extracted data fields
+   - Verify htmx partial updates are efficient

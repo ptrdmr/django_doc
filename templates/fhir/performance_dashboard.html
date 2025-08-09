@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}FHIR Performance Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+.dashboard-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.metric-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #2563eb;
+}
+
+.metric-label {
+    font-size: 0.875rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-healthy { background-color: #10b981; }
+.status-degraded { background-color: #f59e0b; }
+.status-unhealthy { background-color: #ef4444; }
+
+.chart-container {
+    height: 300px;
+    position: relative;
+}
+
+.operations-table {
+    font-size: 0.875rem;
+}
+
+.operations-table th {
+    background-color: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.badge-success { background-color: #d1fae5; color: #065f46; }
+.badge-warning { background-color: #fef3c7; color: #92400e; }
+.badge-error { background-color: #fee2e2; color: #991b1b; }
+.badge-info { background-color: #dbeafe; color: #1e40af; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">FHIR Performance Dashboard</h1>
+        <p class="mt-2 text-gray-600">Monitor system performance, cache efficiency, and merge operation health</p>
+    </div>
+
+    <!-- System Health Alert -->
+    <div id="health-alert" class="hidden mb-6 p-4 rounded-md"></div>
+
+    <!-- Key Metrics Row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- Operations Count -->
+        <div class="dashboard-card">
+            <div class="metric-value">{{ total_operations_24h }}</div>
+            <div class="metric-label">Operations (24h)</div>
+            <div class="mt-2 text-sm text-gray-500">
+                {{ failed_operations_24h }} failed ({{ error_rate|floatformat:1 }}%)
+            </div>
+        </div>
+
+        <!-- Average Processing Time -->
+        <div class="dashboard-card">
+            <div class="metric-value">{{ dashboard_data.performance_summary.avg_processing_time|floatformat:1 }}s</div>
+            <div class="metric-label">Avg Processing Time</div>
+            <div class="mt-2 text-sm text-gray-500">
+                Max: {{ dashboard_data.performance_summary.max_processing_time|floatformat:1 }}s
+            </div>
+        </div>
+
+        <!-- Cache Hit Ratio -->
+        <div class="dashboard-card">
+            <div class="metric-value">{{ dashboard_data.cache_status.hit_ratio|floatformat:1 }}%</div>
+            <div class="metric-label">Cache Hit Ratio</div>
+            <div class="mt-2 text-sm text-gray-500">
+                {{ dashboard_data.cache_status.total_hits }} hits, {{ dashboard_data.cache_status.total_misses }} misses
+            </div>
+        </div>
+
+        <!-- Resources Processed -->
+        <div class="dashboard-card">
+            <div class="metric-value">{{ dashboard_data.performance_summary.total_resources_processed }}</div>
+            <div class="metric-label">Resources Processed</div>
+            <div class="mt-2 text-sm text-gray-500">
+                {{ dashboard_data.performance_summary.total_conflicts }} conflicts detected
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <!-- Operations Timeline Chart -->
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Operations Timeline</h3>
+            <div class="chart-container">
+                <canvas id="operationsChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Resource Distribution Chart -->
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Resource Types</h3>
+            <div class="chart-container">
+                <canvas id="resourceChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Status and API Usage -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <!-- System Health -->
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">System Health</h3>
+            <div id="system-health">
+                <div class="flex items-center mb-2">
+                    <span class="status-indicator status-healthy"></span>
+                    <span class="text-sm font-medium">Checking system health...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Usage -->
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">API Usage (24h)</h3>
+            <div class="space-y-3">
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600">Total Requests</span>
+                    <span class="text-sm font-medium">{{ dashboard_data.api_usage.total_requests|default:0 }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600">Avg Tokens</span>
+                    <span class="text-sm font-medium">{{ dashboard_data.api_usage.avg_tokens|floatformat:0|default:0 }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600">Total Cost</span>
+                    <span class="text-sm font-medium">${{ dashboard_data.api_usage.total_cost|floatformat:2|default:0 }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Operations Table -->
+    <div class="dashboard-card">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold text-gray-900">Recent Operations</h3>
+            <button onclick="clearCache()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                Clear Cache
+            </button>
+        </div>
+        
+        <div class="overflow-x-auto">
+            <table class="operations-table min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient MRN</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resources</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Started</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for operation in recent_operations %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {{ operation.patient.mrn }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ operation.operation_type|title }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if operation.status == 'completed' %}
+                                <span class="badge badge-success">Completed</span>
+                            {% elif operation.status == 'failed' %}
+                                <span class="badge badge-error">Failed</span>
+                            {% elif operation.status == 'in_progress' %}
+                                <span class="badge badge-info">In Progress</span>
+                            {% else %}
+                                <span class="badge badge-warning">{{ operation.status|title }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {% if operation.processing_time_seconds %}
+                                {{ operation.processing_time_seconds|floatformat:1 }}s
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ operation.resources_processed|default:0 }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ operation.created_at|date:"M d, H:i" }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">
+                            No recent operations found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Auto-refresh indicator -->
+    <div class="fixed bottom-4 right-4 bg-gray-800 text-white px-3 py-2 rounded-md text-sm">
+        <span id="refresh-indicator">Last updated: <span id="last-update">{{ "now"|date:"H:i:s" }}</span></span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Global variables for charts
+let operationsChart = null;
+let resourceChart = null;
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+    loadSystemHealth();
+    
+    // Auto-refresh every 30 seconds
+    setInterval(function() {
+        refreshDashboard();
+    }, 30000);
+});
+
+function initializeCharts() {
+    // Operations Timeline Chart
+    const operationsCtx = document.getElementById('operationsChart').getContext('2d');
+    operationsChart = new Chart(operationsCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Operations/Hour',
+                data: [],
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.4
+            }, {
+                label: 'Error Rate %',
+                data: [],
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                tension: 0.4,
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Operations'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Error Rate %'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                }
+            }
+        }
+    });
+
+    // Resource Distribution Chart
+    const resourceCtx = document.getElementById('resourceChart').getContext('2d');
+    resourceChart = new Chart(resourceCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Patient', 'Observation', 'Condition', 'MedicationStatement', 'DiagnosticReport'],
+            datasets: [{
+                data: [15, 45, 20, 12, 8],
+                backgroundColor: [
+                    '#3b82f6',
+                    '#10b981',
+                    '#f59e0b',
+                    '#8b5cf6',
+                    '#ef4444'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+function loadSystemHealth() {
+    fetch('/api/fhir/system-health/')
+        .then(response => response.json())
+        .then(data => {
+            updateSystemHealth(data);
+        })
+        .catch(error => {
+            console.error('Error loading system health:', error);
+            showHealthError('Unable to load system health data');
+        });
+}
+
+function updateSystemHealth(healthData) {
+    const healthContainer = document.getElementById('system-health');
+    const statusClass = `status-${healthData.status}`;
+    
+    let alertsHtml = '';
+    if (healthData.alerts && healthData.alerts.length > 0) {
+        alertsHtml = '<div class="mt-3 space-y-1">';
+        healthData.alerts.forEach(alert => {
+            const alertClass = alert.level === 'error' ? 'text-red-600' : 'text-yellow-600';
+            alertsHtml += `<div class="text-xs ${alertClass}">⚠ ${alert.message}</div>`;
+        });
+        alertsHtml += '</div>';
+    }
+    
+    healthContainer.innerHTML = `
+        <div class="flex items-center mb-2">
+            <span class="status-indicator ${statusClass}"></span>
+            <span class="text-sm font-medium">${healthData.status.charAt(0).toUpperCase() + healthData.status.slice(1)}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+            <div>Response Time: ${healthData.metrics.avg_response_time.toFixed(1)}s</div>
+            <div>Error Rate: ${healthData.metrics.error_rate.toFixed(1)}%</div>
+            <div>Cache Hit: ${(healthData.metrics.cache_hit_ratio * 100).toFixed(1)}%</div>
+            <div>Memory: ${healthData.metrics.memory_usage.toFixed(1)}MB</div>
+        </div>
+        ${alertsHtml}
+    `;
+}
+
+function showHealthError(message) {
+    const healthContainer = document.getElementById('system-health');
+    healthContainer.innerHTML = `
+        <div class="flex items-center mb-2">
+            <span class="status-indicator status-unhealthy"></span>
+            <span class="text-sm font-medium">Error</span>
+        </div>
+        <div class="text-xs text-red-600">${message}</div>
+    `;
+}
+
+function refreshDashboard() {
+    fetch('/api/fhir/performance-metrics/')
+        .then(response => response.json())
+        .then(data => {
+            updateCharts(data);
+            loadSystemHealth();
+            updateLastRefresh();
+        })
+        .catch(error => {
+            console.error('Error refreshing dashboard:', error);
+        });
+}
+
+function updateCharts(data) {
+    // Update operations chart
+    if (data.operations_timeline && operationsChart) {
+        const labels = data.operations_timeline.map(item => 
+            new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+        );
+        const operations = data.operations_timeline.map(item => item.total_operations);
+        const errorRates = data.operations_timeline.map(item => item.error_rate);
+        
+        operationsChart.data.labels = labels;
+        operationsChart.data.datasets[0].data = operations;
+        operationsChart.data.datasets[1].data = errorRates;
+        operationsChart.update();
+    }
+    
+    // Update resource chart
+    if (data.resource_distribution && resourceChart) {
+        const labels = Object.keys(data.resource_distribution);
+        const values = Object.values(data.resource_distribution);
+        
+        resourceChart.data.labels = labels;
+        resourceChart.data.datasets[0].data = values;
+        resourceChart.update();
+    }
+}
+
+function updateLastRefresh() {
+    const now = new Date();
+    document.getElementById('last-update').textContent = now.toLocaleTimeString();
+}
+
+function clearCache() {
+    if (confirm('Are you sure you want to clear the FHIR resource cache? This may temporarily impact performance.')) {
+        fetch('/api/fhir/clear-cache/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Cache cleared successfully');
+                location.reload();
+            } else {
+                alert('Error clearing cache: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error clearing cache');
+        });
+    }
+}
+</script>
+{% endblock %}

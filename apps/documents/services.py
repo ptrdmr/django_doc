@@ -9,6 +9,8 @@ import pdfplumber
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import re
+from uuid import uuid4
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -256,11 +258,11 @@ class PDFTextExtractor:
 import json
 import re
 import backoff
-import httpx
 from typing import Any, Optional
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.utils import timezone
+from apps.core.services import APIUsageMonitor, error_recovery_service, context_preservation_service
 
 try:
     import anthropic
@@ -280,14 +282,23 @@ class DocumentAnalyzer:
     Designed for HIPAA compliance and medical document processing.
     """
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, document=None, api_key: Optional[str] = None):
         """
         Initialize the DocumentAnalyzer with proper configuration.
         
         Args:
+            document: Document instance being processed (for cost monitoring)
             api_key: Optional API key override for testing
         """
         self.logger = logging.getLogger(__name__)
+        
+        # Store document reference for cost monitoring
+        self.document = document
+        self.processing_session = uuid4()  # Unique session ID for this processing run
+        
+        # Initialize error recovery tracking
+        self._context_key = None
+        self._attempt_count = 0
         
         # Get API keys from settings
         self.anthropic_key = api_key or getattr(settings, 'ANTHROPIC_API_KEY', None)
@@ -320,14 +331,9 @@ class DocumentAnalyzer:
         # Initialize Anthropic client with timeout protection
         if self.anthropic_key and anthropic:
             try:
-                # Create httpx client with shorter timeout to prevent hanging
-                http_client = httpx.Client(
-                    timeout=httpx.Timeout(5.0),  # 5 second timeout for initialization
-                    follow_redirects=True
-                )
-                self.anthropic_client = anthropic.Client(
-                    api_key=self.anthropic_key, 
-                    http_client=http_client
+                # Use the current Anthropic client class
+                self.anthropic_client = anthropic.Anthropic(
+                    api_key=self.anthropic_key
                 )
                 self.logger.info("Anthropic client initialized successfully")
             except Exception as e:
@@ -867,19 +873,49 @@ class DocumentAnalyzer:
             'fields': []
         }
     
-    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
-    def _call_anthropic(self, system_prompt: str, content: str) -> Dict[str, Any]:
+    def _call_anthropic_with_recovery(self, system_prompt: str, content: str, chunk_number=None, total_chunks=None) -> Dict[str, Any]:
         """
-        Call Anthropic API with retry logic and rate limiting detection.
-        Enhanced with proper error classification and rate limit handling.
+        Call Anthropic API with comprehensive error recovery patterns.
+        Like having a full roadside assistance plan when your truck breaks down.
         
         Args:
             system_prompt: System prompt for the AI
             content: Document content to analyze
+            chunk_number: For chunked documents, which chunk this is
+            total_chunks: Total number of chunks for this document
             
         Returns:
-            API response results with detailed error classification
+            API response results with intelligent error recovery
         """
+        self._attempt_count += 1
+        
+        # Save processing context for potential recovery
+        if not self._context_key:
+            context_data = {
+                'system_prompt': system_prompt,
+                'content_length': len(content),
+                'chunk_number': chunk_number,
+                'total_chunks': total_chunks,
+                'primary_model': self.primary_model
+            }
+            self._context_key = context_preservation_service.save_processing_context(
+                self.document.id if self.document else 0,
+                str(self.processing_session),
+                context_data
+            )
+        
+        # Check circuit breaker before attempting
+        if error_recovery_service._is_circuit_open('anthropic'):
+            self.logger.warning("Anthropic circuit breaker is open, skipping API call")
+            return {
+                'success': False,
+                'error': 'circuit_breaker_open',
+                'error_message': 'Service temporarily unavailable due to repeated failures',
+                'fields': []
+            }
+        
+        start_time = timezone.now()
+        
         try:
             response = self.anthropic_client.messages.create(
                 model=self.primary_model,
@@ -891,9 +927,44 @@ class DocumentAnalyzer:
                 }]
             )
             
+            end_time = timezone.now()
+            
+            # Record success for circuit breaker
+            error_recovery_service.record_success('anthropic')
+            
             # Parse the response
             text_response = response.content[0].text
             extracted_fields = self._parse_ai_response(text_response)
+            
+            # Log successful API usage
+            if self.document:
+                try:
+                    APIUsageMonitor.log_api_usage(
+                        document=self.document,
+                        patient=getattr(self.document, 'patient', None),
+                        session_id=self.processing_session,
+                        provider='anthropic',
+                        model=self.primary_model,
+                        input_tokens=response.usage.input_tokens,
+                        output_tokens=response.usage.output_tokens,
+                        total_tokens=response.usage.input_tokens + response.usage.output_tokens,
+                        start_time=start_time,
+                        end_time=end_time,
+                        success=True,
+                        chunk_number=chunk_number,
+                        total_chunks=total_chunks
+                    )
+                except Exception as monitor_error:
+                    self.logger.error(f"Failed to log API usage: {monitor_error}")
+            
+            # Add success info to context
+            if self._context_key:
+                context_preservation_service.add_attempt_to_context(self._context_key, {
+                    'attempt_number': self._attempt_count,
+                    'service': 'anthropic',
+                    'success': True,
+                    'tokens_used': response.usage.input_tokens + response.usage.output_tokens
+                })
             
             return {
                 'success': True,
@@ -907,69 +978,134 @@ class DocumentAnalyzer:
             }
             
         except anthropic.RateLimitError as e:
-            # Handle rate limiting specifically
-            self.logger.warning(f"Anthropic rate limit exceeded: {e}")
-            return {
-                'success': False,
-                'error': 'rate_limit_exceeded',
-                'error_message': 'API rate limit exceeded, please try again later',
-                'fields': [],
-                'retry_after': getattr(e, 'retry_after', 60)  # Default 60 seconds
-            }
+            return self._handle_api_error(e, 'rate_limit_exceeded', 'anthropic', start_time, content, chunk_number, total_chunks)
             
         except anthropic.AuthenticationError as e:
-            # Handle authentication errors
-            self.logger.error(f"Anthropic authentication failed: {e}")
-            return {
-                'success': False,
-                'error': 'authentication_error',
-                'error_message': 'API authentication failed',
-                'fields': []
-            }
+            return self._handle_api_error(e, 'authentication_error', 'anthropic', start_time, content, chunk_number, total_chunks)
             
         except anthropic.APIConnectionError as e:
-            # Handle connection errors
-            self.logger.error(f"Anthropic connection error: {e}")
-            return {
-                'success': False,
-                'error': 'connection_error',
-                'error_message': 'API connection failed',
-                'fields': []
-            }
+            return self._handle_api_error(e, 'connection_error', 'anthropic', start_time, content, chunk_number, total_chunks)
             
         except anthropic.APIStatusError as e:
-            # Handle other API status errors
-            self.logger.error(f"Anthropic API status error: {e}")
-            return {
-                'success': False,
-                'error': 'api_status_error',
-                'error_message': f'API returned status {e.status_code}',
-                'fields': []
-            }
+            return self._handle_api_error(e, 'api_status_error', 'anthropic', start_time, content, chunk_number, total_chunks)
             
         except Exception as e:
-            # Generic fallback for unexpected errors
-            self.logger.error(f"Unexpected Anthropic API error: {e}")
-            return {
-                'success': False,
-                'error': 'unexpected_error',
-                'error_message': f'Unexpected API error: {str(e)}',
-                'fields': []
-            }
+            return self._handle_api_error(e, 'unexpected_error', 'anthropic', start_time, content, chunk_number, total_chunks)
     
-    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
-    def _call_openai(self, system_prompt: str, content: str) -> Dict[str, Any]:
+    def _handle_api_error(self, exception, error_type: str, service: str, start_time, content: str, 
+                         chunk_number=None, total_chunks=None) -> Dict[str, Any]:
         """
-        Call OpenAI API with retry logic and rate limiting detection.
-        Enhanced with proper error classification and rate limit handling.
+        Handle API errors with intelligent recovery strategies.
+        Like having a mechanic diagnose what's wrong and recommend the right fix.
+        
+        Args:
+            exception: The exception that occurred
+            error_type: Type of error for categorization
+            service: Service name ('anthropic' or 'openai')
+            start_time: When the API call started
+            content: Content being processed
+            chunk_number: Chunk number if applicable
+            total_chunks: Total chunks if applicable
+            
+        Returns:
+            Error response with recovery recommendations
+        """
+        end_time = timezone.now()
+        error_message = str(exception)
+        
+        # Categorize the error for recovery strategy
+        error_category = error_recovery_service.categorize_error(error_message, error_type)
+        
+        # Record failure for circuit breaker
+        error_recovery_service.record_failure(service, error_category)
+        
+        # Log failed API usage
+        if self.document:
+            try:
+                APIUsageMonitor.log_api_usage(
+                    document=self.document,
+                    patient=getattr(self.document, 'patient', None),
+                    session_id=self.processing_session,
+                    provider=service,
+                    model=self.primary_model if service == 'anthropic' else self.fallback_model,
+                    input_tokens=len(content) // 4,  # Estimate token count
+                    output_tokens=0,
+                    total_tokens=len(content) // 4,
+                    start_time=start_time,
+                    end_time=end_time,
+                    success=False,
+                    error_message=error_message,
+                    chunk_number=chunk_number,
+                    total_chunks=total_chunks
+                )
+            except Exception as monitor_error:
+                self.logger.error(f"Failed to log API usage: {monitor_error}")
+        
+        # Add failure info to context
+        if self._context_key:
+            context_preservation_service.add_attempt_to_context(self._context_key, {
+                'attempt_number': self._attempt_count,
+                'service': service,
+                'success': False,
+                'error_type': error_type,
+                'error_category': error_category,
+                'error_message': error_message
+            })
+        
+        # Determine if we should retry
+        should_retry = error_recovery_service.should_retry(error_category, self._attempt_count)
+        retry_delay = error_recovery_service.calculate_retry_delay(error_category, self._attempt_count) if should_retry else 0
+        
+        self.logger.warning(f"{service} API error (attempt {self._attempt_count}): {error_message}")
+        
+        response = {
+            'success': False,
+            'error': error_type,
+            'error_message': error_message,
+            'error_category': error_category,
+            'fields': [],
+            'can_retry': should_retry,
+            'retry_delay': retry_delay,
+            'attempt_count': self._attempt_count
+        }
+        
+        # Add retry-specific information
+        if error_type == 'rate_limit_exceeded':
+            response['retry_after'] = getattr(exception, 'retry_after', 60)
+        
+        return response
+    
+    # Keep the original method name for backward compatibility
+    def _call_anthropic(self, system_prompt: str, content: str, chunk_number=None, total_chunks=None) -> Dict[str, Any]:
+        """Backward compatibility wrapper for the enhanced error recovery method."""
+        return self._call_anthropic_with_recovery(system_prompt, content, chunk_number, total_chunks)
+    
+    def _call_openai_with_recovery(self, system_prompt: str, content: str, chunk_number=None, total_chunks=None) -> Dict[str, Any]:
+        """
+        Call OpenAI API with comprehensive error recovery patterns.
+        Like having a backup generator when the power goes out.
         
         Args:
             system_prompt: System prompt for the AI
             content: Document content to analyze
+            chunk_number: For chunked documents, which chunk this is
+            total_chunks: Total number of chunks for this document
             
         Returns:
-            API response results with detailed error classification
+            API response results with intelligent error recovery
         """
+        # Check circuit breaker before attempting
+        if error_recovery_service._is_circuit_open('openai'):
+            self.logger.warning("OpenAI circuit breaker is open, skipping API call")
+            return {
+                'success': False,
+                'error': 'circuit_breaker_open',
+                'error_message': 'Service temporarily unavailable due to repeated failures',
+                'fields': []
+            }
+        
+        start_time = timezone.now()
+        
         try:
             response = self.openai_client.chat.completions.create(
                 model=self.fallback_model,
@@ -981,9 +1117,44 @@ class DocumentAnalyzer:
                 temperature=0.1  # Low temperature for consistent extraction
             )
             
+            end_time = timezone.now()
+            
+            # Record success for circuit breaker
+            error_recovery_service.record_success('openai')
+            
             # Parse the response
             text_response = response.choices[0].message.content
             extracted_fields = self._parse_ai_response(text_response)
+            
+            # Log successful API usage
+            if self.document:
+                try:
+                    APIUsageMonitor.log_api_usage(
+                        document=self.document,
+                        patient=getattr(self.document, 'patient', None),
+                        session_id=self.processing_session,
+                        provider='openai',
+                        model=self.fallback_model,
+                        input_tokens=response.usage.prompt_tokens,
+                        output_tokens=response.usage.completion_tokens,
+                        total_tokens=response.usage.total_tokens,
+                        start_time=start_time,
+                        end_time=end_time,
+                        success=True,
+                        chunk_number=chunk_number,
+                        total_chunks=total_chunks
+                    )
+                except Exception as monitor_error:
+                    self.logger.error(f"Failed to log API usage: {monitor_error}")
+            
+            # Add success info to context
+            if self._context_key:
+                context_preservation_service.add_attempt_to_context(self._context_key, {
+                    'attempt_number': self._attempt_count,
+                    'service': 'openai',
+                    'success': True,
+                    'tokens_used': response.usage.total_tokens
+                })
             
             return {
                 'success': True,
@@ -997,55 +1168,206 @@ class DocumentAnalyzer:
             }
             
         except openai.RateLimitError as e:
-            # Handle rate limiting specifically
-            self.logger.warning(f"OpenAI rate limit exceeded: {e}")
-            return {
-                'success': False,
-                'error': 'rate_limit_exceeded',
-                'error_message': 'API rate limit exceeded, please try again later',
-                'fields': [],
-                'retry_after': getattr(e, 'retry_after', 60)  # Default 60 seconds
-            }
+            return self._handle_api_error(e, 'rate_limit_exceeded', 'openai', start_time, content, chunk_number, total_chunks)
             
         except openai.AuthenticationError as e:
-            # Handle authentication errors
-            self.logger.error(f"OpenAI authentication failed: {e}")
-            return {
-                'success': False,
-                'error': 'authentication_error',
-                'error_message': 'API authentication failed',
-                'fields': []
-            }
+            return self._handle_api_error(e, 'authentication_error', 'openai', start_time, content, chunk_number, total_chunks)
             
         except openai.APIConnectionError as e:
-            # Handle connection errors
-            self.logger.error(f"OpenAI connection error: {e}")
-            return {
-                'success': False,
-                'error': 'connection_error',
-                'error_message': 'API connection failed',
-                'fields': []
-            }
+            return self._handle_api_error(e, 'connection_error', 'openai', start_time, content, chunk_number, total_chunks)
             
         except openai.APIStatusError as e:
-            # Handle other API status errors
-            self.logger.error(f"OpenAI API status error: {e}")
-            return {
-                'success': False,
-                'error': 'api_status_error',
-                'error_message': f'API returned status {e.status_code}',
-                'fields': []
-            }
+            return self._handle_api_error(e, 'api_status_error', 'openai', start_time, content, chunk_number, total_chunks)
             
         except Exception as e:
-            # Generic fallback for unexpected errors
-            self.logger.error(f"Unexpected OpenAI API error: {e}")
-            return {
-                'success': False,
-                'error': 'unexpected_error',
-                'error_message': f'Unexpected API error: {str(e)}',
-                'fields': []
-            }
+            return self._handle_api_error(e, 'unexpected_error', 'openai', start_time, content, chunk_number, total_chunks)
+    
+    # Keep the original method name for backward compatibility
+    def _call_openai(self, system_prompt: str, content: str, chunk_number=None, total_chunks=None) -> Dict[str, Any]:
+        """Backward compatibility wrapper for the enhanced error recovery method."""
+        return self._call_openai_with_recovery(system_prompt, content, chunk_number, total_chunks)
+    
+    def process_with_comprehensive_recovery(self, content: str, context: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Process document with comprehensive error recovery and graceful degradation.
+        Like having a full emergency plan when everything that can go wrong does go wrong.
+        
+        Args:
+            content: Document content to process
+            context: Optional context for processing
+            
+        Returns:
+            Processing results with comprehensive error recovery
+        """
+        system_prompt = self._get_medical_extraction_prompt(context)
+        partial_results = {}
+        error_log = []
+        
+        # Strategy 1: Try Anthropic (Claude) with recovery
+        if self.anthropic_client and not error_recovery_service._is_circuit_open('anthropic'):
+            self.logger.info("Attempting document processing with Anthropic Claude (primary strategy)")
+            result = self._call_anthropic_with_recovery(system_prompt, content)
+            
+            if result['success']:
+                self.logger.info("Document processing successful with Anthropic Claude")
+                return result
+            else:
+                error_log.append(f"Anthropic failed: {result.get('error_message', 'Unknown error')}")
+                
+                # Collect any partial results from failed processing
+                if result.get('fields'):
+                    partial_results.update(result['fields'])
+                
+                # Check if we should retry based on error category
+                if result.get('can_retry') and result.get('retry_delay', 0) > 0:
+                    delay = result['retry_delay']
+                    self.logger.info(f"Anthropic suggests retry in {delay} seconds")
+                    # For now, we'll continue to fallback instead of waiting
+                    # In a production Celery task, you could implement delay here
+        
+        # Strategy 2: Try OpenAI (GPT) as fallback
+        if self.openai_client and not error_recovery_service._is_circuit_open('openai'):
+            self.logger.info("Attempting document processing with OpenAI GPT (fallback strategy)")
+            result = self._call_openai_with_recovery(system_prompt, content)
+            
+            if result['success']:
+                self.logger.info("Document processing successful with OpenAI GPT fallback")
+                return result
+            else:
+                error_log.append(f"OpenAI failed: {result.get('error_message', 'Unknown error')}")
+                
+                # Collect any partial results
+                if result.get('fields'):
+                    partial_results.update(result['fields'])
+        
+        # Strategy 3: Try alternative prompt strategies if services are available but failing
+        if (self.anthropic_client or self.openai_client) and len(error_log) < 4:
+            self.logger.info("Attempting simplified extraction with alternative prompts")
+            
+            # Try with a simpler, more robust prompt
+            simple_prompt = """
+            Extract basic medical information from this document. Return JSON with these fields:
+            - patient_name: Full name if found
+            - date_of_birth: Birth date if found  
+            - medical_record_number: MRN if found
+            - document_date: Date of document
+            - primary_diagnosis: Main diagnosis if found
+            - medications: List of medications if found
+            
+            Return only valid JSON, no explanations.
+            """
+            
+            # Try Anthropic with simpler prompt if circuit not open
+            if self.anthropic_client and not error_recovery_service._is_circuit_open('anthropic'):
+                result = self._call_anthropic_with_recovery(simple_prompt, content)
+                if result['success']:
+                    self.logger.info("Simplified Anthropic extraction successful")
+                    result['extraction_method'] = 'simplified_anthropic'
+                    return result
+                error_log.append(f"Simplified Anthropic failed: {result.get('error_message', 'Unknown error')}")
+            
+            # Try OpenAI with simpler prompt if circuit not open
+            if self.openai_client and not error_recovery_service._is_circuit_open('openai'):
+                result = self._call_openai_with_recovery(simple_prompt, content)
+                if result['success']:
+                    self.logger.info("Simplified OpenAI extraction successful")
+                    result['extraction_method'] = 'simplified_openai'
+                    return result
+                error_log.append(f"Simplified OpenAI failed: {result.get('error_message', 'Unknown error')}")
+        
+        # Strategy 4: Text-based pattern extraction as last resort
+        self.logger.warning("All AI services failed, attempting text pattern extraction")
+        pattern_results = self._extract_with_text_patterns(content)
+        if pattern_results:
+            partial_results.update(pattern_results)
+        
+        # Strategy 5: Graceful degradation - return what we have
+        self.logger.error(f"All processing strategies failed. Error log: {'; '.join(error_log)}")
+        
+        degradation_response = error_recovery_service.create_graceful_degradation_response(
+            document_id=self.document.id if self.document else 0,
+            partial_results=partial_results,
+            error_context=f"All AI services and fallback strategies failed: {'; '.join(error_log)}"
+        )
+        
+        # Add processing attempt history if available
+        if self._context_key:
+            context_data = context_preservation_service.retrieve_processing_context(self._context_key)
+            if context_data:
+                degradation_response['processing_history'] = context_data.get('attempt_history', [])
+        
+        return degradation_response
+    
+    def _extract_with_text_patterns(self, content: str) -> Dict[str, Any]:
+        """
+        Extract medical data using text patterns as a last resort.
+        Like using a basic wrench when all your fancy tools are broken.
+        
+        Args:
+            content: Document content to analyze
+            
+        Returns:
+            Dictionary with any extracted fields
+        """
+        extracted = {}
+        
+        try:
+            # Patient name patterns
+            name_patterns = [
+                r'(?:Patient|Name|PATIENT):\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+                r'(?:Name|NAME):\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+                r'([A-Z][a-z]+,\s*[A-Z][a-z]+)',  # Last, First format
+            ]
+            
+            for pattern in name_patterns:
+                match = re.search(pattern, content)
+                if match:
+                    extracted['patient_name'] = match.group(1).strip()
+                    break
+            
+            # MRN patterns
+            mrn_patterns = [
+                r'(?:MRN|Medical Record|Record Number):\s*([A-Z0-9]+)',
+                r'(?:MRN|MR#):\s*([A-Z0-9]+)',
+                r'(?:ID|Patient ID):\s*([A-Z0-9]+)',
+            ]
+            
+            for pattern in mrn_patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    extracted['medical_record_number'] = match.group(1).strip()
+                    break
+            
+            # Date patterns
+            date_patterns = [
+                r'(?:Date of Birth|DOB|Born):\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+                r'(\d{1,2}[/-]\d{1,2}[/-]\d{4})',  # Basic date format
+            ]
+            
+            for pattern in date_patterns:
+                match = re.search(pattern, content)
+                if match:
+                    extracted['date_of_birth'] = match.group(1).strip()
+                    break
+            
+            # Diagnosis patterns
+            diagnosis_patterns = [
+                r'(?:Diagnosis|DIAGNOSIS|Primary Diagnosis):\s*([^\n\r]+)',
+                r'(?:Impression|IMPRESSION):\s*([^\n\r]+)',
+            ]
+            
+            for pattern in diagnosis_patterns:
+                match = re.search(pattern, content)
+                if match:
+                    extracted['primary_diagnosis'] = match.group(1).strip()
+                    break
+            
+            self.logger.info(f"Text pattern extraction found {len(extracted)} fields")
+            
+        except Exception as e:
+            self.logger.error(f"Text pattern extraction failed: {e}")
+        
+        return extracted
     
     def _get_medical_extraction_prompt(self, context: Optional[str] = None, chunk_info: Optional[Dict] = None) -> str:
         """
@@ -1186,8 +1508,11 @@ class DocumentAnalyzer:
         # Step 2: Create chunks respecting medical section boundaries
         chunks = []
         current_position = 0
+        max_iterations = (len(content) // 1000) + 100  # Safety limit based on content size
+        iteration_count = 0
         
-        while current_position < len(content):
+        while current_position < len(content) and iteration_count < max_iterations:
+            iteration_count += 1
             # Calculate chunk end position
             chunk_end = min(current_position + medical_chunk_size, len(content))
             
@@ -1208,13 +1533,25 @@ class DocumentAnalyzer:
             chunks.append(chunk_with_metadata)
             
             # Move to next chunk position (accounting for overlap)
-            current_position = optimal_break - overlap_chars if optimal_break > overlap_chars else optimal_break
+            next_position = optimal_break - overlap_chars if optimal_break > overlap_chars else optimal_break
+            
+            # Safety check: ensure forward progress to prevent infinite loops
+            if next_position <= current_position:
+                # Force advancement if we're not making progress
+                next_position = current_position + max(1000, medical_chunk_size // 10)
+                self.logger.warning(f"Forced chunk advancement from {current_position} to {next_position} to prevent infinite loop")
+            
+            current_position = next_position
             
             # Safety break to prevent infinite loops
             if current_position >= len(content):
                 break
         
-        self.logger.info(f"Created {len(chunks)} medical-aware chunks with {overlap_chars} character overlap")
+        # Warn if we hit iteration limit (potential runaway condition)
+        if iteration_count >= max_iterations:
+            self.logger.error(f"Hit maximum iteration limit ({max_iterations}) during chunking - possible infinite loop prevented")
+        
+        self.logger.info(f"Created {len(chunks)} medical-aware chunks with {overlap_chars} character overlap after {iteration_count} iterations")
         return chunks
     
     def _analyze_document_structure(self, content: str) -> Dict[str, List[int]]:
@@ -1939,54 +2276,296 @@ Processing Note: This is part of a larger medical document. Context may span mul
         # Everything else
         return 10
     
-    def convert_to_fhir(self, extracted_fields: List[Dict]) -> Dict[str, Any]:
+    def convert_to_fhir(self, extracted_fields: List[Dict], patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Convert extracted fields to basic FHIR format.
-        This is a simplified implementation - full FHIR conversion is complex.
+        Convert extracted medical fields to FHIR resources.
         
         Args:
             extracted_fields: List of extracted field dictionaries
+            patient_id: Optional patient ID for resource references
             
         Returns:
-            Basic FHIR-like structure
+            List of FHIR resource dictionaries ready for accumulation
         """
-        fhir_resources = {
-            "resourceType": "Bundle",
-            "type": "collection",
-            "timestamp": timezone.now().isoformat(),
-            "entry": []
-        }
+        fhir_resources = []
         
-        # Basic mapping of common fields to FHIR resources
-        for field in extracted_fields:
-            label = field.get("label", "").lower()
-            value = field.get("value")
-            confidence = field.get("confidence", 0.0)
+        try:
+            # Group fields by resource type
+            patient_data = {}
+            conditions = []
+            observations = []
+            medications = []
+            practitioners = []
             
-            if not value or confidence < 0.5:  # Skip low-confidence fields
-                continue
+            for field in extracted_fields:
+                label = field.get("label", "").lower()
+                value = field.get("value")
+                confidence = field.get("confidence", 0.0)
+                
+                if not value or confidence < 0.3:  # Skip very low-confidence fields
+                    continue
+                
+                # Categorize field by medical domain
+                if any(term in label for term in ['patient', 'name', 'mrn', 'dob', 'date of birth', 'gender', 'age']):
+                    patient_data[label] = field
+                elif any(term in label for term in ['diagnosis', 'condition', 'problem', 'chief complaint']):
+                    conditions.append(field)
+                elif any(term in label for term in ['medication', 'drug', 'prescription', 'rx']):
+                    medications.append(field)
+                elif any(term in label for term in ['vital', 'blood pressure', 'temperature', 'heart rate', 'weight', 'height']):
+                    observations.append(field)
+                elif any(term in label for term in ['provider', 'doctor', 'physician', 'nurse', 'practitioner']):
+                    practitioners.append(field)
+                else:
+                    # Treat as general observation
+                    observations.append(field)
             
-            # Simple mapping - in production this would be much more sophisticated
-            if any(term in label for term in ['patient', 'name']):
-                # Could be part of Patient resource
-                pass
-            elif any(term in label for term in ['diagnosis', 'condition']):
-                # Could be part of Condition resource  
-                pass
-            elif any(term in label for term in ['medication', 'drug']):
-                # Could be part of MedicationStatement resource
-                pass
-            # Add more mappings as needed
-        
-        # For now, just store the raw extracted data
-        fhir_resources["entry"] = [{
-            "resource": {
-                "resourceType": "DocumentReference",
-                "content": extracted_fields
-            }
-        }]
+            # Create FHIR resources
+            
+            # 1. Create Condition resources
+            for condition_field in conditions:
+                condition_resource = self._create_condition_resource(condition_field, patient_id)
+                if condition_resource:
+                    fhir_resources.append(condition_resource)
+            
+            # 2. Create Observation resources  
+            for obs_field in observations:
+                observation_resource = self._create_observation_resource(obs_field, patient_id)
+                if observation_resource:
+                    fhir_resources.append(observation_resource)
+            
+            # 3. Create MedicationStatement resources
+            for med_field in medications:
+                medication_resource = self._create_medication_resource(med_field, patient_id)
+                if medication_resource:
+                    fhir_resources.append(medication_resource)
+            
+            # 4. Create Practitioner resources
+            for prac_field in practitioners:
+                practitioner_resource = self._create_practitioner_resource(prac_field)
+                if practitioner_resource:
+                    fhir_resources.append(practitioner_resource)
+            
+            # 5. Create DocumentReference resource for extracted data
+            doc_ref_resource = self._create_document_reference_resource(extracted_fields, patient_id)
+            if doc_ref_resource:
+                fhir_resources.append(doc_ref_resource)
+            
+            self.logger.info(f"Converted {len(extracted_fields)} fields to {len(fhir_resources)} FHIR resources")
+            
+        except Exception as e:
+            self.logger.error(f"Error converting to FHIR: {e}", exc_info=True)
+            # Fallback: create basic DocumentReference with raw data
+            fhir_resources = [self._create_document_reference_resource(extracted_fields, patient_id)]
         
         return fhir_resources
+    
+    def _create_condition_resource(self, field: Dict, patient_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create a FHIR Condition resource from extracted field."""
+        try:
+            condition_id = str(uuid4())
+            value = field.get("value", "").strip()
+            
+            if not value:
+                return None
+            
+            # Basic condition resource structure
+            condition = {
+                "resourceType": "Condition",
+                "id": condition_id,
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "code": {
+                    "text": value
+                },
+                "clinicalStatus": {
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                        "code": "active"
+                    }]
+                }
+            }
+            
+            # Add patient reference if available
+            if patient_id:
+                condition["subject"] = {"reference": f"Patient/{patient_id}"}
+            
+            # Add confidence as extension
+            confidence = field.get("confidence", 0.0)
+            if confidence > 0:
+                condition["extension"] = [{
+                    "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                    "valueDecimal": confidence
+                }]
+            
+            return condition
+            
+        except Exception as e:
+            self.logger.error(f"Error creating Condition resource: {e}")
+            return None
+    
+    def _create_observation_resource(self, field: Dict, patient_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create a FHIR Observation resource from extracted field."""
+        try:
+            observation_id = str(uuid4())
+            value = field.get("value", "").strip()
+            label = field.get("label", "").strip()
+            
+            if not value:
+                return None
+            
+            # Basic observation resource structure
+            observation = {
+                "resourceType": "Observation",
+                "id": observation_id,
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "status": "final",
+                "code": {
+                    "text": label
+                },
+                "valueString": value
+            }
+            
+            # Add patient reference if available
+            if patient_id:
+                observation["subject"] = {"reference": f"Patient/{patient_id}"}
+            
+            # Add confidence as extension
+            confidence = field.get("confidence", 0.0)
+            if confidence > 0:
+                observation["extension"] = [{
+                    "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                    "valueDecimal": confidence
+                }]
+            
+            return observation
+            
+        except Exception as e:
+            self.logger.error(f"Error creating Observation resource: {e}")
+            return None
+    
+    def _create_medication_resource(self, field: Dict, patient_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create a FHIR MedicationStatement resource from extracted field."""
+        try:
+            medication_id = str(uuid4())
+            value = field.get("value", "").strip()
+            
+            if not value:
+                return None
+            
+            # Basic medication statement resource structure
+            medication = {
+                "resourceType": "MedicationStatement",
+                "id": medication_id,
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "status": "active",
+                "medicationCodeableConcept": {
+                    "text": value
+                }
+            }
+            
+            # Add patient reference if available
+            if patient_id:
+                medication["subject"] = {"reference": f"Patient/{patient_id}"}
+            
+            # Add confidence as extension
+            confidence = field.get("confidence", 0.0)
+            if confidence > 0:
+                medication["extension"] = [{
+                    "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                    "valueDecimal": confidence
+                }]
+            
+            return medication
+            
+        except Exception as e:
+            self.logger.error(f"Error creating MedicationStatement resource: {e}")
+            return None
+    
+    def _create_practitioner_resource(self, field: Dict) -> Optional[Dict[str, Any]]:
+        """Create a FHIR Practitioner resource from extracted field."""
+        try:
+            practitioner_id = str(uuid4())
+            value = field.get("value", "").strip()
+            
+            if not value:
+                return None
+            
+            # Basic practitioner resource structure
+            practitioner = {
+                "resourceType": "Practitioner",
+                "id": practitioner_id,
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "name": [{
+                    "text": value
+                }]
+            }
+            
+            # Add confidence as extension
+            confidence = field.get("confidence", 0.0)
+            if confidence > 0:
+                practitioner["extension"] = [{
+                    "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                    "valueDecimal": confidence
+                }]
+            
+            return practitioner
+            
+        except Exception as e:
+            self.logger.error(f"Error creating Practitioner resource: {e}")
+            return None
+    
+    def _create_document_reference_resource(self, extracted_fields: List[Dict], patient_id: Optional[str] = None) -> Dict[str, Any]:
+        """Create a FHIR DocumentReference resource for the extracted data."""
+        try:
+            doc_ref_id = str(uuid4())
+            
+            # Basic document reference resource structure
+            doc_reference = {
+                "resourceType": "DocumentReference",
+                "id": doc_ref_id,
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "status": "current",
+                "type": {
+                    "text": "Medical Document Analysis"
+                },
+                "content": [{
+                    "attachment": {
+                        "title": "Extracted Medical Data",
+                        "data": extracted_fields  # Store raw extracted data
+                    }
+                }]
+            }
+            
+            # Add patient reference if available
+            if patient_id:
+                doc_reference["subject"] = {"reference": f"Patient/{patient_id}"}
+            
+            return doc_reference
+            
+        except Exception as e:
+            self.logger.error(f"Error creating DocumentReference resource: {e}")
+            # Return minimal structure
+            return {
+                "resourceType": "DocumentReference",
+                "id": str(uuid4()),
+                "status": "current",
+                "content": [{"attachment": {"data": extracted_fields}}]
+            }
 
 
 # ============================================================================

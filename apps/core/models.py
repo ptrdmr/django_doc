@@ -11,6 +11,73 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 import json
 
 
+class SoftDeleteManager(models.Manager):
+    """
+    Custom manager to exclude soft-deleted records from default queries.
+    """
+    def get_queryset(self):
+        """
+        Return a queryset that excludes records with a `deleted_at` timestamp.
+        """
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
+class BaseModel(models.Model):
+    """
+    Abstract base model with common audit fields.
+    All app models should inherit from this for consistency.
+    """
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User, 
+        on_delete=models.PROTECT, 
+        null=True, 
+        blank=True,
+        related_name='%(class)s_created'
+    )
+    updated_by = models.ForeignKey(
+        User, 
+        on_delete=models.PROTECT, 
+        null=True, 
+        blank=True,
+        related_name='%(class)s_updated'
+    )
+    
+    class Meta:
+        abstract = True
+
+
+class MedicalRecord(BaseModel):
+    """
+    Abstract base model for all medical data models.
+    
+    Includes soft-delete functionality and uses the SoftDeleteManager
+    to ensure deleted records don't appear in default queries.
+    """
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    
+    objects = SoftDeleteManager()
+    all_objects = models.Manager()  # Access all records including deleted
+    
+    class Meta:
+        abstract = True
+
+    def delete(self, using=None, keep_parents=False):
+        """
+        Override the default delete method to perform a soft delete.
+        """
+        self.deleted_at = timezone.now()
+        self.save()
+
+    def undelete(self):
+        """
+        Restore a soft-deleted record.
+        """
+        self.deleted_at = None
+        self.save()
+
+
 class AuditLog(models.Model):
     """
     Comprehensive audit log for HIPAA compliance.
@@ -87,9 +154,9 @@ class AuditLog(models.Model):
     request_method = models.CharField(max_length=10, blank=True)
     request_url = models.URLField(blank=True)
     
-    # Generic foreign key for related objects
+    # Generic foreign key for related objects (supports both integer IDs and UUIDs)
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, null=True, blank=True)
-    object_id = models.PositiveIntegerField(null=True, blank=True)
+    object_id = models.CharField(max_length=50, null=True, blank=True)  # Support both integer IDs and UUIDs
     content_object = GenericForeignKey('content_type', 'object_id')
     
     # Event details
@@ -359,27 +426,143 @@ class ComplianceReport(models.Model):
         return f"{self.report_type} Report - {self.period_start.date()} to {self.period_end.date()}"
 
 
-class BaseModel(models.Model):
+class APIUsageLog(models.Model):
     """
-    Abstract base model with common audit fields.
-    All app models should inherit from this for consistency.
+    Comprehensive API usage tracking for cost monitoring and analytics.
+    Tracks all AI API calls with token counts, costs, and performance metrics.
     """
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(
-        User, 
-        on_delete=models.PROTECT, 
-        null=True, 
-        blank=True,
-        related_name='%(class)s_created'
+    
+    # Provider choices
+    PROVIDER_CHOICES = [
+        ('anthropic', 'Anthropic (Claude)'),
+        ('openai', 'OpenAI (GPT)'),
+    ]
+    
+    # Session and relationship fields
+    document = models.ForeignKey(
+        'documents.Document',
+        on_delete=models.CASCADE,
+        related_name='api_usage_logs',
+        help_text="Document being processed"
     )
-    updated_by = models.ForeignKey(
-        User, 
-        on_delete=models.PROTECT, 
-        null=True, 
+    patient = models.ForeignKey(
+        'patients.Patient',
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        related_name='%(class)s_updated'
+        related_name='api_usage_logs',
+        help_text="Patient associated with the document"
+    )
+    processing_session = models.UUIDField(
+        help_text="Unique identifier for processing session (handles multi-chunk docs)"
+    )
+    
+    # API details
+    provider = models.CharField(
+        max_length=50,
+        choices=PROVIDER_CHOICES,
+        db_index=True,
+        help_text="AI service provider used"
+    )
+    model = models.CharField(
+        max_length=100,
+        db_index=True,
+        help_text="Specific AI model used (e.g., claude-3-sonnet, gpt-3.5-turbo)"
+    )
+    
+    # Token counts (critical for cost calculation)
+    input_tokens = models.PositiveIntegerField(
+        help_text="Number of input tokens sent to API"
+    )
+    output_tokens = models.PositiveIntegerField(
+        help_text="Number of output tokens received from API"
+    )
+    total_tokens = models.PositiveIntegerField(
+        help_text="Total tokens used (input + output)"
+    )
+    
+    # Cost tracking in USD
+    cost_usd = models.DecimalField(
+        max_digits=10,
+        decimal_places=6,
+        help_text="Calculated cost in USD for this API call"
+    )
+    
+    # Performance metrics
+    processing_started = models.DateTimeField(
+        help_text="When API call was initiated"
+    )
+    processing_completed = models.DateTimeField(
+        help_text="When API call completed"
+    )
+    processing_duration_ms = models.PositiveIntegerField(
+        help_text="Processing time in milliseconds"
+    )
+    
+    # Status tracking
+    success = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Whether the API call succeeded"
+    )
+    error_message = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Error message if API call failed"
+    )
+    
+    # Additional context
+    chunk_number = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="For chunked documents, which chunk this was (1-based)"
+    )
+    total_chunks = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Total number of chunks for this document"
+    )
+    
+    # Metadata
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        help_text="When this log entry was created"
     )
     
     class Meta:
-        abstract = True
+        db_table = 'api_usage_logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['document']),
+            models.Index(fields=['patient']),
+            models.Index(fields=['processing_session']),
+            models.Index(fields=['provider', 'model']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['success', 'created_at']),
+            models.Index(fields=['cost_usd']),
+        ]
+        
+    def __str__(self):
+        """String representation of API usage log."""
+        status = "✅" if self.success else "❌"
+        return f"{status} {self.provider}/{self.model} - {self.total_tokens} tokens (${self.cost_usd:.4f})"
+    
+    @property
+    def duration_seconds(self):
+        """Get processing duration in seconds."""
+        return self.processing_duration_ms / 1000.0
+    
+    @property
+    def tokens_per_second(self):
+        """Calculate tokens processed per second."""
+        if self.processing_duration_ms > 0:
+            return (self.total_tokens * 1000) / self.processing_duration_ms
+        return 0
+    
+    @property
+    def cost_per_token(self):
+        """Calculate cost per token in USD."""
+        if self.total_tokens > 0:
+            return float(self.cost_usd) / self.total_tokens
+        return 0.0

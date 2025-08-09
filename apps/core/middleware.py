@@ -31,7 +31,7 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         # Content Security Policy - very strict for medical data
         csp_directives = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline'",  # Allow inline scripts for htmx/Alpine.js
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com",  # Allow unpkg CDN for Alpine.js and htmx
             "style-src 'self' 'unsafe-inline'",   # Allow inline styles for Tailwind
             "img-src 'self' data:",               # Allow data URLs for icons
             "font-src 'self'",

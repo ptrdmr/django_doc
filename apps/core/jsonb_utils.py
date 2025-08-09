@@ -5,8 +5,61 @@ Handles FHIR data storage and retrieval using PostgreSQL JSONB fields
 
 import json
 from typing import Dict, List, Any, Optional
+from datetime import datetime, date
 from django.db import connection
 from django.conf import settings
+
+
+class FHIRJSONEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder for FHIR data that handles datetime serialization
+    Converts datetime objects to ISO-8601 strings for PostgreSQL JSONB storage
+    """
+    
+    def default(self, obj):
+        """Convert datetime objects to ISO-8601 strings for JSON serialization"""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        elif isinstance(obj, date):
+            return obj.isoformat()
+        return super().default(obj)
+
+
+def get_reference_value(reference_field):
+    """
+    Extract reference string from either dict or Reference object
+    
+    Args:
+        reference_field: Either dict with 'reference' key or Reference object
+        
+    Returns:
+        str: Reference value or None if not found
+    """
+    if reference_field is None:
+        return None
+    
+    # Handle dict-style access
+    if isinstance(reference_field, dict):
+        return reference_field.get('reference')
+    
+    # Handle Reference object access
+    if hasattr(reference_field, 'reference'):
+        return reference_field.reference
+    
+    return None
+
+
+def serialize_fhir_data(data):
+    """
+    Serialize FHIR data for database storage with proper datetime handling
+    
+    Args:
+        data: FHIR data structure (dict, list, or primitive)
+        
+    Returns:
+        JSON-serializable data with datetime objects converted to strings
+    """
+    return json.loads(json.dumps(data, cls=FHIRJSONEncoder))
 
 
 class FHIRJSONBManager:
