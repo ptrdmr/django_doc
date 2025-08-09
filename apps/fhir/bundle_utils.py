@@ -10,7 +10,7 @@ error handling and validation.
 """
 
 from typing import Optional, List, Dict, Any, Union, Type, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 import json
 import hashlib
@@ -29,6 +29,7 @@ from .fhir_models import (
     PractitionerResource,
     ProvenanceResource
 )
+from apps.core.jsonb_utils import get_reference_value
 
 
 def create_initial_patient_bundle(
@@ -480,8 +481,12 @@ def _compare_observations(
     if code1 != code2:
         return False
     
-    # Compare patient references
-    if obs1.subject != obs2.subject:
+    # Compare patient references using helper
+    subj1 = getattr(obs1, 'subject', None)
+    subj2 = getattr(obs2, 'subject', None)
+    ref1 = get_reference_value(subj1)
+    ref2 = get_reference_value(subj2)
+    if ref1 != ref2:
         return False
     
     # Compare effective dates within tolerance
@@ -489,12 +494,12 @@ def _compare_observations(
         try:
             # Handle both datetime objects and strings
             if isinstance(obs1.effectiveDateTime, datetime):
-                date1 = obs1.effectiveDateTime
+                date1 = obs1.effectiveDateTime if obs1.effectiveDateTime.tzinfo else obs1.effectiveDateTime.replace(tzinfo=timezone.utc)
             else:
                 date1 = datetime.fromisoformat(obs1.effectiveDateTime.replace('Z', '+00:00'))
                 
             if isinstance(obs2.effectiveDateTime, datetime):
-                date2 = obs2.effectiveDateTime
+                date2 = obs2.effectiveDateTime if obs2.effectiveDateTime.tzinfo else obs2.effectiveDateTime.replace(tzinfo=timezone.utc)
             else:
                 date2 = datetime.fromisoformat(obs2.effectiveDateTime.replace('Z', '+00:00'))
             
@@ -507,8 +512,15 @@ def _compare_observations(
             return False
     
     # Compare values
-    value1 = obs1.get_value_with_unit()
-    value2 = obs2.get_value_with_unit()
+    # Value comparison with fallback
+    value1 = getattr(obs1, 'get_value_with_unit', lambda: None)()
+    if value1 is None and hasattr(obs1, 'valueQuantity') and obs1.valueQuantity:
+        v = obs1.valueQuantity
+        value1 = f"{getattr(v, 'value', None)} {getattr(v, 'unit', '')}".strip()
+    value2 = getattr(obs2, 'get_value_with_unit', lambda: None)()
+    if value2 is None and hasattr(obs2, 'valueQuantity') and obs2.valueQuantity:
+        v = obs2.valueQuantity
+        value2 = f"{getattr(v, 'value', None)} {getattr(v, 'unit', '')}".strip()
     
     return value1 == value2
 
@@ -525,19 +537,28 @@ def _compare_conditions(cond1: ConditionResource, cond2: ConditionResource) -> b
         True if conditions are clinically equivalent
     """
     # Compare condition codes
-    code1 = cond1.get_condition_code()
-    code2 = cond2.get_condition_code()
+    # Fallback to code.coding[0].code when wrapper helper absent
+    code1 = getattr(cond1, 'get_condition_code', lambda: None)()
+    if code1 is None and getattr(cond1, 'code', None) and getattr(cond1.code, 'coding', None):
+        code1 = cond1.code.coding[0].code
+    code2 = getattr(cond2, 'get_condition_code', lambda: None)()
+    if code2 is None and getattr(cond2, 'code', None) and getattr(cond2.code, 'coding', None):
+        code2 = cond2.code.coding[0].code
     
     if code1 != code2:
         return False
     
     # Compare patient references
-    if cond1.subject != cond2.subject:
+    subj1 = getattr(cond1, 'subject', None)
+    subj2 = getattr(cond2, 'subject', None)
+    ref1 = getattr(subj1, 'reference', None) if subj1 is not None and hasattr(subj1, 'reference') else (subj1.get('reference') if isinstance(subj1, dict) else None)
+    ref2 = getattr(subj2, 'reference', None) if subj2 is not None and hasattr(subj2, 'reference') else (subj2.get('reference') if isinstance(subj2, dict) else None)
+    if ref1 != ref2:
         return False
     
     # Compare clinical status
-    status1 = cond1.clinicalStatus.coding[0].code if cond1.clinicalStatus and cond1.clinicalStatus.coding else None
-    status2 = cond2.clinicalStatus.coding[0].code if cond2.clinicalStatus and cond2.clinicalStatus.coding else None
+    status1 = cond1.clinicalStatus.coding[0].code if getattr(cond1, 'clinicalStatus', None) and cond1.clinicalStatus.coding else None
+    status2 = cond2.clinicalStatus.coding[0].code if getattr(cond2, 'clinicalStatus', None) and cond2.clinicalStatus.coding else None
     
     return status1 == status2
 
@@ -788,10 +809,20 @@ def get_resource_version_history(
             versions.append(entry.resource)
     
     # Sort by version ID (latest first)
-    versions.sort(
-        key=lambda r: int(r.meta.versionId) if r.meta and r.meta.versionId else 0,
-        reverse=True
-    )
+    # Handle both integer versions and historical versions like "1.historical"
+    def get_sort_key(resource):
+        if not resource.meta or not resource.meta.versionId:
+            return 0
+        
+        version_str = str(resource.meta.versionId)
+        # Extract the numeric part before any period
+        numeric_part = version_str.split('.')[0]
+        try:
+            return int(numeric_part)
+        except (ValueError, TypeError):
+            return 0
+    
+    versions.sort(key=get_sort_key, reverse=True)
     
     return versions
 
@@ -1490,8 +1521,14 @@ def _extract_observations_summary(
         filtered_observations = []
         for observation in patient_observations:
             obs_date = _get_observation_date(observation)
-            if obs_date and date_range[0] <= obs_date <= date_range[1]:
-                filtered_observations.append(observation)
+            if obs_date:
+                # Normalize to timezone-aware
+                if obs_date.tzinfo is None:
+                    obs_date = obs_date.replace(tzinfo=timezone.utc)
+                start = date_range[0].replace(tzinfo=timezone.utc) if date_range[0].tzinfo is None else date_range[0]
+                end = date_range[1].replace(tzinfo=timezone.utc) if date_range[1].tzinfo is None else date_range[1]
+                if start <= obs_date <= end:
+                    filtered_observations.append(observation)
         patient_observations = filtered_observations
     
     # Sort by date (most recent first)
@@ -1578,7 +1615,7 @@ def _extract_documents_summary(
         patient_documents = filtered_documents
     
     # Sort by date (most recent first)
-    patient_documents.sort(key=lambda d: _get_document_date(d) or datetime.min, reverse=True)
+    patient_documents.sort(key=lambda d: (_get_document_date(d) or datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
     
     # Limit results
     patient_documents = patient_documents[:max_items]

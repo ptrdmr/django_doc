@@ -1012,7 +1012,7 @@ class LargeDocumentChunkingTests(TestCase):
         Phone: (555) 123-4567
         Insurance: Blue Cross Blue Shield
         Emergency Contact: John Johnson (spouse) - (555) 987-6543
-        """ * 50  # Repeat to make it large
+        """ * 80  # Repeat to make it large enough for chunking
         
         # Diagnosis Section  
         diagnoses = """
@@ -1030,7 +1030,7 @@ class LargeDocumentChunkingTests(TestCase):
         Assessment: Patient shows signs of poorly controlled diabetes with possible
         diabetic complications. Blood glucose levels elevated. Requires medication
         adjustment and lifestyle counseling.
-        """ * 40  # Repeat to make it large
+        """ * 60  # Repeat to make it large
         
         # Medications Section
         medications = """
@@ -1048,7 +1048,7 @@ class LargeDocumentChunkingTests(TestCase):
         - Atorvastatin dose increased from 20mg to 40mg
         
         Allergies: NKDA (No Known Drug Allergies)
-        """ * 35  # Repeat to make it large
+        """ * 55  # Repeat to make it large
         
         # Lab Results Section
         lab_results = """

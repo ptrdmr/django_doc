@@ -58,7 +58,6 @@ services:
       - DEBUG=1
     volumes:
       - .:/app
-      - static_volume:/app/staticfiles
       - media_volume:/app/media
       - logs_volume:/app/logs
     ports:
@@ -70,7 +69,6 @@ services:
         condition: service_healthy
     command: >
       sh -c "python manage.py migrate &&
-             python manage.py collectstatic --noinput &&
              python manage.py runserver 0.0.0.0:8000"
     networks:
       - meddocparser_network
@@ -100,6 +98,12 @@ services:
       redis:
         condition: service_healthy
     command: celery -A meddocparser worker --loglevel=info --queues=document_processing,fhir_processing
+    healthcheck:
+      test: ["CMD", "sh", "-c", "ps aux | grep 'celery worker' | grep -v grep"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - meddocparser_network
 
@@ -127,6 +131,12 @@ services:
       redis:
         condition: service_healthy
     command: celery -A meddocparser beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    healthcheck:
+      test: ["CMD", "sh", "-c", "ps aux | grep 'celery beat' | grep -v grep"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - meddocparser_network
 
@@ -144,13 +154,18 @@ services:
     depends_on:
       - redis
     command: celery -A meddocparser flower --port=5555
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - meddocparser_network
 
 volumes:
   postgres_data:
   redis_data:
-  static_volume:
   media_volume:
   logs_volume:
 

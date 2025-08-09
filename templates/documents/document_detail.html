@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.filename }} - Document Details{% endblock %}
+
+{% block content %}
+<div class="p-6">
+    <!-- Header with breadcrumbs -->
+    <div class="mb-6">
+        <nav class="flex mb-4" aria-label="Breadcrumb">
+            <ol class="inline-flex items-center space-x-1 md:space-x-3">
+                <li class="inline-flex items-center">
+                    <a href="{% url 'documents:list' %}" class="text-blue-600 hover:text-blue-800">
+                        Documents
+                    </a>
+                </li>
+                <li>
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 text-gray-400 mx-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span class="text-gray-500">{{ document.filename }}</span>
+                    </div>
+                </li>
+            </ol>
+        </nav>
+        
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">{{ document.filename }}</h1>
+                    <p class="text-gray-600">Patient: {{ document.patient.first_name }} {{ document.patient.last_name }}</p>
+                </div>
+            </div>
+            
+            <!-- Status Badge -->
+            <div class="flex items-center space-x-3">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
+                    {% if document.status == 'completed' %}bg-green-100 text-green-800
+                    {% elif document.status == 'failed' %}bg-red-100 text-red-800
+                    {% elif document.status == 'processing' %}bg-blue-100 text-blue-800
+                    {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                    {{ document.get_status_display }}
+                </span>
+                
+                {% if document.status == 'failed' and can_retry %}
+                    <form method="post" action="{% url 'documents:retry' document.pk %}" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center px-3 py-1 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            Retry Processing
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Document Information -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Basic Information Card -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div class="p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Document Information</h2>
+                    
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">File Size</dt>
+                            <dd class="mt-1 text-sm text-gray-900">
+                                {% if document.file_size %}
+                                    {{ file_size_mb }} MB
+                                {% else %}
+                                    Unknown
+                                {% endif %}
+                            </dd>
+                        </div>
+                        
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Uploaded</dt>
+                            <dd class="mt-1 text-sm text-gray-900">{{ document.uploaded_at|date:"M j, Y g:i A" }}</dd>
+                        </div>
+                        
+                        {% if document.processing_started_at %}
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Processing Started</dt>
+                            <dd class="mt-1 text-sm text-gray-900">{{ document.processing_started_at|date:"M j, Y g:i A" }}</dd>
+                        </div>
+                        {% endif %}
+                        
+                        {% if document.processed_at %}
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Processing Completed</dt>
+                            <dd class="mt-1 text-sm text-gray-900">{{ document.processed_at|date:"M j, Y g:i A" }}</dd>
+                        </div>
+                        {% endif %}
+                        
+                        {% if processing_duration %}
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Processing Duration</dt>
+                            <dd class="mt-1 text-sm text-gray-900">{{ processing_duration|floatformat:1 }} seconds</dd>
+                        </div>
+                        {% endif %}
+                        
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Uploaded By</dt>
+                            <dd class="mt-1 text-sm text-gray-900">
+                                {% if document.created_by %}
+                                    {{ document.created_by.get_full_name|default:document.created_by.username }}
+                                {% else %}
+                                    Unknown User
+                                {% endif %}
+                            </dd>
+                        </div>
+                        
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Processing Attempts</dt>
+                            <dd class="mt-1 text-sm text-gray-900">{{ document.processing_attempts }}</dd>
+                        </div>
+                    </dl>
+                    
+                    {% if document.notes %}
+                    <div class="mt-6">
+                        <dt class="text-sm font-medium text-gray-500">Notes</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ document.notes }}</dd>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Error Information (if failed) -->
+            {% if document.status == 'failed' and document.error_message %}
+            <div class="bg-red-50 border border-red-200 rounded-lg">
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold text-red-900 mb-2">Processing Error</h3>
+                    <p class="text-sm text-red-700">{{ document.error_message }}</p>
+                    
+                    {% if can_retry %}
+                    <div class="mt-4">
+                        <form method="post" action="{% url 'documents:retry' document.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                                Retry Processing
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Extracted Text Preview -->
+            {% if document.original_text %}
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Extracted Text Preview</h3>
+                    <div class="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                        <pre class="text-sm text-gray-700 whitespace-pre-wrap">{{ document.original_text|truncatewords:100 }}</pre>
+                    </div>
+                    {% if document.original_text|length > 500 %}
+                    <p class="mt-2 text-sm text-gray-500">
+                        Showing first 100 words of {{ document.original_text|length }} total characters extracted.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Parsed Data Information -->
+            {% if parsed_data %}
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">AI Extraction Results</h3>
+                    
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        {% if parsed_data.ai_model_used %}
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">AI Model</dt>
+                            <dd class="mt-1 text-sm text-gray-900">{{ parsed_data.ai_model_used }}</dd>
+                        </div>
+                        {% endif %}
+                        
+                        {% if parsed_data.extraction_confidence %}
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Confidence Score</dt>
+                            <dd class="mt-1 text-sm text-gray-900">{{ parsed_data.extraction_confidence|floatformat:2 }}</dd>
+                        </div>
+                        {% endif %}
+                        
+                        {% if parsed_data.processing_time_seconds %}
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Processing Time</dt>
+                            <dd class="mt-1 text-sm text-gray-900">{{ parsed_data.processing_time_seconds|floatformat:2 }} seconds</dd>
+                        </div>
+                        {% endif %}
+                        
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">FHIR Resources</dt>
+                            <dd class="mt-1 text-sm text-gray-900">{{ parsed_data.get_fhir_resource_count }} extracted</dd>
+                        </div>
+                    </dl>
+                    
+                    {% if parsed_data.review_notes %}
+                    <div class="mt-4">
+                        <dt class="text-sm font-medium text-gray-500">Review Notes</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ parsed_data.review_notes }}</dd>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="space-y-6">
+            <!-- Patient Information -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Patient</h3>
+                    
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900">{{ document.patient.first_name }} {{ document.patient.last_name }}</p>
+                            <p class="text-xs text-gray-500">MRN: {{ document.patient.mrn }}</p>
+                        </div>
+                    </div>
+                    
+                    <a href="#" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                        View Patient Profile →
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Associated Providers -->
+            {% if document.providers.exists %}
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Associated Providers</h3>
+                    
+                    <div class="space-y-3">
+                        {% for provider in document.providers.all %}
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-900">{{ provider.first_name }} {{ provider.last_name }}</p>
+                                <p class="text-xs text-gray-500">{{ provider.specialty|default:"Provider" }}</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Quick Actions -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                    
+                    <div class="space-y-2">
+                        <a href="{% url 'documents:upload' %}" class="block w-full text-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Upload Another Document
+                        </a>
+                        
+                        <a href="{% url 'documents:list' %}" class="block w-full text-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            View All Documents
+                        </a>
+                        
+                        {% if document.file %}
+                        <a href="{{ document.file.url }}" target="_blank" class="block w-full text-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Download Original File
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

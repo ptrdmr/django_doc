@@ -28,48 +28,7 @@ from django.db import models
 from django.utils import timezone
 from django.conf import settings
 
-from apps.core.models import BaseModel
-
-
-class SoftDeleteManager(models.Manager):
-    """
-    Custom manager to exclude soft-deleted records from default queries.
-    """
-    def get_queryset(self):
-        """
-        Return a queryset that excludes records with a `deleted_at` timestamp.
-        """
-        return super().get_queryset().filter(deleted_at__isnull=True)
-
-
-class MedicalRecord(BaseModel):
-    """
-    Abstract base model for all medical data models.
-    
-    Includes soft-delete functionality and uses the SoftDeleteManager
-    to ensure deleted records don't appear in default queries.
-    """
-    deleted_at = models.DateTimeField(null=True, blank=True)
-    
-    objects = SoftDeleteManager()
-    all_objects = models.Manager()  # Access all records including deleted
-    
-    class Meta:
-        abstract = True
-
-    def delete(self, using=None, keep_parents=False):
-        """
-        Override the default delete method to perform a soft delete.
-        """
-        self.deleted_at = timezone.now()
-        self.save()
-
-    def undelete(self):
-        """
-        Restore a soft-deleted record.
-        """
-        self.deleted_at = None
-        self.save()
+from apps.core.models import BaseModel, MedicalRecord
 
 
 class Patient(MedicalRecord):
@@ -156,6 +115,7 @@ class PatientHistory(BaseModel):
             ('created', 'Patient Created'),
             ('updated', 'Patient Updated'),
             ('fhir_append', 'FHIR Resources Added'),
+            ('fhir_history_preserved', 'FHIR Historical Data Preserved'),
             ('document_processed', 'Document Processed'),
         ]
     )

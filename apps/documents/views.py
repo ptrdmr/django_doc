@@ -3,14 +3,15 @@ Document upload and processing views.
 """
 import logging
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import CreateView, ListView, DetailView
+from django.views.generic import CreateView, ListView, DetailView, View
 from django.urls import reverse_lazy
 from django.contrib import messages
 from django.db import IntegrityError, DatabaseError, OperationalError
-from django.shortcuts import render, redirect
-from django.http import JsonResponse
+from django.shortcuts import render, redirect, get_object_or_404
+from django.http import JsonResponse, HttpResponse
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.template.loader import render_to_string
 
 from .models import Document
 from .forms import DocumentUploadForm
@@ -344,36 +345,36 @@ class DocumentDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
-class DocumentRetryView(LoginRequiredMixin, DetailView):
+class DocumentRetryView(LoginRequiredMixin, View):
     """
-    Handle document processing retry.
+    Handle document processing retry with enhanced error handling.
     """
-    model = Document
     http_method_names = ['post']
     
     def post(self, request, *args, **kwargs):
         """
-        Retry document processing.
+        Retry document processing with comprehensive error handling.
         
         Args:
             request: HTTP request
             
         Returns:
-            HttpResponse: Redirect or error response
+            HttpResponse: JSON response for AJAX or redirect for regular form
         """
-        document = self.get_object()
+        document_id = kwargs.get('pk')
+        document = get_object_or_404(
+            Document.objects.filter(created_by=request.user),
+            pk=document_id
+        )
         
         try:
             if document.can_retry_processing():
                 # Reset status and increment attempts
                 document.status = 'pending'
                 document.error_message = ''
-                document.increment_processing_attempts()
-                
-                messages.success(
-                    request,
-                    f"Document '{document.filename}' has been queued for reprocessing."
-                )
+                document.processing_started_at = None
+                document.processing_completed_at = None
+                document.save()
                 
                 # Trigger async PDF processing
                 from .tasks import process_document_async
@@ -381,27 +382,194 @@ class DocumentRetryView(LoginRequiredMixin, DetailView):
                 
                 logger.info(f"Document {document.id} queued for retry by user {request.user.id}")
                 
+                success_message = f"Document '{document.filename}' has been queued for reprocessing."
+                
+                # Return JSON response for AJAX requests
+                if request.headers.get('Content-Type') == 'application/json':
+                    return JsonResponse({
+                        'success': True,
+                        'message': success_message,
+                        'status': 'pending'
+                    })
+                else:
+                    messages.success(request, success_message)
+                    return redirect('documents:detail', pk=document.pk)
+                
             else:
-                messages.error(
-                    request,
-                    "This document cannot be retried. Maximum retry attempts reached."
-                )
-            
-            return redirect('documents:detail', pk=document.pk)
+                error_message = "This document cannot be retried. Maximum retry attempts reached."
+                
+                if request.headers.get('Content-Type') == 'application/json':
+                    return JsonResponse({
+                        'success': False,
+                        'message': error_message
+                    })
+                else:
+                    messages.error(request, error_message)
+                    return redirect('documents:detail', pk=document.pk)
             
         except Exception as retry_error:
             logger.error(f"Error retrying document processing: {retry_error}")
-            messages.error(
-                request,
-                "There was an error retrying the document processing. Please try again."
-            )
-            return redirect('documents:detail', pk=document.pk)
+            error_message = "There was an error retrying the document processing. Please try again."
+            
+            if request.headers.get('Content-Type') == 'application/json':
+                return JsonResponse({
+                    'success': False,
+                    'message': error_message
+                })
+            else:
+                messages.error(request, error_message)
+                return redirect('documents:detail', pk=document.pk)
+
+
+class ProcessingStatusAPIView(LoginRequiredMixin, View):
+    """
+    API endpoint for real-time processing status monitoring.
+    """
     
-    def get_queryset(self):
+    def get(self, request):
         """
-        Ensure user can only retry their own documents.
+        Get current processing status for documents.
         
         Returns:
-            QuerySet: Filtered document queryset
+            JsonResponse: Processing status data
         """
-        return Document.objects.filter(created_by=self.request.user)
+        try:
+            # Get processing documents for current user
+            processing_docs = Document.objects.filter(
+                created_by=request.user,
+                status__in=['processing', 'pending']
+            ).select_related('patient').order_by('-uploaded_at')[:10]
+            
+            # Get recently completed or failed documents (last 5 minutes)
+            recent_cutoff = timezone.now() - timezone.timedelta(minutes=5)
+            recent_docs = Document.objects.filter(
+                created_by=request.user,
+                status__in=['completed', 'failed'],
+                processed_at__gte=recent_cutoff
+            ).select_related('patient').order_by('-processed_at')[:5]
+            
+            processing_data = []
+            for doc in processing_docs:
+                processing_data.append({
+                    'id': doc.id,
+                    'filename': doc.filename,
+                    'status': doc.status,
+                    'status_display': doc.get_status_display(),
+                    'patient_name': f"{doc.patient.first_name} {doc.patient.last_name}",
+                    'uploaded_at': doc.uploaded_at.isoformat(),
+                })
+            
+            recent_data = []
+            for doc in recent_docs:
+                recent_data.append({
+                    'id': doc.id,
+                    'filename': doc.filename,
+                    'status': doc.status,
+                    'status_display': doc.get_status_display(),
+                    'patient_name': f"{doc.patient.first_name} {doc.patient.last_name}",
+                    'completed_at': doc.processing_completed_at.isoformat() if doc.processing_completed_at else None,
+                })
+            
+            return JsonResponse({
+                'success': True,
+                'processing_documents': processing_data,
+                'recent_documents': recent_data,
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except Exception as status_error:
+            logger.error(f"Error getting processing status: {status_error}")
+            return JsonResponse({
+                'success': False,
+                'error': 'Unable to fetch processing status'
+            }, status=500)
+
+
+class RecentUploadsAPIView(LoginRequiredMixin, View):
+    """
+    API endpoint for refreshing recent uploads list.
+    """
+    
+    def get(self, request):
+        """
+        Get updated recent uploads HTML.
+        
+        Returns:
+            HttpResponse: Rendered HTML for recent uploads
+        """
+        try:
+            recent_uploads = Document.objects.filter(
+                created_by=request.user
+            ).select_related('patient').order_by('-uploaded_at')[:5]
+            
+            # Render just the upload items
+            html = render_to_string(
+                'documents/partials/recent_uploads_list.html',
+                {'recent_uploads': recent_uploads}
+            )
+            
+            return HttpResponse(html)
+            
+        except Exception as uploads_error:
+            logger.error(f"Error getting recent uploads: {uploads_error}")
+            return HttpResponse(
+                '<div class="text-center py-4 text-red-600">Error loading uploads</div>'
+            )
+
+
+class DocumentPreviewAPIView(LoginRequiredMixin, View):
+    """
+    API endpoint for document preview functionality.
+    """
+    
+    def get(self, request, pk):
+        """
+        Get document preview data.
+        
+        Args:
+            request: HTTP request
+            pk: Document primary key
+            
+        Returns:
+            JsonResponse: Document preview data
+        """
+        try:
+            document = get_object_or_404(
+                Document.objects.filter(created_by=request.user),
+                pk=pk
+            )
+            
+            preview_data = {
+                'id': document.id,
+                'filename': document.filename,
+                'status': document.status,
+                'status_display': document.get_status_display(),
+                'file_size': document.file_size,
+                'file_size_display': f"{document.file_size / (1024 * 1024):.1f} MB" if document.file_size else "Unknown",
+                'uploaded_at': document.uploaded_at.isoformat(),
+                'patient': {
+                    'name': f"{document.patient.first_name} {document.patient.last_name}",
+                    'mrn': document.patient.mrn,
+                },
+                'providers': [
+                    f"{p.first_name} {p.last_name}" 
+                    for p in document.providers.all()
+                ],
+                'notes': document.notes,
+                'original_text_preview': document.original_text[:500] + '...' if document.original_text and len(document.original_text) > 500 else document.original_text,
+                'error_message': document.error_message,
+                'processing_attempts': getattr(document, 'processing_attempts', 0),
+                'can_retry': document.can_retry_processing() if hasattr(document, 'can_retry_processing') else False,
+            }
+            
+            return JsonResponse({
+                'success': True,
+                'document': preview_data
+            })
+            
+        except Exception as preview_error:
+            logger.error(f"Error getting document preview: {preview_error}")
+            return JsonResponse({
+                'success': False,
+                'error': 'Unable to load document preview'
+            }, status=500)

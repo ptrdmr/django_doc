@@ -547,36 +547,30 @@ class ProviderDetailView(LoginRequiredMixin, DetailView):
     
     def get_linked_patients(self):
         """
-        Get patients linked to this provider.
-        
-        TODO: This will work once Document and DocumentProvider models are implemented.
-        For now, returns empty queryset with appropriate logging.
+        Get patients linked to this provider through documents.
         
         Returns:
-            QuerySet: Linked patients (empty for now)
+            QuerySet: Linked patients
         """
         try:
-            # TODO: Uncomment when Document and DocumentProvider models exist
-            # return self.object.get_patients()
-            logger.info(f"Provider {self.object.npi} - patient linking not yet available")
-            return []
+            # Get patients linked through documents
+            from apps.patients.models import Patient
+            patient_ids = self.object.documents.values_list('patient_id', flat=True).distinct()
+            return Patient.objects.filter(id__in=patient_ids).select_related()
         except (DatabaseError, OperationalError) as patients_error:
             logger.error(f"Error loading linked patients for provider {self.object.id}: {patients_error}")
             messages.warning(self.request, "Some patient information may not be available.")
-            return []
+            return Patient.objects.none()
     
     def get_document_count(self):
         """
         Get count of documents associated with this provider.
         
-        TODO: This will work once DocumentProvider model is implemented.
-        For now, returns 0.
-        
         Returns:
-            int: Document count (0 for now)
+            int: Document count
         """
         try:
-            return self.object.get_document_count()
+            return self.object.documents.count()
         except (DatabaseError, OperationalError) as doc_error:
             logger.error(f"Error getting document count for provider {self.object.id}: {doc_error}")
             return 0
@@ -624,8 +618,13 @@ class ProviderDetailView(LoginRequiredMixin, DetailView):
             # Add provider history
             context['provider_history'] = self.get_provider_history()
             
-            # Add linked patients (empty for now)
-            context['linked_patients'] = self.get_linked_patients()
+            # Add linked patients
+            linked_patients = self.get_linked_patients()
+            context['linked_patients'] = linked_patients
+            context['linked_patients_count'] = len(linked_patients)
+            
+            # Add provider's documents
+            context['provider_documents'] = self.object.documents.select_related('patient', 'created_by').order_by('-uploaded_at')
             
             # Add history statistics
             context['history_stats'] = self.get_history_statistics()

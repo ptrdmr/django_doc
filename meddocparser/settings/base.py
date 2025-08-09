@@ -421,9 +421,9 @@ LOGGING = {
 ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default=None)
 OPENAI_API_KEY = config('OPENAI_API_KEY', default=None)
 
-# AI Model Configuration
-AI_MODEL_PRIMARY = config('AI_MODEL_PRIMARY', default='claude-3-sonnet-20240229')
-AI_MODEL_FALLBACK = config('AI_MODEL_FALLBACK', default='gpt-3.5-turbo')
+# AI Model Configuration  
+AI_MODEL_PRIMARY = config('AI_MODEL_PRIMARY', default='claude-3-5-sonnet-20240620')
+AI_MODEL_FALLBACK = config('AI_MODEL_FALLBACK', default='gpt-4o-mini')
 
 # Token Limits and Cost Controls
 AI_MAX_TOKENS_PER_REQUEST = config('AI_MAX_TOKENS_PER_REQUEST', default=4096, cast=int)

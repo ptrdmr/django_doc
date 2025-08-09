@@ -1,0 +1,137 @@
+# Task ID: 10
+# Title: Implement User Account Management
+# Status: pending
+# Dependencies: 2
+# Priority: low
+# Description: Create the user account management module with profile, preferences, and activity history.
+# Details:
+Implement user account management:
+
+1. Extend Django User model with profile:
+```python
+class UserProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
+    organization = models.CharField(max_length=200, blank=True)
+    job_title = models.CharField(max_length=100, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    preferences = models.JSONField(default=dict)
+    
+    def __str__(self):
+        return f"Profile for {self.user.username}"
+```
+
+2. Create UserActivity model for tracking:
+```python
+class UserActivity(models.Model):
+    ACTIVITY_TYPES = [
+        ('login', 'Login'),
+        ('logout', 'Logout'),
+        ('upload', 'Document Upload'),
+        ('process', 'Document Processing'),
+        ('patient', 'Patient Management'),
+        ('provider', 'Provider Management'),
+        ('report', 'Report Generation'),
+        ('account', 'Account Management'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='activities')
+    activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES)
+    description = models.CharField(max_length=255)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    related_object_type = models.CharField(max_length=50, blank=True)
+    related_object_id = models.PositiveIntegerField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.activity_type} - {self.timestamp}"
+```
+
+3. Create signal to create profile on user creation:
+```python
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def save_user_profile(sender, instance, **kwargs):
+    instance.profile.save()
+```
+
+4. Create middleware for tracking user activity:
+```python
+class UserActivityMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+    
+    def __call__(self, request):
+        response = self.get_response(request)
+        
+        # Only track authenticated users
+        if request.user.is_authenticated:
+            # Track certain activities based on request
+            if request.method == 'POST':
+                if '/documents/upload/' in request.path:
+                    self._record_activity(request, 'upload', 'Uploaded document')
+                elif '/patients/' in request.path and 'create' in request.path:
+                    self._record_activity(request, 'patient', 'Created patient')
+                # Add more activity tracking...
+        
+        return response
+    
+    def _record_activity(self, request, activity_type, description):
+        UserActivity.objects.create(
+            user=request.user,
+            activity_type=activity_type,
+            description=description,
+            ip_address=self._get_client_ip(request)
+        )
+    
+    def _get_client_ip(self, request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+```
+
+5. Implement views for:
+   - User profile view/edit
+   - Password change
+   - Preferences management
+   - Activity history view
+
+6. Create templates for user account management
+
+Example user profile view:
+```python
+class UserProfileView(LoginRequiredMixin, UpdateView):
+    model = UserProfile
+    template_name = 'accounts/profile.html'
+    fields = ['organization', 'job_title', 'phone']
+    success_url = reverse_lazy('accounts:profile')
+    
+    def get_object(self, queryset=None):
+        return self.request.user.profile
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['recent_activities'] = UserActivity.objects.filter(
+            user=self.request.user
+        ).order_by('-timestamp')[:10]
+        return context
+```
+
+# Test Strategy:
+1. Test user profile creation on user registration
+2. Test profile update functionality
+3. Verify password change works correctly
+4. Test preferences management
+5. Verify activity tracking middleware
+6. Test activity history display
+7. Test with multiple users
+8. Verify proper access controls

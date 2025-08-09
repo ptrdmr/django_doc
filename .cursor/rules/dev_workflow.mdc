@@ -1,8 +1,3 @@
----
-description: Guide for using Task Master to manage task-driven development workflows
-globs: **/*
-alwaysApply: true
----
 # Task Master Development Workflow
 
 This guide outlines the typical process for using Task Master to manage software development projects.
@@ -274,6 +269,33 @@ Once a task has been broken down into subtasks using `expand_task` or similar me
 - **Top-Level Function Search**:
     - Useful for understanding module structure or planning refactors.
     - Use grep/ripgrep to find exported functions/constants:
+      `rg "export (async function|function|const) \w+"` or similar patterns.
+    - Can help compare functions between files during migrations or identify potential naming conflicts.
+
+---
+*This workflow provides a general guideline. Adapt it based on your specific project needs and team practices.*
+
+## **CRITICAL: Always Update Documentation When Tasks Complete**
+
+When using Task Master tools to mark tasks or subtasks as complete, **ALWAYS** update the relevant documentation in the `docs/` directory.
+
+### **Documentation Date & Time Reference**
+
+**Before updating any documentation:**
+1. **Read `.current-context`** file to get the current date and time
+2. **Use the LAST_UPDATED timestamp** from that file for all documentation updates
+3. **Format as**: `*Updated: YYYY-MM-DD HH:MM:SS | Description of changes*`
+
+Example from `.current-context`:
+```
+CURRENT_DATE="2025-08-05"
+LAST_UPDATED="2025-08-05 20:14:02"
+```
+
+Should result in documentation footer:
+```
+*Updated: 2025-08-05 20:14:02 | Added Task X implementation details*
+```
       `rg "export (async function|function|const) \w+"` or similar patterns.
     - Can help compare functions between files during migrations or identify potential naming conflicts.
 

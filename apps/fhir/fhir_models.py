@@ -40,6 +40,58 @@ class PatientResource(FHIRPatient):
     """
     
     @classmethod
+    def _convert_django_gender_to_fhir(cls, gender: Optional[str]) -> Optional[str]:
+        """
+        Convert Django Patient model gender codes to FHIR gender values.
+        
+        Django uses single letters (M, F, O) while FHIR uses full words.
+        
+        Args:
+            gender: Django gender code ('M', 'F', 'O') or None
+            
+        Returns:
+            FHIR gender value ('male', 'female', 'other', 'unknown') or None
+        """
+        if not gender:
+            return None
+            
+        gender_mapping = {
+            'M': 'male',
+            'F': 'female', 
+            'O': 'other'
+        }
+        
+        return gender_mapping.get(gender.upper(), 'unknown')
+    
+    @classmethod
+    def from_patient_model(cls, patient_model) -> 'PatientResource':
+        """
+        Create a PatientResource from a Django Patient model instance.
+        
+        Args:
+            patient_model: Django Patient model instance
+            
+        Returns:
+            PatientResource instance
+        """
+        # Convert Django gender code to FHIR gender value
+        fhir_gender = cls._convert_django_gender_to_fhir(
+            patient_model.gender if hasattr(patient_model, 'gender') else None
+        )
+        
+        return cls.create_from_demographics(
+            mrn=patient_model.mrn,
+            first_name=patient_model.first_name,
+            last_name=patient_model.last_name,
+            birth_date=patient_model.date_of_birth,
+            patient_id=str(patient_model.id),
+            gender=fhir_gender,
+            phone=None,  # Add phone field to Patient model if needed
+            email=None,  # Add email field to Patient model if needed
+            address=None  # Add address fields to Patient model if needed
+        )
+    
+    @classmethod
     def create_from_demographics(
         cls,
         mrn: str,
@@ -796,7 +848,7 @@ class ProvenanceResource(FHIRProvenance):
         # Create meta
         meta = Meta(
             versionId="1",
-            lastUpdated=occurred_at.isoformat() + "Z"
+            lastUpdated=occurred_at
         )
         
         # Build provenance resource
@@ -804,8 +856,8 @@ class ProvenanceResource(FHIRProvenance):
             "id": provenance_id,
             "meta": meta,
             "target": target,
-            "occurredDateTime": occurred_at.isoformat() + "Z",
-            "recorded": occurred_at.isoformat() + "Z",
+            "occurredDateTime": occurred_at,
+            "recorded": occurred_at,
             "activity": activity,
             "agent": agent
         }

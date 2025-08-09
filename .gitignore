@@ -76,8 +76,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # Task Master files
-tasks.json
-tasks/
 
 # Coverage reports
 htmlcov/
@@ -92,3 +90,13 @@ coverage.xml
 logs/
 *.log
 dev-debug.log 
+
+logs
+# Dependency directories
+# Editor directories and files
+.idea
+.vscode
+
+# Task files
+# tasks.json
+# tasks/ 

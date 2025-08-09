@@ -190,6 +190,11 @@ class Document(BaseModel):
         """Increment the processing attempts counter."""
         self.processing_attempts += 1
         self.save(update_fields=['processing_attempts'])
+    
+    @property
+    def processing_completed_at(self):
+        """Alias for processed_at to maintain consistency with view expectations."""
+        return self.processed_at
 
 
 class ParsedData(BaseModel):

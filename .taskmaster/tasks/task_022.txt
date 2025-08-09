@@ -1,0 +1,457 @@
+# Task ID: 22
+# Title: Implement Role-Based Access Control System
+# Status: pending
+# Dependencies: 2, 20
+# Priority: high
+# Description: Create a comprehensive role-based access control system with user permissions management, IP-based access restrictions, and other access control mechanisms to ensure HIPAA compliance.
+# Details:
+Implement a role-based access control (RBAC) system for HIPAA compliance:
+
+1. Define User Roles and Permissions:
+```python
+# In accounts/models.py
+from django.contrib.auth.models import Group, Permission
+from django.db import models
+
+class Role(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField()
+    permissions = models.ManyToManyField(Permission, related_name='roles')
+    
+    def __str__(self):
+        return self.name
+
+# Extend User model with roles and IP restrictions
+class UserProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
+    roles = models.ManyToManyField(Role, related_name='users')
+    allowed_ip_ranges = models.JSONField(default=list, blank=True)
+    last_login_ip = models.GenericIPAddressField(null=True, blank=True)
+    require_mfa = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.user.username}'s profile"
+```
+
+2. Create Permission Decorators:
+```python
+# In accounts/decorators.py
+from django.contrib.auth.decorators import user_passes_test
+from django.core.exceptions import PermissionDenied
+from django.http import HttpRequest
+from ipaddress import ip_address, ip_network
+
+def has_permission(permission_codename):
+    """Decorator to check if user has specific permission"""
+    def decorator(view_func):
+        def wrapped_view(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                return redirect('login')
+                
+            # Check direct permissions
+            if request.user.has_perm(permission_codename):
+                return view_func(request, *args, **kwargs)
+                
+            # Check role-based permissions
+            try:
+                profile = request.user.profile
+                for role in profile.roles.all():
+                    if role.permissions.filter(codename=permission_codename.split('.')[-1]).exists():
+                        return view_func(request, *args, **kwargs)
+            except:
+                pass
+                
+            raise PermissionDenied("You don't have permission to access this resource")
+        return wrapped_view
+    return decorator
+
+def has_role(role_name):
+    """Decorator to check if user has specific role"""
+    def decorator(view_func):
+        def wrapped_view(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                return redirect('login')
+                
+            try:
+                profile = request.user.profile
+                if profile.roles.filter(name=role_name).exists():
+                    return view_func(request, *args, **kwargs)
+            except:
+                pass
+                
+            raise PermissionDenied("You don't have the required role to access this resource")
+        return wrapped_view
+    return decorator
+
+def ip_restriction(view_func):
+    """Decorator to enforce IP-based access restrictions"""
+    def wrapped_view(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('login')
+            
+        try:
+            profile = request.user.profile
+            client_ip = ip_address(request.META.get('REMOTE_ADDR'))
+            
+            # If no IP restrictions are set, allow access
+            if not profile.allowed_ip_ranges:
+                return view_func(request, *args, **kwargs)
+                
+            # Check if client IP is in allowed ranges
+            for ip_range in profile.allowed_ip_ranges:
+                if client_ip in ip_network(ip_range):
+                    # Update last login IP
+                    profile.last_login_ip = str(client_ip)
+                    profile.save(update_fields=['last_login_ip'])
+                    return view_func(request, *args, **kwargs)
+                    
+            # Log unauthorized IP access attempt
+            from accounts.utils import log_security_event
+            log_security_event(request.user, 'IP_RESTRICTION_VIOLATION', 
+                              f"Access attempt from unauthorized IP: {client_ip}")
+                              
+            raise PermissionDenied("Access denied from your current IP address")
+        except Exception as e:
+            # Log the error
+            logger.error(f"IP restriction error: {str(e)}")
+            raise PermissionDenied("IP verification error")
+            
+    return wrapped_view
+```
+
+3. Implement Access Control Middleware:
+```python
+# In accounts/middleware.py
+from django.conf import settings
+from django.http import HttpResponseForbidden
+from django.urls import resolve
+
+class AccessControlMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # Skip middleware for authentication-related paths
+        path = request.path_info
+        if path.startswith('/admin/') or path.startswith('/accounts/login/') or path.startswith('/static/'):
+            return self.get_response(request)
+            
+        # Check if user is authenticated
+        if not request.user.is_authenticated:
+            # Allow access to public views if defined
+            view_func = resolve(path).func
+            if getattr(view_func, 'allow_public', False):
+                return self.get_response(request)
+            return HttpResponseForbidden("Authentication required")
+            
+        # Log access for audit purposes
+        from accounts.utils import log_access_event
+        log_access_event(request)
+        
+        # Continue with the request
+        response = self.get_response(request)
+        return response
+```
+
+4. Create Permission Management Views:
+```python
+# In accounts/views.py
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from .models import Role, UserProfile
+from .forms import RoleForm, UserProfileForm
+from .decorators import has_role
+
+@login_required
+@has_role('admin')
+def role_list(request):
+    roles = Role.objects.all()
+    return render(request, 'accounts/role_list.html', {'roles': roles})
+
+@login_required
+@has_role('admin')
+def role_create(request):
+    if request.method == 'POST':
+        form = RoleForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Role created successfully')
+            return redirect('role_list')
+    else:
+        form = RoleForm()
+    return render(request, 'accounts/role_form.html', {'form': form})
+
+@login_required
+@has_role('admin')
+def user_permissions(request, user_id):
+    user_profile = get_object_or_404(UserProfile, user_id=user_id)
+    if request.method == 'POST':
+        form = UserProfileForm(request.POST, instance=user_profile)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'User permissions updated successfully')
+            return redirect('user_list')
+    else:
+        form = UserProfileForm(instance=user_profile)
+    return render(request, 'accounts/user_permissions.html', {'form': form, 'user_profile': user_profile})
+```
+
+5. Create Database Fixtures for Default Roles:
+```python
+# accounts/fixtures/default_roles.json
+[
+  {
+    "model": "accounts.role",
+    "pk": 1,
+    "fields": {
+      "name": "admin",
+      "description": "Full system access with all permissions"
+    }
+  },
+  {
+    "model": "accounts.role",
+    "pk": 2,
+    "fields": {
+      "name": "provider",
+      "description": "Healthcare provider with access to patient records and document parsing"
+    }
+  },
+  {
+    "model": "accounts.role",
+    "pk": 3,
+    "fields": {
+      "name": "staff",
+      "description": "Administrative staff with limited access to patient information"
+    }
+  },
+  {
+    "model": "accounts.role",
+    "pk": 4,
+    "fields": {
+      "name": "auditor",
+      "description": "Read-only access to audit logs and system reports"
+    }
+  }
+]
+```
+
+6. Update Settings and URLs:
+```python
+# In settings/base.py
+MIDDLEWARE = [
+    # ... other middleware
+    'accounts.middleware.AccessControlMiddleware',
+]
+
+# In accounts/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # ... other URLs
+    path('roles/', views.role_list, name='role_list'),
+    path('roles/create/', views.role_create, name='role_create'),
+    path('users/<int:user_id>/permissions/', views.user_permissions, name='user_permissions'),
+]
+```
+
+7. Apply Permissions Throughout Application:
+```python
+# Example usage in views
+from accounts.decorators import has_permission, has_role, ip_restriction
+
+@login_required
+@has_permission('patients.view_patient')
+@ip_restriction
+def patient_detail(request, patient_id):
+    # View implementation
+    
+@login_required
+@has_role('provider')
+@ip_restriction
+def document_upload(request):
+    # View implementation
+```
+
+8. Create Management Commands:
+```python
+# In accounts/management/commands/create_default_roles.py
+from django.core.management.base import BaseCommand
+from django.core.management import call_command
+
+class Command(BaseCommand):
+    help = 'Creates default roles and permissions'
+
+    def handle(self, *args, **options):
+        self.stdout.write('Creating default roles...')
+        call_command('loaddata', 'default_roles')
+        self.stdout.write(self.style.SUCCESS('Default roles created successfully'))
+```
+
+# Test Strategy:
+To verify the implementation of the Role-Based Access Control System:
+
+1. Unit Tests:
+   - Create test cases for the Role and UserProfile models:
+     ```python
+     from django.test import TestCase
+     from django.contrib.auth.models import User, Permission
+     from accounts.models import Role, UserProfile
+     
+     class RoleModelTest(TestCase):
+         def setUp(self):
+             self.role = Role.objects.create(name='test_role', description='Test role')
+             self.permission = Permission.objects.get(codename='add_patient')
+             self.role.permissions.add(self.permission)
+             
+         def test_role_creation(self):
+             self.assertEqual(self.role.name, 'test_role')
+             self.assertEqual(self.role.permissions.count(), 1)
+     
+     class UserProfileTest(TestCase):
+         def setUp(self):
+             self.user = User.objects.create_user(username='testuser', password='password')
+             self.profile = UserProfile.objects.create(user=self.user)
+             self.role = Role.objects.create(name='test_role', description='Test role')
+             self.profile.roles.add(self.role)
+             
+         def test_profile_roles(self):
+             self.assertEqual(self.profile.roles.count(), 1)
+             self.assertEqual(self.profile.roles.first().name, 'test_role')
+     ```
+
+2. Test Decorators:
+   - Create test cases for permission decorators:
+     ```python
+     from django.test import TestCase, RequestFactory
+     from django.contrib.auth.models import User, Permission
+     from django.http import HttpResponse
+     from accounts.models import Role, UserProfile
+     from accounts.decorators import has_permission, has_role, ip_restriction
+     
+     class DecoratorTests(TestCase):
+         def setUp(self):
+             self.factory = RequestFactory()
+             self.user = User.objects.create_user(username='testuser', password='password')
+             self.profile = UserProfile.objects.create(user=self.user)
+             self.role = Role.objects.create(name='test_role', description='Test role')
+             self.permission = Permission.objects.get(codename='view_patient')
+             self.role.permissions.add(self.permission)
+             self.profile.roles.add(self.role)
+             
+             # Define test view
+             @has_permission('patients.view_patient')
+             def test_view(request):
+                 return HttpResponse('Success')
+             self.test_view = test_view
+             
+         def test_has_permission_decorator(self):
+             request = self.factory.get('/')
+             request.user = self.user
+             response = self.test_view(request)
+             self.assertEqual(response.status_code, 200)
+             self.assertEqual(response.content, b'Success')
+     ```
+
+3. Integration Tests:
+   - Test middleware and view integration:
+     ```python
+     from django.test import TestCase, Client
+     from django.contrib.auth.models import User
+     from accounts.models import Role, UserProfile
+     
+     class AccessControlIntegrationTest(TestCase):
+         def setUp(self):
+             self.client = Client()
+             self.admin_user = User.objects.create_user(username='admin', password='password')
+             self.admin_profile = UserProfile.objects.create(user=self.admin_user)
+             self.admin_role = Role.objects.create(name='admin', description='Admin role')
+             self.admin_profile.roles.add(self.admin_role)
+             
+             self.staff_user = User.objects.create_user(username='staff', password='password')
+             self.staff_profile = UserProfile.objects.create(user=self.staff_user)
+             self.staff_role = Role.objects.create(name='staff', description='Staff role')
+             self.staff_profile.roles.add(self.staff_role)
+             
+         def test_role_based_access(self):
+             # Admin should access admin pages
+             self.client.login(username='admin', password='password')
+             response = self.client.get('/accounts/roles/')
+             self.assertEqual(response.status_code, 200)
+             
+             # Staff should not access admin pages
+             self.client.login(username='staff', password='password')
+             response = self.client.get('/accounts/roles/')
+             self.assertEqual(response.status_code, 403)
+     ```
+
+4. IP Restriction Tests:
+   - Test IP-based access controls:
+     ```python
+     from django.test import TestCase, RequestFactory
+     from django.contrib.auth.models import User
+     from accounts.models import UserProfile
+     from accounts.decorators import ip_restriction
+     from django.http import HttpResponse
+     
+     class IPRestrictionTest(TestCase):
+         def setUp(self):
+             self.factory = RequestFactory()
+             self.user = User.objects.create_user(username='testuser', password='password')
+             self.profile = UserProfile.objects.create(user=self.user)
+             self.profile.allowed_ip_ranges = ['192.168.1.0/24']
+             self.profile.save()
+             
+             @ip_restriction
+             def test_view(request):
+                 return HttpResponse('Success')
+             self.test_view = test_view
+             
+         def test_allowed_ip(self):
+             request = self.factory.get('/')
+             request.user = self.user
+             request.META['REMOTE_ADDR'] = '192.168.1.100'
+             response = self.test_view(request)
+             self.assertEqual(response.status_code, 200)
+             
+         def test_blocked_ip(self):
+             request = self.factory.get('/')
+             request.user = self.user
+             request.META['REMOTE_ADDR'] = '10.0.0.1'
+             with self.assertRaises(PermissionDenied):
+                 self.test_view(request)
+     ```
+
+5. Manual Testing:
+   - Create test users with different roles and verify access controls:
+     1. Create admin, provider, staff, and auditor users
+     2. Attempt to access various parts of the application with each user
+     3. Verify that users can only access resources appropriate to their roles
+     4. Test IP restrictions by accessing from allowed and disallowed IP addresses
+     5. Verify that permission changes take effect immediately
+
+6. Security Testing:
+   - Perform security testing to ensure access controls cannot be bypassed:
+     1. Attempt to access protected resources without authentication
+     2. Try to access resources with insufficient permissions
+     3. Test URL manipulation to bypass access controls
+     4. Verify that session expiration works correctly
+     5. Test that IP restrictions are properly enforced
+
+7. Audit Log Verification:
+   - Verify that access control events are properly logged:
+     1. Attempt various access scenarios (successful and failed)
+     2. Check audit logs to ensure events are recorded with:
+        - User information
+        - IP address
+        - Timestamp
+        - Resource accessed
+        - Success/failure status
+     3. Verify that security violations trigger appropriate alerts
+
+8. Performance Testing:
+   - Test the performance impact of access control mechanisms:
+     1. Measure response times with and without access control middleware
+     2. Test with a large number of roles and permissions
+     3. Ensure that caching mechanisms are working correctly for permission checks

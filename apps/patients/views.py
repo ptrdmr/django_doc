@@ -322,6 +322,9 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             # Add history statistics
             context['history_stats'] = self.get_history_statistics()
             
+            # Add patient's documents
+            context['patient_documents'] = self.object.documents.select_related('created_by').order_by('-uploaded_at')
+            
             # Add breadcrumb data
             context['breadcrumbs'] = [
                 {'name': 'Home', 'url': '/'},
