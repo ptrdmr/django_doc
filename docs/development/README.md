@@ -8,6 +8,74 @@
 3. **Documentation**: Update relevant docs when completing tasks/features
 4. **Testing**: Write tests for new functionality
 5. **Security**: Consider HIPAA compliance in all medical data handling
+6. **🔒 PHI Encryption**: All patient data automatically encrypted - use model methods transparently
+
+### 🔒 Hybrid Encryption Development Patterns - Task 21 Complete ✅
+
+**Working with Encrypted Patient Data:**
+
+```python
+# ✅ DO: Use model fields transparently (automatic encryption/decryption)
+patient = Patient.objects.create(
+    mrn="12345",
+    first_name="John",        # Automatically encrypted
+    last_name="Doe",          # Automatically encrypted
+    date_of_birth="1980-01-01"  # Automatically encrypted
+)
+
+# ✅ DO: Access encrypted fields normally
+full_name = patient.full_name  # Returns "John Doe" (decrypted)
+age = patient.age              # Calculates age from encrypted DOB
+
+# ✅ DO: Use date helper methods for encrypted date fields
+birth_date = patient.get_date_of_birth()  # Returns datetime.date object
+patient.set_date_of_birth(date(1980, 1, 1))  # Sets encrypted date field
+```
+
+**Working with FHIR Data:**
+
+```python
+# ✅ DO: Add FHIR resources (automatically encrypted + searchable metadata extracted)
+patient.add_fhir_resources([condition_resource, encounter_resource])
+
+# ✅ DO: Generate comprehensive reports (decrypts FHIR data)
+report = patient.get_comprehensive_report()
+
+# ✅ DO: Search using fast unencrypted metadata (zero PHI exposure)
+from apps.patients.utils import search_patients_by_medical_code
+diabetic_patients = search_patients_by_medical_code("http://snomed.info/sct", "73211009")
+```
+
+**Working with Documents:**
+
+```python
+# ✅ DO: Document fields automatically encrypted
+document = Document.objects.create(
+    patient=patient,
+    file=uploaded_file,       # EncryptedFileField
+    notes="Sensitive notes",  # Automatically encrypted
+    original_text="PDF text" # Automatically encrypted  
+)
+
+# ✅ DO: Access encrypted content transparently
+content = document.original_text  # Returns decrypted text
+notes = document.notes            # Returns decrypted notes
+```
+
+**❌ DON'T: Common Encryption Mistakes**
+
+```python
+# ❌ DON'T: Try to manually encrypt/decrypt fields
+patient.first_name = encrypt_manually(name)  # django-cryptography handles this
+
+# ❌ DON'T: Access raw database fields directly
+cursor.execute("SELECT first_name FROM patients WHERE...")  # Returns encrypted bytea
+
+# ❌ DON'T: Log PHI in plaintext
+logger.info(f"Processing patient {patient.first_name}")  # PHI exposure!
+# ✅ DO: Log safely
+logger.info(f"Processing patient ID {patient.id}")
+```
 
 ### Project Structure
 

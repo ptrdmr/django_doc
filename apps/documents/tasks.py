@@ -4,6 +4,7 @@ Handles async document parsing and FHIR data extraction.
 """
 
 from celery import shared_task
+from meddocparser.celery import app
 import time
 import logging
 from django.utils import timezone
@@ -45,19 +46,19 @@ def test_celery_task(self, message="Hello from Celery!"):
         raise self.retry(exc=exc, countdown=60, max_retries=3)
 
 
-@shared_task(bind=True)
-def process_document_async(self, document_id):
+@shared_task(bind=True, name="apps.documents.tasks.process_document_async", acks_late=True)
+def process_document_async(self, document_id: int):
     """
-    Process medical documents asynchronously with PDF text extraction and AI analysis.
+    Asynchronous task to process an uploaded medical document.
+    This task handles PDF text extraction, AI analysis, and FHIR data accumulation.
+    It's designed to be robust, with retries and comprehensive error logging.
+    """
+    # Ensure Django is set up before importing models
+    import django
+    django.setup()
     
-    Args:
-        document_id (int): ID of the document to process
-        
-    Returns:
-        dict: Processing result with extracted text and AI analysis information
-    """
     from .models import Document
-    from .services import PDFTextExtractor, DocumentAnalyzer
+    from .services import PDFTextExtractor, DocumentAnalyzer, APIRateLimitError
     
     try:
         logger.info(f"Starting document processing for document {document_id}")
@@ -129,9 +130,9 @@ def process_document_async(self, document_id):
                     provider = document.providers.first()
                     context = f"{provider.name} - {provider.specialty}" if hasattr(provider, 'specialty') else provider.name
                 
-                # Perform AI analysis with comprehensive error recovery and graceful degradation
-                ai_result = ai_analyzer.process_with_comprehensive_recovery(
-                    content=extraction_result['text'],
+                # DIRECT FIX: Call analyze_document directly to bypass any issues in process_with_comprehensive_recovery
+                ai_result = ai_analyzer.analyze_document(
+                    document_content=extraction_result['text'],
                     context=context
                 )
                 
@@ -231,6 +232,26 @@ def process_document_async(self, document_id):
                     if hasattr(document, 'ai_model_used'):
                         document.ai_model_used = ai_result.get('model_used', 'unknown')
                     
+                    # CRITICAL FIX: Create ParsedData record
+                    try:
+                        from .models import ParsedData
+                        
+                        parsed_data = ParsedData.objects.create(
+                            document=document,
+                            patient=document.patient,
+                            extraction_json=ai_result.get('fields', []),
+                            fhir_delta_json=fhir_resources if fhir_resources else {},
+                            extraction_confidence=ai_result.get('confidence', 0.0),
+                            ai_model_used=ai_result.get('model_used', 'unknown'),
+                            processing_time_seconds=ai_result.get('processing_time', 0.0)  # Model has processing_time_seconds, not processing_duration_ms
+                        )
+                        
+                        logger.info(f"Created ParsedData record {parsed_data.id} for document {document_id}")
+                        
+                    except Exception as pd_exc:
+                        logger.error(f"Failed to create ParsedData for document {document_id}: {pd_exc}")
+                        # Don't fail the task, but log the error
+                    
                 else:
                     logger.warning(f"AI analysis failed for document {document_id}: {ai_result.get('error', 'Unknown error')}")
                     # Don't fail the entire task if AI fails - PDF extraction was successful
@@ -243,6 +264,22 @@ def process_document_async(self, document_id):
                     'error': str(ai_exc),
                     'fields': []
                 }
+        
+        # FINAL CHECK: If AI analysis failed or was skipped, mark document as failed
+        if not ai_result or not ai_result.get('success'):
+            logger.error(f"AI analysis failed for document {document_id}. Marking document status as 'failed'.")
+            document.status = 'failed'
+            document.error_message = f"AI analysis failed: {ai_result.get('error', 'No content to analyze') if ai_result else 'No content to analyze'}"
+            document.processed_at = timezone.now()
+            document.save()
+            
+            # Return a failure result
+            return {
+                'success': False,
+                'document_id': document_id,
+                'status': 'failed',
+                'error_message': document.error_message
+            }
         
         # Mark document as completed
         document.status = 'completed'
@@ -279,6 +316,10 @@ def process_document_async(self, document_id):
         logger.info(f"Document {document_id} processing completed successfully")
         return result
         
+    except APIRateLimitError as exc:
+        logger.warning(f"Rate limit exceeded for document {document_id}. Retrying task.")
+        raise self.retry(exc=exc, countdown=60, max_retries=5) # Retry after 60s
+        
     except Exception as exc:
         # Handle unexpected errors
         logger.error(f"Document processing failed for {document_id}: {exc}")
@@ -304,7 +345,6 @@ def process_document_async(self, document_id):
                 'success': False,
                 'document_id': document_id,
                 'status': 'failed',
-                'task_id': self.request.id,
                 'error_message': f"Processing failed after max retries: {str(exc)}",
                 'message': 'Document processing failed permanently'
             }

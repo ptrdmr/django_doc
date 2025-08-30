@@ -52,6 +52,21 @@ create_superuser() {
     fi
 }
 
+# Function to set up RBAC system for healthcare roles
+setup_rbac_system() {
+    echo "🔐 Setting up RBAC system..."
+    
+    # Set up role permissions
+    echo "⚙️ Configuring healthcare role permissions..."
+    python manage.py setup_role_permissions || echo "Role permissions setup failed"
+    
+    # Set up admin user with RBAC
+    echo "👑 Setting up admin user with RBAC roles..."
+    python manage.py setup_admin_user --from-env || echo "Admin user setup skipped"
+    
+    echo "✅ RBAC system setup completed!"
+}
+
 # Function to start the application
 start_application() {
     echo "🚀 Starting application..."
@@ -66,6 +81,7 @@ case "$1" in
         run_migrations
         collect_static
         create_superuser
+        setup_rbac_system
         start_application gunicorn --bind 0.0.0.0:8000 --workers 3 --timeout 120 meddocparser.wsgi:application
         ;;
     "worker")
