@@ -90,7 +90,7 @@ LOGGING['loggers']['meddocparser']['handlers'].append('console')
 # Celery settings for development (if using Redis locally)
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
-CELERY_TASK_ALWAYS_EAGER = True  # Execute tasks synchronously in development
+# CELERY_TASK_ALWAYS_EAGER = True  # Execute tasks synchronously in development
 
 # Use Redis for Celery in development (needed for async document processing)
 # Comment out the lines below to use Redis instead of memory for task queue testing
@@ -110,3 +110,13 @@ if db_engine == 'postgresql':
         'handlers': ['console'],
         'propagate': False,
     } 
+
+# ============================================================================
+# AI PROCESSING CONFIGURATION (Development Overrides)
+# ============================================================================
+# Use smaller models for faster, cheaper development cycles
+AI_MODEL_PRIMARY = 'claude-3-haiku-20240307'
+AI_MODEL_FALLBACK = 'gpt-4o-mini'
+AI_MAX_TOKENS = 4096
+AI_CHUNK_THRESHOLD = 1000000 # NUCLEAR: 1M tokens to force no chunking
+AI_REQUEST_TIMEOUT = 120 # Longer timeout for local debugging 

@@ -1,0 +1,410 @@
+# Task ID: 24
+# Title: Implement IP-Based Access Restrictions System
+# Status: pending
+# Dependencies: 22
+# Priority: medium
+# Description: Create a comprehensive IP-based access restriction system that allows for network-range restrictions, IP whitelist management, and integration with the existing role-based access control system.
+# Details:
+Implement an IP-based access restriction system that integrates with the existing RBAC system:
+
+1. Create models for IP restrictions in `accounts/models.py`:
+```python
+class IPWhitelist(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return self.name
+
+class IPRange(models.Model):
+    whitelist = models.ForeignKey(IPWhitelist, on_delete=models.CASCADE, related_name='ip_ranges')
+    start_ip = models.GenericIPAddressField()
+    end_ip = models.GenericIPAddressField()
+    description = models.TextField(blank=True)
+    
+    def __str__(self):
+        return f"{self.start_ip} - {self.end_ip}"
+    
+    def contains_ip(self, ip_address):
+        # Implementation to check if an IP is within range
+        start = ipaddress.ip_address(self.start_ip)
+        end = ipaddress.ip_address(self.end_ip)
+        ip = ipaddress.ip_address(ip_address)
+        return start <= ip <= end
+
+class SingleIP(models.Model):
+    whitelist = models.ForeignKey(IPWhitelist, on_delete=models.CASCADE, related_name='single_ips')
+    ip_address = models.GenericIPAddressField()
+    description = models.TextField(blank=True)
+    
+    def __str__(self):
+        return self.ip_address
+```
+
+2. Extend the Role model to include IP restrictions:
+```python
+# Add to existing Role model in accounts/models.py
+class Role(models.Model):
+    # Existing fields...
+    ip_whitelists = models.ManyToManyField(IPWhitelist, blank=True, related_name='roles')
+    enforce_ip_restrictions = models.BooleanField(default=False)
+```
+
+3. Create middleware to enforce IP restrictions in `accounts/middleware.py`:
+```python
+import ipaddress
+from django.core.exceptions import PermissionDenied
+from django.conf import settings
+
+class IPRestrictionMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.user.is_authenticated:
+            # Skip IP checks for exempt paths (like logout)
+            if any(request.path.startswith(path) for path in settings.IP_RESTRICTION_EXEMPT_PATHS):
+                return self.get_response(request)
+                
+            # Get user's roles
+            user_roles = request.user.roles.filter(enforce_ip_restrictions=True)
+            
+            if user_roles.exists():
+                client_ip = self.get_client_ip(request)
+                
+                # Check if user's IP is allowed for any of their roles
+                ip_allowed = False
+                for role in user_roles:
+                    for whitelist in role.ip_whitelists.all():
+                        # Check single IPs
+                        if whitelist.single_ips.filter(ip_address=client_ip).exists():
+                            ip_allowed = True
+                            break
+                            
+                        # Check IP ranges
+                        for ip_range in whitelist.ip_ranges.all():
+                            if ip_range.contains_ip(client_ip):
+                                ip_allowed = True
+                                break
+                                
+                        if ip_allowed:
+                            break
+                    
+                    if ip_allowed:
+                        break
+                
+                if not ip_allowed:
+                    # Log the unauthorized access attempt
+                    from accounts.models import AuditLog
+                    AuditLog.objects.create(
+                        user=request.user,
+                        action='IP_RESTRICTION_VIOLATION',
+                        resource_type='System',
+                        resource_id='N/A',
+                        ip_address=client_ip,
+                        details=f"Access denied due to IP restriction. User roles: {[r.name for r in user_roles]}"
+                    )
+                    raise PermissionDenied("Your current IP address is not authorized to access this resource.")
+        
+        return self.get_response(request)
+    
+    def get_client_ip(self, request):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+```
+
+4. Add middleware to settings.py:
+```python
+MIDDLEWARE = [
+    # ... existing middleware
+    'accounts.middleware.IPRestrictionMiddleware',
+]
+
+# Define paths exempt from IP restrictions
+IP_RESTRICTION_EXEMPT_PATHS = [
+    '/accounts/logout/',
+    '/accounts/ip-denied/',
+    '/static/',
+]
+```
+
+5. Create admin interfaces for managing IP restrictions:
+```python
+# In accounts/admin.py
+from django.contrib import admin
+from .models import IPWhitelist, IPRange, SingleIP
+
+class IPRangeInline(admin.TabularInline):
+    model = IPRange
+    extra = 1
+
+class SingleIPInline(admin.TabularInline):
+    model = SingleIP
+    extra = 1
+
+@admin.register(IPWhitelist)
+class IPWhitelistAdmin(admin.ModelAdmin):
+    list_display = ('name', 'description', 'created_at')
+    search_fields = ('name', 'description')
+    inlines = [IPRangeInline, SingleIPInline]
+```
+
+6. Create management views for IP restrictions:
+```python
+# In accounts/views.py
+from django.views.generic import ListView, CreateView, UpdateView, DeleteView
+from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.urls import reverse_lazy
+from .models import IPWhitelist, IPRange, SingleIP
+
+class IPWhitelistListView(PermissionRequiredMixin, ListView):
+    permission_required = 'accounts.view_ipwhitelist'
+    model = IPWhitelist
+    template_name = 'accounts/ip_whitelist_list.html'
+    context_object_name = 'whitelists'
+
+class IPWhitelistCreateView(PermissionRequiredMixin, CreateView):
+    permission_required = 'accounts.add_ipwhitelist'
+    model = IPWhitelist
+    fields = ['name', 'description']
+    template_name = 'accounts/ip_whitelist_form.html'
+    success_url = reverse_lazy('ip_whitelist_list')
+
+# Similar views for update, delete, and managing IPRange and SingleIP
+```
+
+7. Create templates for IP restriction management:
+```html
+<!-- accounts/templates/accounts/ip_whitelist_list.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h1>IP Whitelists</h1>
+    <a href="{% url 'ip_whitelist_create' %}" class="btn btn-primary">Add New Whitelist</a>
+    
+    <table class="table mt-4">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>IP Ranges</th>
+                <th>Single IPs</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for whitelist in whitelists %}
+            <tr>
+                <td>{{ whitelist.name }}</td>
+                <td>{{ whitelist.description }}</td>
+                <td>{{ whitelist.ip_ranges.count }}</td>
+                <td>{{ whitelist.single_ips.count }}</td>
+                <td>
+                    <a href="{% url 'ip_whitelist_update' whitelist.id %}" class="btn btn-sm btn-info">Edit</a>
+                    <a href="{% url 'ip_whitelist_delete' whitelist.id %}" class="btn btn-sm btn-danger">Delete</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+```
+
+8. Add URL patterns for IP restriction management:
+```python
+# In accounts/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # ... existing URLs
+    path('ip-whitelists/', views.IPWhitelistListView.as_view(), name='ip_whitelist_list'),
+    path('ip-whitelists/create/', views.IPWhitelistCreateView.as_view(), name='ip_whitelist_create'),
+    path('ip-whitelists/<int:pk>/update/', views.IPWhitelistUpdateView.as_view(), name='ip_whitelist_update'),
+    path('ip-whitelists/<int:pk>/delete/', views.IPWhitelistDeleteView.as_view(), name='ip_whitelist_delete'),
+    path('ip-denied/', views.IPDeniedView.as_view(), name='ip_denied'),
+]
+```
+
+9. Create a custom "IP Denied" page:
+```html
+<!-- accounts/templates/accounts/ip_denied.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container text-center mt-5">
+    <div class="alert alert-danger">
+        <h2>Access Denied</h2>
+        <p>Your current IP address ({{ client_ip }}) is not authorized to access this resource.</p>
+        <p>Please contact your system administrator if you believe this is an error.</p>
+    </div>
+    <a href="{% url 'logout' %}" class="btn btn-primary">Logout</a>
+</div>
+{% endblock %}
+```
+
+10. Integrate with the Role management interface:
+```html
+<!-- Add to the role edit form -->
+<div class="form-group">
+    <label for="ip_whitelists">IP Whitelists</label>
+    <select multiple class="form-control" id="ip_whitelists" name="ip_whitelists">
+        {% for whitelist in ip_whitelists %}
+        <option value="{{ whitelist.id }}" {% if whitelist in role.ip_whitelists.all %}selected{% endif %}>
+            {{ whitelist.name }}
+        </option>
+        {% endfor %}
+    </select>
+</div>
+<div class="form-check">
+    <input type="checkbox" class="form-check-input" id="enforce_ip_restrictions" name="enforce_ip_restrictions" 
+           {% if role.enforce_ip_restrictions %}checked{% endif %}>
+    <label class="form-check-label" for="enforce_ip_restrictions">Enforce IP Restrictions</label>
+</div>
+```
+
+11. Add documentation for IP restriction system in the admin help text and user manual.
+
+# Test Strategy:
+To verify the IP-based access restriction system:
+
+1. Unit Tests:
+   - Create test cases for the IP restriction models:
+   ```python
+   from django.test import TestCase
+   import ipaddress
+   from accounts.models import IPWhitelist, IPRange, SingleIP, Role
+   
+   class IPRestrictionModelsTests(TestCase):
+       def setUp(self):
+           self.whitelist = IPWhitelist.objects.create(name="Test Whitelist", description="For testing")
+           self.ip_range = IPRange.objects.create(
+               whitelist=self.whitelist,
+               start_ip="192.168.1.1",
+               end_ip="192.168.1.100",
+               description="Test range"
+           )
+           self.single_ip = SingleIP.objects.create(
+               whitelist=self.whitelist,
+               ip_address="10.0.0.1",
+               description="Test single IP"
+           )
+       
+       def test_ip_range_contains_ip(self):
+           self.assertTrue(self.ip_range.contains_ip("192.168.1.50"))
+           self.assertTrue(self.ip_range.contains_ip("192.168.1.1"))
+           self.assertTrue(self.ip_range.contains_ip("192.168.1.100"))
+           self.assertFalse(self.ip_range.contains_ip("192.168.1.101"))
+           self.assertFalse(self.ip_range.contains_ip("10.0.0.1"))
+   ```
+
+2. Test the middleware:
+   ```python
+   from django.test import TestCase, RequestFactory
+   from django.contrib.auth.models import User
+   from accounts.models import Role, IPWhitelist, SingleIP, IPRange
+   from accounts.middleware import IPRestrictionMiddleware
+   
+   class IPRestrictionMiddlewareTests(TestCase):
+       def setUp(self):
+           self.factory = RequestFactory()
+           self.middleware = IPRestrictionMiddleware(lambda r: r)
+           
+           # Create test user and role
+           self.user = User.objects.create_user(username='testuser', password='password')
+           self.role = Role.objects.create(name="Restricted Role", enforce_ip_restrictions=True)
+           self.user.roles.add(self.role)
+           
+           # Create IP whitelist
+           self.whitelist = IPWhitelist.objects.create(name="Test Whitelist")
+           self.role.ip_whitelists.add(self.whitelist)
+           
+           # Add allowed IPs
+           SingleIP.objects.create(whitelist=self.whitelist, ip_address="192.168.1.5")
+           IPRange.objects.create(whitelist=self.whitelist, start_ip="10.0.0.1", end_ip="10.0.0.100")
+       
+       def test_allowed_ip(self):
+           request = self.factory.get('/')
+           request.user = self.user
+           request.META['REMOTE_ADDR'] = '192.168.1.5'
+           
+           response = self.middleware(request)
+           self.assertEqual(response, request)  # Middleware should pass through
+       
+       def test_allowed_ip_range(self):
+           request = self.factory.get('/')
+           request.user = self.user
+           request.META['REMOTE_ADDR'] = '10.0.0.50'
+           
+           response = self.middleware(request)
+           self.assertEqual(response, request)  # Middleware should pass through
+       
+       def test_denied_ip(self):
+           request = self.factory.get('/')
+           request.user = self.user
+           request.META['REMOTE_ADDR'] = '172.16.0.1'
+           
+           with self.assertRaises(PermissionDenied):
+               self.middleware(request)
+   ```
+
+3. Integration Tests:
+   ```python
+   from django.test import TestCase, Client
+   from django.urls import reverse
+   from django.contrib.auth.models import User
+   from accounts.models import Role, IPWhitelist, SingleIP
+   
+   class IPRestrictionIntegrationTests(TestCase):
+       def setUp(self):
+           # Create test user and role
+           self.user = User.objects.create_user(username='testuser', password='password')
+           self.role = Role.objects.create(name="Restricted Role", enforce_ip_restrictions=True)
+           self.user.roles.add(self.role)
+           
+           # Create IP whitelist with allowed IP
+           self.whitelist = IPWhitelist.objects.create(name="Test Whitelist")
+           self.role.ip_whitelists.add(self.whitelist)
+           SingleIP.objects.create(whitelist=self.whitelist, ip_address="127.0.0.1")
+           
+           self.client = Client()
+           self.client.login(username='testuser', password='password')
+       
+       def test_access_with_allowed_ip(self):
+           # 127.0.0.1 is the default IP when using the Django test client
+           response = self.client.get(reverse('dashboard'))
+           self.assertEqual(response.status_code, 200)
+       
+       def test_exempt_paths(self):
+           # Test that exempt paths are accessible even with IP restrictions
+           self.role.ip_whitelists.clear()  # Remove allowed IPs
+           response = self.client.get(reverse('logout'))
+           self.assertEqual(response.status_code, 200)
+   ```
+
+4. Manual Testing:
+   - Create different IP whitelists with various IP ranges and single IPs
+   - Assign IP whitelists to different roles
+   - Test access from different IP addresses (may require VPN or proxy)
+   - Verify that users with roles that have IP restrictions can only access the system from whitelisted IPs
+   - Test the IP denied page is displayed correctly when access is denied
+   - Verify that exempt paths are accessible regardless of IP restrictions
+
+5. Edge Case Testing:
+   - Test with IPv4 and IPv6 addresses
+   - Test with very large IP ranges
+   - Test with overlapping IP ranges in different whitelists
+   - Test with X-Forwarded-For headers to simulate proxy scenarios
+   - Test performance with a large number of IP ranges and whitelists
+
+6. Security Testing:
+   - Attempt to bypass IP restrictions using various HTTP headers
+   - Test that IP restriction logs are properly created in the audit log
+   - Verify that IP restriction changes are tracked in the audit log
+   - Test that users cannot modify IP restrictions without proper permissions

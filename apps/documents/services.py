@@ -11,8 +11,16 @@ from pathlib import Path
 import re
 from uuid import uuid4
 from django.utils import timezone
+import base64
+import json
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
+
+
+class DocumentProcessingError(Exception):
+    """Custom exception for document processing failures"""
+    pass
 
 
 class PDFTextExtractor:
@@ -274,6 +282,26 @@ try:
 except ImportError:
     openai = None
 
+# Custom Exceptions
+class APIRateLimitError(Exception):
+    """Custom exception for API rate limit errors to trigger Celery retries."""
+    pass
+
+def _preprocess_text(text: str) -> str:
+    """
+    Cleans and preprocesses the raw extracted text before sending to AI.
+    - Removes excessive newlines and whitespace
+    - Filters out common OCR junk and artifacts
+    - Normalizes text for better AI comprehension
+    """
+    # Simple whitespace normalization
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'(\n\s*){2,}', '\n', text)
+    
+    # Add more sophisticated cleaning rules here as needed
+    # e.g., removing page headers/footers, specific OCR noise patterns
+    
+    return text.strip()
 
 class DocumentAnalyzer:
     """
@@ -311,46 +339,44 @@ class DocumentAnalyzer:
             )
         
         # Configuration from Django settings (must be set before initializing clients)
-        self.primary_model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-sonnet-20240229')
-        self.fallback_model = getattr(settings, 'AI_MODEL_FALLBACK', 'gpt-3.5-turbo')
-        self.max_tokens = getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096)
-        self.timeout = getattr(settings, 'AI_REQUEST_TIMEOUT', 60)
-        self.chunk_threshold = getattr(settings, 'AI_TOKEN_THRESHOLD_FOR_CHUNKING', 30000)
-        self.chunk_size = getattr(settings, 'AI_CHUNK_SIZE', 15000)
+        self.primary_model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620')
+        self.fallback_model = getattr(settings, 'AI_MODEL_FALLBACK', 'gpt-4o-mini')
+        self.max_tokens = getattr(settings, 'AI_MAX_TOKENS', 4096)
+        self.chunk_threshold = getattr(settings, 'AI_CHUNK_THRESHOLD', 30000)  # Now properly in tokens, not chars
+        self.temperature = getattr(settings, 'AI_TEMPERATURE', 0.2)
+        self.request_timeout = getattr(settings, 'AI_REQUEST_TIMEOUT', 120)
         
-        # Initialize AI clients after configuration is set
-        self._init_ai_clients()
+        # Initialize clients
+        self.anthropic_client = self._get_anthropic_client()
+        self.openai_client = self._get_openai_client()
         
         self.logger.info(f"DocumentAnalyzer initialized with primary model: {self.primary_model}")
     
-    def _init_ai_clients(self):
-        """Initialize AI clients with proper error handling and timeout protection"""
-        self.anthropic_client = None
-        self.openai_client = None
-        
-        # Initialize Anthropic client with timeout protection
+    def _get_anthropic_client(self):
+        """Initialize Anthropic client with timeout protection"""
         if self.anthropic_key and anthropic:
             try:
                 # Use the current Anthropic client class
-                self.anthropic_client = anthropic.Anthropic(
+                return anthropic.Anthropic(
                     api_key=self.anthropic_key
                 )
-                self.logger.info("Anthropic client initialized successfully")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize Anthropic client: {e}")
-                self.anthropic_client = None
-        
-        # Initialize OpenAI client with timeout protection
+                return None
+        return None
+    
+    def _get_openai_client(self):
+        """Initialize OpenAI client with timeout protection"""
         if self.openai_key and openai:
             try:
-                self.openai_client = openai.OpenAI(
+                return openai.OpenAI(
                     api_key=self.openai_key,
                     timeout=5.0  # 5 second timeout for initialization
                 )
-                self.logger.info("OpenAI client initialized successfully")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize OpenAI client: {e}")
-                self.openai_client = None
+                return None
+        return None
     
     def analyze_document(self, document_content: str, context: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -364,27 +390,26 @@ class DocumentAnalyzer:
             Dict containing analysis results
         """
         try:
-            if not document_content or not document_content.strip():
+            clean_content = _preprocess_text(document_content)
+            
+            if not clean_content or not clean_content.strip():
                 return {
                     'success': False,
                     'error': 'Document content is empty',
                     'fields': []
                 }
             
-            doc_length = len(document_content)
-            estimated_tokens = doc_length / 4  # Rough token estimation
+            estimated_tokens = len(clean_content) // 4
             
-            self.logger.info(
-                f"Processing document: {doc_length} characters, ~{estimated_tokens:.0f} tokens"
-            )
+            logger.critical(f"!!! CHUNKING CHECK !!! Content Length: {len(clean_content)} chars, Estimated Tokens: {estimated_tokens}, Threshold: {self.chunk_threshold}")
             
-            # Check if document needs chunking
+            # Check if document needs chunking (Flask pattern: token-based decision)
             if estimated_tokens >= self.chunk_threshold:
-                self.logger.info("Document requires chunking for processing")
-                return self._analyze_large_document(document_content, context)
+                self.logger.info(f"Document requires chunking: {estimated_tokens:.0f} tokens >= {self.chunk_threshold} threshold")
+                return self._analyze_large_document(clean_content, context)
             
             # Process normal-sized document
-            return self._analyze_single_document(document_content, context)
+            return self._analyze_single_document(clean_content, context)
             
         except Exception as e:
             self.logger.error(f"Error in document analysis: {e}", exc_info=True)
@@ -418,10 +443,8 @@ class DocumentAnalyzer:
                 return result
             elif result.get('error') == 'rate_limit_exceeded':
                 # Rate limiting - don't fallback immediately, return the rate limit info
-                self.logger.warning("Anthropic rate limited, returning rate limit response")
-                result['model_used'] = self.primary_model
-                result['processing_method'] = 'rate_limited'
-                return result
+                # This will be caught by the Celery task and retried.
+                raise APIRateLimitError("Anthropic rate limit exceeded, will retry.")
             elif result.get('error') in ['authentication_error', 'api_status_error']:
                 # Critical errors that won't be fixed by retrying - try fallback
                 self.logger.warning(f"Anthropic critical error ({result.get('error')}), trying fallback")
@@ -429,21 +452,9 @@ class DocumentAnalyzer:
                 # Connection errors or other issues - try fallback
                 self.logger.warning(f"Anthropic processing failed ({result.get('error', 'unknown')}), trying fallback")
         
-        # Fallback to OpenAI
+        # Fallback to OpenAI if primary fails for a non-rate-limit reason
         if self.openai_client:
-            result = self._call_openai(system_prompt, content)
-            if result['success']:
-                result['model_used'] = self.fallback_model
-                result['processing_method'] = 'single_document_fallback'
-                return result
-            elif result.get('error') == 'rate_limit_exceeded':
-                # Both services rate limited
-                self.logger.warning("Both Anthropic and OpenAI rate limited")
-                result['model_used'] = self.fallback_model
-                result['processing_method'] = 'both_services_rate_limited'
-                return result
-            else:
-                self.logger.error(f"OpenAI fallback also failed: {result.get('error', 'unknown')}")
+            self.logger.warning("Primary AI service failed. Falling back to OpenAI.")
         
         # Last resort: Try simplified fallback prompt if we have any working client
         if self.anthropic_client or self.openai_client:
@@ -775,7 +786,9 @@ class DocumentAnalyzer:
         diag_str = diag_str.strip()
         
         # Remove numbering
-        diag_str = re.sub(r'^\d+[\.\)]\s*', '', diag_str)
+        diag_str = re.sub(r'^\d+[\.\)]\s*', '', diag_str)  # Remove numbering
+        diag_str = re.sub(r'\s*\([^)]*\)\s*', ' ', diag_str)  # Remove parenthetical
+        diag_str = re.sub(r'\s+', ' ', diag_str).strip()  # Normalize whitespace
         
         return diag_str
     
@@ -919,22 +932,57 @@ class DocumentAnalyzer:
         try:
             response = self.anthropic_client.messages.create(
                 model=self.primary_model,
-                system=system_prompt,
                 max_tokens=self.max_tokens,
-                messages=[{
-                    "role": "user",
-                    "content": f"Extract medical data from this document:\n\n{content}"
-                }]
+                temperature=self.temperature,
+                system=system_prompt,  # MediExtract prompts already include proper JSON enforcement
+                messages=[{"role": "user", "content": f"Extract medical data from this document:\n\n{content}"}]
             )
             
             end_time = timezone.now()
             
+            # Calculate duration
+            duration = (end_time - start_time).total_seconds()
+            
+            # Extract content from the first TextBlock
+            response_content = ""
+            if response.content and isinstance(response.content, list):
+                first_text_block = next((block for block in response.content if hasattr(block, 'text')), None)
+                if first_text_block:
+                    response_content = first_text_block.text
+            
+            self.logger.info(f"Parsing response of {len(response_content)} characters")
+            
+            # DEBUG: Log Claude's raw response to verify JSON format
+            self.logger.info(f"CLAUDE RAW RESPONSE: {response_content[:500]}...")
+            
+            # Comprehensive response parsing
+            parsed_json = self._parse_ai_response_content(response_content)
+            
+            # FHIR DocumentReference data encoding fix
+            if parsed_json and 'fhir_resources' in parsed_json:
+                for resource in parsed_json['fhir_resources']:
+                    if resource.get('resourceType') == 'DocumentReference':
+                        for content_item in resource.get('content', []):
+                            attachment = content_item.get('attachment', {})
+                            if 'data' in attachment and isinstance(attachment['data'], (str, list, dict)):
+                                try:
+                                    # Convert to JSON string, then base64 encode
+                                    json_data = json.dumps(attachment['data'])
+                                    encoded_data = base64.b64encode(json_data.encode('utf-8')).decode('utf-8')
+                                    attachment['data'] = encoded_data
+                                except (TypeError, ValueError) as e:
+                                    self.logger.error(f"Failed to encode DocumentReference data: {e}")
+
+            # Extract fields and perform quality checks
+            # Handle both FHIR structure and legacy fields structure
+            if 'fields' in parsed_json:
+                fields = parsed_json.get('fields', [])
+            else:
+                # Convert FHIR structure to fields format
+                fields = self._convert_fhir_to_fields(parsed_json)
+            
             # Record success for circuit breaker
             error_recovery_service.record_success('anthropic')
-            
-            # Parse the response
-            text_response = response.content[0].text
-            extracted_fields = self._parse_ai_response(text_response)
             
             # Log successful API usage
             if self.document:
@@ -968,8 +1016,8 @@ class DocumentAnalyzer:
             
             return {
                 'success': True,
-                'fields': extracted_fields,
-                'raw_response': text_response,
+                'fields': fields,
+                'raw_response': response_content,
                 'usage': {
                     'input_tokens': response.usage.input_tokens,
                     'output_tokens': response.usage.output_tokens,
@@ -1107,24 +1155,50 @@ class DocumentAnalyzer:
         start_time = timezone.now()
         
         try:
+            start_time = timezone.now()
+            
             response = self.openai_client.chat.completions.create(
                 model=self.fallback_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Extract medical data from this document:\n\n{content}"}
+                    {"role": "user", "content": content}
                 ],
+                temperature=self.temperature,
                 max_tokens=self.max_tokens,
-                temperature=0.1  # Low temperature for consistent extraction
+                response_format={"type": "json_object"}
             )
             
             end_time = timezone.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            response_content = response.choices[0].message.content
+            
+            self.logger.info(f"Parsing OpenAI response of {len(response_content)} characters")
+            parsed_json = self._parse_ai_response_content(response_content)
+            
+            # FHIR DocumentReference data encoding fix
+            if parsed_json and 'fhir_resources' in parsed_json:
+                for resource in parsed_json['fhir_resources']:
+                    if resource.get('resourceType') == 'DocumentReference':
+                        for content_item in resource.get('content', []):
+                            attachment = content_item.get('attachment', {})
+                            if 'data' in attachment and isinstance(attachment['data'], (str, list, dict)):
+                                try:
+                                    json_data = json.dumps(attachment['data'])
+                                    encoded_data = base64.b64encode(json_data.encode('utf-8')).decode('utf-8')
+                                    attachment['data'] = encoded_data
+                                except (TypeError, ValueError) as e:
+                                    self.logger.error(f"Failed to encode DocumentReference data for OpenAI: {e}")
+            
+            # Handle both FHIR structure and legacy fields structure
+            if 'fields' in parsed_json:
+                fields = parsed_json.get('fields', [])
+            else:
+                # Convert FHIR structure to fields format
+                fields = self._convert_fhir_to_fields(parsed_json)
             
             # Record success for circuit breaker
             error_recovery_service.record_success('openai')
-            
-            # Parse the response
-            text_response = response.choices[0].message.content
-            extracted_fields = self._parse_ai_response(text_response)
             
             # Log successful API usage
             if self.document:
@@ -1158,8 +1232,8 @@ class DocumentAnalyzer:
             
             return {
                 'success': True,
-                'fields': extracted_fields,
-                'raw_response': text_response,
+                'fields': fields,
+                'raw_response': response_content,
                 'usage': {
                     'input_tokens': response.usage.prompt_tokens,
                     'output_tokens': response.usage.completion_tokens,
@@ -1199,105 +1273,11 @@ class DocumentAnalyzer:
         Returns:
             Processing results with comprehensive error recovery
         """
-        system_prompt = self._get_medical_extraction_prompt(context)
-        partial_results = {}
-        error_log = []
-        
-        # Strategy 1: Try Anthropic (Claude) with recovery
-        if self.anthropic_client and not error_recovery_service._is_circuit_open('anthropic'):
-            self.logger.info("Attempting document processing with Anthropic Claude (primary strategy)")
-            result = self._call_anthropic_with_recovery(system_prompt, content)
-            
-            if result['success']:
-                self.logger.info("Document processing successful with Anthropic Claude")
-                return result
-            else:
-                error_log.append(f"Anthropic failed: {result.get('error_message', 'Unknown error')}")
-                
-                # Collect any partial results from failed processing
-                if result.get('fields'):
-                    partial_results.update(result['fields'])
-                
-                # Check if we should retry based on error category
-                if result.get('can_retry') and result.get('retry_delay', 0) > 0:
-                    delay = result['retry_delay']
-                    self.logger.info(f"Anthropic suggests retry in {delay} seconds")
-                    # For now, we'll continue to fallback instead of waiting
-                    # In a production Celery task, you could implement delay here
-        
-        # Strategy 2: Try OpenAI (GPT) as fallback
-        if self.openai_client and not error_recovery_service._is_circuit_open('openai'):
-            self.logger.info("Attempting document processing with OpenAI GPT (fallback strategy)")
-            result = self._call_openai_with_recovery(system_prompt, content)
-            
-            if result['success']:
-                self.logger.info("Document processing successful with OpenAI GPT fallback")
-                return result
-            else:
-                error_log.append(f"OpenAI failed: {result.get('error_message', 'Unknown error')}")
-                
-                # Collect any partial results
-                if result.get('fields'):
-                    partial_results.update(result['fields'])
-        
-        # Strategy 3: Try alternative prompt strategies if services are available but failing
-        if (self.anthropic_client or self.openai_client) and len(error_log) < 4:
-            self.logger.info("Attempting simplified extraction with alternative prompts")
-            
-            # Try with a simpler, more robust prompt
-            simple_prompt = """
-            Extract basic medical information from this document. Return JSON with these fields:
-            - patient_name: Full name if found
-            - date_of_birth: Birth date if found  
-            - medical_record_number: MRN if found
-            - document_date: Date of document
-            - primary_diagnosis: Main diagnosis if found
-            - medications: List of medications if found
-            
-            Return only valid JSON, no explanations.
-            """
-            
-            # Try Anthropic with simpler prompt if circuit not open
-            if self.anthropic_client and not error_recovery_service._is_circuit_open('anthropic'):
-                result = self._call_anthropic_with_recovery(simple_prompt, content)
-                if result['success']:
-                    self.logger.info("Simplified Anthropic extraction successful")
-                    result['extraction_method'] = 'simplified_anthropic'
-                    return result
-                error_log.append(f"Simplified Anthropic failed: {result.get('error_message', 'Unknown error')}")
-            
-            # Try OpenAI with simpler prompt if circuit not open
-            if self.openai_client and not error_recovery_service._is_circuit_open('openai'):
-                result = self._call_openai_with_recovery(simple_prompt, content)
-                if result['success']:
-                    self.logger.info("Simplified OpenAI extraction successful")
-                    result['extraction_method'] = 'simplified_openai'
-                    return result
-                error_log.append(f"Simplified OpenAI failed: {result.get('error_message', 'Unknown error')}")
-        
-        # Strategy 4: Text-based pattern extraction as last resort
-        self.logger.warning("All AI services failed, attempting text pattern extraction")
-        pattern_results = self._extract_with_text_patterns(content)
-        if pattern_results:
-            partial_results.update(pattern_results)
-        
-        # Strategy 5: Graceful degradation - return what we have
-        self.logger.error(f"All processing strategies failed. Error log: {'; '.join(error_log)}")
-        
-        degradation_response = error_recovery_service.create_graceful_degradation_response(
-            document_id=self.document.id if self.document else 0,
-            partial_results=partial_results,
-            error_context=f"All AI services and fallback strategies failed: {'; '.join(error_log)}"
-        )
-        
-        # Add processing attempt history if available
-        if self._context_key:
-            context_data = context_preservation_service.retrieve_processing_context(self._context_key)
-            if context_data:
-                degradation_response['processing_history'] = context_data.get('attempt_history', [])
-        
-        return degradation_response
+        # FIXED: Use analyze_document which includes proper chunking logic
+        self.logger.info("Starting document processing with comprehensive recovery (includes chunking logic)")
+        return self.analyze_document(content, context)
     
+
     def _extract_with_text_patterns(self, content: str) -> Dict[str, Any]:
         """
         Extract medical data using text patterns as a last resort.
@@ -1415,7 +1395,7 @@ class DocumentAnalyzer:
         prompt = MedicalPrompts.get_extraction_prompt(
             document_type=document_type,
             chunk_info=chunk_obj,
-            fhir_focused=False,  # Default to standard extraction
+            fhir_focused=True,  # Back to FHIR-focused extraction for richer data
             context_tags=context_tags
         )
         
@@ -2566,6 +2546,168 @@ Processing Note: This is part of a larger medical document. Context may span mul
                 "status": "current",
                 "content": [{"attachment": {"data": extracted_fields}}]
             }
+    
+    def _parse_ai_response_content(self, response_content: str) -> Dict[str, Any]:
+        """
+        Safely parses the JSON string from the AI response.
+        Handles cases where the response is not valid JSON or is embedded in markdown.
+        """
+        # TEMPORARY DIAGNOSTIC LOG - CAPTURE RAW AI RESPONSE
+        self.logger.critical(f"🔍 RAW AI RESPONSE (Length: {len(response_content)}): {response_content}")
+        
+        try:
+            # First, try to load the entire string as JSON
+            return json.loads(response_content)
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Failed to parse the full AI response as JSON: {e}. Trying to extract from markdown.")
+            self.logger.warning(f"PROBLEMATIC RESPONSE: {response_content[:300]}...")
+            # If that fails, try to extract JSON from a markdown code block
+            match = re.search(r"```(json)?\s*(.*?)\s*```", response_content, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(2))
+                except json.JSONDecodeError as e:
+                    self.logger.error(f"Failed to parse JSON from markdown block: {e}")
+                    raise DocumentProcessingError("Invalid JSON structure in AI response markdown.") from e
+            else:
+                self.logger.error("AI response is not valid JSON and does not contain a markdown JSON block.")
+                raise DocumentProcessingError("AI response is not valid JSON.")
+
+    def _get_anthropic_client(self):
+        """Initializes the Anthropic client if the API key is available."""
+        if self.anthropic_key and anthropic:
+            try:
+                # Use the current Anthropic client class
+                return anthropic.Anthropic(
+                    api_key=self.anthropic_key
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize Anthropic client: {e}")
+                return None
+        return None
+
+    def _convert_fhir_to_fields(self, fhir_data: Dict) -> List[Dict]:
+        """
+        Convert FHIR-structured data to the legacy fields format.
+        
+        Args:
+            fhir_data: FHIR-structured response from AI
+            
+        Returns:
+            List of field dictionaries compatible with existing processing pipeline
+        """
+        fields = []
+        
+        # Convert Patient data
+        if 'Patient' in fhir_data:
+            patient = fhir_data['Patient']
+            for key, value_obj in patient.items():
+                if isinstance(value_obj, dict) and 'value' in value_obj:
+                    fields.append({
+                        'label': f'patient_{key}',
+                        'value': value_obj['value'],
+                        'confidence': value_obj.get('confidence', 0.8),
+                        'fhir_resource': 'Patient',
+                        'fhir_field': key
+                    })
+        
+        # Convert Condition data (diagnoses)
+        if 'Condition' in fhir_data:
+            for condition in fhir_data['Condition']:
+                if 'code' in condition and isinstance(condition['code'], dict):
+                    fields.append({
+                        'label': 'diagnosis',
+                        'value': condition['code'].get('value', ''),
+                        'confidence': condition['code'].get('confidence', 0.8),
+                        'fhir_resource': 'Condition',
+                        'status': condition.get('status', 'active')
+                    })
+        
+        # Convert Observation data (vitals, labs)
+        if 'Observation' in fhir_data:
+            for observation in fhir_data['Observation']:
+                if 'code' in observation and isinstance(observation['code'], dict):
+                    obs_label = observation['code'].get('value', 'observation')
+                    obs_value = ''
+                    obs_confidence = observation['code'].get('confidence', 0.8)
+                    
+                    if 'value' in observation and isinstance(observation['value'], dict):
+                        obs_value = observation['value'].get('value', '')
+                        obs_confidence = min(obs_confidence, observation['value'].get('confidence', 0.8))
+                    
+                    fields.append({
+                        'label': f'observation_{obs_label.lower().replace(" ", "_")}',
+                        'value': obs_value,
+                        'confidence': obs_confidence,
+                        'fhir_resource': 'Observation',
+                        'observation_type': obs_label
+                    })
+        
+        # Convert MedicationStatement data
+        if 'MedicationStatement' in fhir_data:
+            for medication in fhir_data['MedicationStatement']:
+                if 'medication' in medication and isinstance(medication['medication'], dict):
+                    med_name = medication['medication'].get('value', '')
+                    dosage = ''
+                    confidence = medication['medication'].get('confidence', 0.8)
+                    
+                    if 'dosage' in medication and isinstance(medication['dosage'], dict):
+                        dosage = medication['dosage'].get('value', '')
+                        confidence = min(confidence, medication['dosage'].get('confidence', 0.7))
+                    
+                    fields.append({
+                        'label': 'medication',
+                        'value': f"{med_name}" + (f" - {dosage}" if dosage else ""),
+                        'confidence': confidence,
+                        'fhir_resource': 'MedicationStatement',
+                        'medication_name': med_name,
+                        'dosage': dosage
+                    })
+        
+        # Convert Procedure data
+        if 'Procedure' in fhir_data:
+            for procedure in fhir_data['Procedure']:
+                if 'code' in procedure and isinstance(procedure['code'], dict):
+                    proc_name = procedure['code'].get('value', '')
+                    proc_date = ''
+                    confidence = procedure['code'].get('confidence', 0.8)
+                    
+                    if 'date' in procedure and isinstance(procedure['date'], dict):
+                        proc_date = procedure['date'].get('value', '')
+                        confidence = min(confidence, procedure['date'].get('confidence', 0.7))
+                    
+                    fields.append({
+                        'label': 'procedure',
+                        'value': proc_name + (f" ({proc_date})" if proc_date else ""),
+                        'confidence': confidence,
+                        'fhir_resource': 'Procedure',
+                        'procedure_name': proc_name,
+                        'procedure_date': proc_date
+                    })
+        
+        # Convert AllergyIntolerance data
+        if 'AllergyIntolerance' in fhir_data:
+            for allergy in fhir_data['AllergyIntolerance']:
+                if 'substance' in allergy and isinstance(allergy['substance'], dict):
+                    substance = allergy['substance'].get('value', '')
+                    reaction = ''
+                    confidence = allergy['substance'].get('confidence', 0.8)
+                    
+                    if 'reaction' in allergy and isinstance(allergy['reaction'], dict):
+                        reaction = allergy['reaction'].get('value', '')
+                        confidence = min(confidence, allergy['reaction'].get('confidence', 0.7))
+                    
+                    fields.append({
+                        'label': 'allergy',
+                        'value': substance + (f" - {reaction}" if reaction else ""),
+                        'confidence': confidence,
+                        'fhir_resource': 'AllergyIntolerance',
+                        'substance': substance,
+                        'reaction': reaction
+                    })
+        
+        self.logger.info(f"Converted FHIR structure to {len(fields)} fields")
+        return fields
 
 
 # ============================================================================

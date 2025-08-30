@@ -63,7 +63,7 @@ Do not standardize or reformat values unless explicitly matching the requested J
 Recognize common medical terms and abbreviations (e.g., "Pt" for patient, "Dx" for diagnosis), but only to locate data—not to interpret it.
 If data is ambiguous (e.g., multiple potential patient names), choose the most likely based on context and assign a lower confidence score.
 Scope: Focus only on the provided document content. Do not draw from external knowledge or make assumptions beyond the text.
-Response: Your entire output must be a single, valid JSON object, parseable directly by the application, with no markdown, comments, or explanatory text."""
+Response: CRITICAL - Your response must ONLY be a valid JSON object. No markdown code blocks, no explanations, no comments, no text before or after. Start your response with { and end with }. The JSON must be parseable directly by the application."""
 
     # FHIR-specific extraction prompt for structured medical data
     FHIR_EXTRACTION_PROMPT = """You are MediExtract, specialized in extracting medical data for FHIR (Fast Healthcare Interoperability Resources) compliance. Extract data from medical documents exactly as written, organizing it according to FHIR resource categories.
@@ -107,7 +107,9 @@ Critical Rules:
 - Omit any resource type with no data found
 - Use arrays for resources that can have multiple instances
 - Focus on current/active information over historical unless explicitly noted
-- Preserve original medical terminology and abbreviations"""
+- Preserve original medical terminology and abbreviations
+
+CRITICAL: Your response must ONLY be a valid JSON object. No markdown code blocks, no explanations, no comments, no text before or after. Start your response with { and end with }."""
 
     # Chunked document processing prompt
     CHUNKED_DOCUMENT_PROMPT = """You are MediExtract, processing a portion of a larger medical document. Extract medical information from this document section while maintaining awareness that this is part of a larger record.
@@ -168,7 +170,7 @@ Output Format:
   "allergies": ["List", "of", "individual", "allergies"]
 }
 
-Critical: Return only valid JSON. If you find no medical information, return an empty JSON object: {}"""
+CRITICAL: Your response must ONLY be a valid JSON object. No markdown code blocks, no explanations, no comments, no text before or after. Start your response with { and end with }. If you find no medical information, return an empty JSON object: {}"""
 
     # Document type-specific prompts
     ED_PROMPT = """You are MediExtract, specialized in Emergency Department documentation. Extract information focusing on emergency care specifics:
@@ -192,7 +194,7 @@ Use the standard MediExtract JSON format with particular attention to emergency-
   "medications": {"value": "Medications administered in ED", "confidence": 0.8}
 }
 
-Extract exactly as written, focusing on emergency care context."""
+Extract exactly as written, focusing on emergency care context. CRITICAL: Your response must ONLY be a valid JSON object. No markdown code blocks, no explanations, no comments, no text before or after. Start your response with { and end with }."""
 
     SURGICAL_PROMPT = """You are MediExtract, specialized in surgical documentation. Extract information focusing on surgical care specifics:
 
@@ -215,7 +217,7 @@ Use the standard MediExtract JSON format with particular attention to surgical d
   "outcome": {"value": "Surgical outcome summary", "confidence": 0.8}
 }
 
-Extract exactly as written, focusing on surgical care context."""
+Extract exactly as written, focusing on surgical care context. CRITICAL: Your response must ONLY be a valid JSON object. No markdown code blocks, no explanations, no comments, no text before or after. Start your response with { and end with }."""
 
     LAB_PROMPT = """You are MediExtract, specialized in laboratory documentation. Extract information focusing on lab results and testing:
 
@@ -235,7 +237,7 @@ Use the standard MediExtract JSON format with particular attention to laboratory
   "referenceRanges": {"value": "Normal ranges provided", "confidence": 0.7}
 }
 
-Extract exactly as written, preserving all numerical values and units."""
+Extract exactly as written, preserving all numerical values and units. CRITICAL: Your response must ONLY be a valid JSON object. No markdown code blocks, no explanations, no comments, no text before or after. Start your response with { and end with }."""
 
     @classmethod
     def get_extraction_prompt(

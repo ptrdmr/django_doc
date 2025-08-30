@@ -182,6 +182,11 @@ class AuditLog(models.Model):
             models.Index(fields=['severity', 'timestamp']),
             models.Index(fields=['category', 'timestamp']),
         ]
+        permissions = [
+            ('view_audit_trail', 'Can view audit trail reports'),
+            ('export_audit_logs', 'Can export audit logs to CSV'),
+            ('manage_audit_system', 'Can manage audit logging system'),
+        ]
     
     def __str__(self):
         """String representation of audit log entry."""

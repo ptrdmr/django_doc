@@ -40,6 +40,7 @@ urlpatterns = [
     path('', RedirectView.as_view(url='/dashboard/', permanent=False), name='home'),
     
     # App URLs
+    path('core/', include('apps.core.urls')),  # HIPAA audit trail and compliance
     path('documents/', include('apps.documents.urls')),
     path('patients/', include('apps.patients.urls')),
     path('providers/', include('apps.providers.urls')),

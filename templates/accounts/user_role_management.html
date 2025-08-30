@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Manage Roles - {{ managed_user.email }} - Medical Document Parser{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50">
+    <!-- Header Section -->
+    <div class="bg-white shadow">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="py-6">
+                <div class="md:flex md:items-center md:justify-between">
+                    <div class="flex-1 min-w-0">
+                        <nav class="flex" aria-label="Breadcrumb">
+                            <ol class="flex items-center space-x-4">
+                                <li>
+                                    <a href="{% url 'accounts:dashboard' %}" class="text-gray-400 hover:text-gray-500">
+                                        <i class="fas fa-home"></i>
+                                    </a>
+                                </li>
+                                <li>
+                                    <div class="flex items-center">
+                                        <i class="fas fa-chevron-right text-gray-400 mr-4"></i>
+                                        <a href="{% url 'accounts:user_list' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700">
+                                            User Management
+                                        </a>
+                                    </div>
+                                </li>
+                                <li>
+                                    <div class="flex items-center">
+                                        <i class="fas fa-chevron-right text-gray-400 mr-4"></i>
+                                        <span class="text-sm font-medium text-gray-500">
+                                            {{ managed_user.email }}
+                                        </span>
+                                    </div>
+                                </li>
+                            </ol>
+                        </nav>
+                        <h1 class="mt-2 text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
+                            <i class="fas fa-user-cog text-blue-600 mr-3"></i>
+                            Manage User Roles
+                        </h1>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Assign and manage roles for {{ managed_user.get_full_name|default:managed_user.email }}
+                        </p>
+                    </div>
+                    <div class="mt-4 flex md:mt-0 md:ml-4">
+                        <a href="{% url 'accounts:user_list' %}" 
+                           class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                            <i class="fas fa-arrow-left mr-2"></i>
+                            Back to Users
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <!-- User Information Card -->
+        <div class="bg-white shadow sm:rounded-lg mb-6">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 h-16 w-16">
+                        <div class="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center">
+                            <i class="fas fa-user text-gray-500 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="ml-6">
+                        <h3 class="text-lg font-medium text-gray-900">
+                            {{ managed_user.get_full_name|default:managed_user.email }}
+                        </h3>
+                        <p class="text-sm text-gray-500">{{ managed_user.email }}</p>
+                        <div class="mt-1 flex items-center space-x-4 text-sm text-gray-500">
+                            <span>Joined: {{ managed_user.date_joined|date:"M d, Y" }}</span>
+                            {% if managed_user.last_login %}
+                            <span>Last login: {{ managed_user.last_login|date:"M d, Y" }}</span>
+                            {% endif %}
+                            {% if user_profile.can_access_phi %}
+                            <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                <i class="fas fa-shield-alt mr-1"></i>
+                                PHI Access
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <!-- Current Roles -->
+            <div class="bg-white shadow sm:rounded-lg">
+                <div class="px-4 py-5 sm:p-6">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
+                        Current Roles
+                    </h3>
+                    
+                    {% if user_roles %}
+                    <div class="space-y-3">
+                        {% for role in user_roles %}
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0">
+                                    {% if role.is_system_role %}
+                                        <i class="fas fa-shield-alt text-blue-600"></i>
+                                    {% else %}
+                                        <i class="fas fa-user-tag text-gray-600"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm font-medium text-gray-900">{{ role.display_name }}</p>
+                                    <p class="text-xs text-gray-500">{{ role.get_permission_count }} permissions</p>
+                                </div>
+                            </div>
+                            <form method="post" class="inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="remove">
+                                <input type="hidden" name="role_id" value="{{ role.id }}">
+                                <button type="submit" 
+                                        class="text-red-600 hover:text-red-900"
+                                        onclick="return confirm('Remove {{ role.display_name }} role from {{ managed_user.email }}?')"
+                                        title="Remove Role">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-6">
+                        <i class="fas fa-user-slash text-gray-400 text-3xl mb-2"></i>
+                        <p class="text-sm text-gray-500">No roles assigned</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Available Roles -->
+            <div class="bg-white shadow sm:rounded-lg">
+                <div class="px-4 py-5 sm:p-6">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
+                        Available Roles
+                    </h3>
+                    
+                    <div class="space-y-3">
+                        {% for role in available_roles %}
+                        {% if role not in user_roles %}
+                        <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:border-gray-300">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0">
+                                    {% if role.is_system_role %}
+                                        <i class="fas fa-shield-alt text-blue-600"></i>
+                                    {% else %}
+                                        <i class="fas fa-user-tag text-gray-600"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm font-medium text-gray-900">{{ role.display_name }}</p>
+                                    <p class="text-xs text-gray-500">{{ role.description|truncatewords:10 }}</p>
+                                </div>
+                            </div>
+                            <form method="post" class="inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="add">
+                                <input type="hidden" name="role_id" value="{{ role.id }}">
+                                <button type="submit" 
+                                        class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                                        title="Add Role">
+                                    <i class="fas fa-plus mr-1"></i>
+                                    Add
+                                </button>
+                            </form>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Role Information Panel -->
+        <div class="mt-6 bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">
+                    Healthcare Role Information
+                </h3>
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div class="border border-blue-200 rounded-lg p-4 bg-blue-50">
+                        <div class="flex items-center mb-2">
+                            <i class="fas fa-user-shield text-blue-600 mr-2"></i>
+                            <h4 class="font-medium text-blue-900">Administrator</h4>
+                        </div>
+                        <p class="text-sm text-blue-700">
+                            Full system access. Can manage all users, roles, and patient data.
+                        </p>
+                    </div>
+                    
+                    <div class="border border-green-200 rounded-lg p-4 bg-green-50">
+                        <div class="flex items-center mb-2">
+                            <i class="fas fa-user-md text-green-600 mr-2"></i>
+                            <h4 class="font-medium text-green-900">Healthcare Provider</h4>
+                        </div>
+                        <p class="text-sm text-green-700">
+                            Can access patient records and process medical documents.
+                        </p>
+                    </div>
+                    
+                    <div class="border border-yellow-200 rounded-lg p-4 bg-yellow-50">
+                        <div class="flex items-center mb-2">
+                            <i class="fas fa-user-tie text-yellow-600 mr-2"></i>
+                            <h4 class="font-medium text-yellow-900">Administrative Staff</h4>
+                        </div>
+                        <p class="text-sm text-yellow-700">
+                            Limited access for administrative tasks without sensitive PHI.
+                        </p>
+                    </div>
+                    
+                    <div class="border border-purple-200 rounded-lg p-4 bg-purple-50">
+                        <div class="flex items-center mb-2">
+                            <i class="fas fa-clipboard-check text-purple-600 mr-2"></i>
+                            <h4 class="font-medium text-purple-900">Auditor</h4>
+                        </div>
+                        <p class="text-sm text-purple-700">
+                            Read-only access to audit logs and compliance reports.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

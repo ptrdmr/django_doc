@@ -295,8 +295,16 @@ OTP_LOGIN_URL = '/accounts/login/'
 # ENCRYPTION CONFIGURATION
 # ============================================================================
 
-# Field-level encryption for PHI
-DJANGO_CRYPTOGRAPHY_SALT = config('DJANGO_CRYPTOGRAPHY_SALT', default=b'medical_parser_salt')
+# Field-level encryption for PHI using django-cryptography
+# IMPORTANT: These keys should be stored securely and not committed to version control
+# Generate a new key with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+FIELD_ENCRYPTION_KEYS = [
+    # Primary encryption key - should be loaded from environment variable
+    config(
+        'FIELD_ENCRYPTION_KEY',
+        default='gAAAAABhZ2J3X4K5l9m8n7o6p5q4r3s2t1u0v9w8x7y6z5A4B3C2D1E0F9G8H7I6J5K4L3M2N1O0P9Q8R7S6T5U4V3W2X1Y0Z9='  # Default for development only
+    ),
+]
 
 # Argon2 password hashing (HIPAA-compliant)
 PASSWORD_HASHERS = [

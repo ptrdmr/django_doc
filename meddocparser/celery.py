@@ -8,7 +8,7 @@ from celery import Celery
 from django.conf import settings
 
 # Set the default Django settings module for the 'celery' program.
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'meddocparser.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'meddocparser.settings.development')
 
 app = Celery('meddocparser')
 
@@ -17,7 +17,15 @@ app = Celery('meddocparser')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 
 # Load task modules from all registered Django app configs.
+# First try automatic discovery
 app.autodiscover_tasks()
+
+# Explicitly register our task modules to ensure they're found
+app.autodiscover_tasks([
+    'apps.documents',
+    'apps.fhir',
+    'apps.core',
+])
 
 # Configure Celery for medical document processing
 app.conf.update(

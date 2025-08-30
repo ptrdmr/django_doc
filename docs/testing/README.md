@@ -39,6 +39,14 @@ Testing strategies, frameworks, and procedures for the Medical Document Parser.
 - Clinical equivalence testing
 - Resource validation workflows
 
+**🔒 Hybrid Encryption Tests** (Task 21 Complete - Comprehensive PHI Security Testing):
+- **Patient Encryption Tests** (`apps/patients/tests.py`): Field-level encryption validation for all PHI fields
+- **Document Encryption Tests** (`apps/documents/tests.py`): File and content encryption verification
+- **Search Utility Tests** (`apps/patients/utils.py`): Fast search capabilities without PHI exposure
+- **Database Security Tests**: Raw database verification ensuring encrypted bytea storage
+- **Integration Tests**: End-to-end encryption workflow validation
+- **Migration Tests**: Data conversion and metadata extraction verification
+
 **FHIR Merge System Tests** (Task 14 Complete - 280+ Comprehensive Tests):
 - **FHIR Conversion Tests** (`apps/fhir/test_fhir_conversion.py`): Specialized converter testing for lab reports, clinical notes, medications, discharge summaries with FHIR validation
 - **Conflict Detection Tests** (`apps/fhir/test_conflict_detection.py`): Resource conflict identification with severity assessment and medical safety validation

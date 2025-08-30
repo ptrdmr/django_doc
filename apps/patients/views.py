@@ -18,6 +18,7 @@ import uuid
 from difflib import SequenceMatcher
 
 from .models import Patient, PatientHistory
+from .forms import PatientForm
 
 logger = logging.getLogger(__name__)
 
@@ -344,8 +345,8 @@ class PatientCreateView(LoginRequiredMixin, CreateView):
     Create a new patient record.
     """
     model = Patient
+    form_class = PatientForm
     template_name = 'patients/patient_form.html'
-    fields = ['mrn', 'first_name', 'last_name', 'date_of_birth', 'gender', 'ssn']
     success_url = reverse_lazy('patients:list')
     
     def create_patient_history(self):
@@ -400,8 +401,8 @@ class PatientUpdateView(LoginRequiredMixin, UpdateView):
     Update an existing patient record.
     """
     model = Patient
+    form_class = PatientForm
     template_name = 'patients/patient_form.html'
-    fields = ['mrn', 'first_name', 'last_name', 'date_of_birth', 'gender', 'ssn']
     success_url = reverse_lazy('patients:list')
     
     def create_update_history(self):
@@ -544,7 +545,7 @@ class PatientFHIRExportView(LoginRequiredMixin, View):
                         "given": [patient.first_name]
                     }
                 ],
-                "birthDate": patient.date_of_birth.isoformat(),
+                "birthDate": patient.get_date_of_birth().isoformat() if patient.get_date_of_birth() else None,
                 "gender": self.map_gender_to_fhir(patient.gender)
             }
         }
@@ -756,8 +757,8 @@ class FindDuplicatePatientsView(LoginRequiredMixin, TemplateView):
             # Check name similarity
             name_similarity = self.calculate_name_similarity(target_patient, patient)
             
-            # Check if same DOB
-            same_dob = target_patient.date_of_birth == patient.date_of_birth
+            # Check if same DOB (using helper method for encrypted date field)
+            same_dob = target_patient.get_date_of_birth() == patient.get_date_of_birth()
             
             # Consider as duplicate if high name similarity and same DOB
             if name_similarity > 0.8 and same_dob:
@@ -916,7 +917,7 @@ class PatientMergeView(LoginRequiredMixin, TemplateView):
         return {
             'names_match': (source.first_name.lower() == target.first_name.lower() and 
                           source.last_name.lower() == target.last_name.lower()),
-            'dob_match': source.date_of_birth == target.date_of_birth,
+            'dob_match': source.get_date_of_birth() == target.get_date_of_birth(),
             'gender_match': source.gender == target.gender,
             'source_fhir_count': len(source.cumulative_fhir_json) if source.cumulative_fhir_json else 0,
             'target_fhir_count': len(target.cumulative_fhir_json) if target.cumulative_fhir_json else 0,

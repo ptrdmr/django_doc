@@ -1,0 +1,551 @@
+# Task ID: 25
+# Title: Implement Provider Invitation System
+# Status: pending
+# Dependencies: 2, 22, 20
+# Priority: high
+# Description: Create a system that allows administrators to send invitation links to healthcare providers, enabling them to create accounts with pre-assigned roles and permissions.
+# Details:
+Implement a comprehensive provider invitation system:
+
+1. Create invitation models in `accounts/models.py`:
+```python
+class ProviderInvitation(models.Model):
+    email = models.EmailField()
+    token = models.CharField(max_length=64, unique=True)
+    role = models.ForeignKey('accounts.Role', on_delete=models.CASCADE)
+    invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_invitations')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"Invitation for {self.email}"
+    
+    def generate_token(self):
+        """Generate a secure random token for the invitation."""
+        return secrets.token_urlsafe(48)
+    
+    def is_expired(self):
+        """Check if the invitation has expired."""
+        return timezone.now() > self.expires_at
+```
+
+2. Create invitation service in `accounts/services.py`:
+```python
+class InvitationService:
+    @staticmethod
+    def create_invitation(email, role, invited_by, expiration_days=7):
+        """Create a new provider invitation."""
+        invitation = ProviderInvitation(
+            email=email,
+            role=role,
+            invited_by=invited_by,
+            expires_at=timezone.now() + timezone.timedelta(days=expiration_days)
+        )
+        invitation.token = invitation.generate_token()
+        invitation.save()
+        return invitation
+    
+    @staticmethod
+    def send_invitation_email(invitation, request):
+        """Send invitation email to the provider."""
+        invitation_url = request.build_absolute_uri(
+            reverse('accounts:accept_invitation', kwargs={'token': invitation.token})
+        )
+        
+        subject = f"Invitation to join {settings.SITE_NAME} as a healthcare provider"
+        html_message = render_to_string('accounts/emails/provider_invitation.html', {
+            'invitation': invitation,
+            'invitation_url': invitation_url,
+            'expiration_date': invitation.expires_at.strftime('%B %d, %Y'),
+            'site_name': settings.SITE_NAME,
+        })
+        plain_message = strip_tags(html_message)
+        
+        send_mail(
+            subject,
+            plain_message,
+            settings.DEFAULT_FROM_EMAIL,
+            [invitation.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+    
+    @staticmethod
+    def get_invitation_by_token(token):
+        """Get an active invitation by token."""
+        try:
+            invitation = ProviderInvitation.objects.get(token=token, is_active=True)
+            if invitation.is_expired():
+                return None
+            return invitation
+        except ProviderInvitation.DoesNotExist:
+            return None
+    
+    @staticmethod
+    def accept_invitation(invitation, user):
+        """Mark invitation as accepted and assign role to user."""
+        invitation.accepted_at = timezone.now()
+        invitation.is_active = False
+        invitation.save()
+        
+        # Assign the role to the user
+        user.roles.add(invitation.role)
+        
+        # Create provider profile if it doesn't exist
+        if not hasattr(user, 'provider_profile'):
+            Provider.objects.create(
+                user=user,
+                email=user.email,
+                first_name=user.first_name,
+                last_name=user.last_name
+            )
+```
+
+3. Create invitation views in `accounts/views.py`:
+```python
+class InvitationListView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
+    permission_required = 'accounts.manage_invitations'
+    model = ProviderInvitation
+    template_name = 'accounts/invitation_list.html'
+    context_object_name = 'invitations'
+    
+    def get_queryset(self):
+        return ProviderInvitation.objects.filter(is_active=True).order_by('-created_at')
+
+class CreateInvitationView(LoginRequiredMixin, PermissionRequiredMixin, FormView):
+    permission_required = 'accounts.manage_invitations'
+    template_name = 'accounts/create_invitation.html'
+    form_class = ProviderInvitationForm
+    success_url = reverse_lazy('accounts:invitation_list')
+    
+    def form_valid(self, form):
+        email = form.cleaned_data['email']
+        role = form.cleaned_data['role']
+        
+        invitation = InvitationService.create_invitation(
+            email=email,
+            role=role,
+            invited_by=self.request.user
+        )
+        
+        InvitationService.send_invitation_email(invitation, self.request)
+        
+        messages.success(self.request, f"Invitation sent to {email}")
+        return super().form_valid(form)
+
+class AcceptInvitationView(TemplateView):
+    template_name = 'accounts/accept_invitation.html'
+    
+    def get(self, request, *args, **kwargs):
+        token = kwargs.get('token')
+        invitation = InvitationService.get_invitation_by_token(token)
+        
+        if not invitation:
+            messages.error(request, "Invalid or expired invitation link.")
+            return redirect('accounts:login')
+        
+        # Store invitation token in session for registration
+        request.session['invitation_token'] = token
+        
+        return super().get(request, *args, **kwargs)
+```
+
+4. Create invitation registration form:
+```python
+class InvitationRegistrationForm(UserCreationForm):
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name', 'email', 'password1', 'password2')
+    
+    def __init__(self, *args, **kwargs):
+        self.invitation = kwargs.pop('invitation', None)
+        super().__init__(*args, **kwargs)
+        
+        if self.invitation:
+            self.fields['email'].initial = self.invitation.email
+            self.fields['email'].widget.attrs['readonly'] = True
+    
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.username = self.cleaned_data['email']
+        
+        if commit:
+            user.save()
+            if self.invitation:
+                InvitationService.accept_invitation(self.invitation, user)
+        
+        return user
+```
+
+5. Create invitation registration view:
+```python
+class InvitationRegistrationView(FormView):
+    template_name = 'accounts/invitation_registration.html'
+    form_class = InvitationRegistrationForm
+    success_url = reverse_lazy('accounts:login')
+    
+    def dispatch(self, request, *args, **kwargs):
+        token = request.session.get('invitation_token')
+        self.invitation = InvitationService.get_invitation_by_token(token)
+        
+        if not self.invitation:
+            messages.error(request, "Invalid or expired invitation.")
+            return redirect('accounts:login')
+        
+        return super().dispatch(request, *args, **kwargs)
+    
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['invitation'] = self.invitation
+        return kwargs
+    
+    def form_valid(self, form):
+        form.save()
+        messages.success(self.request, "Registration successful! You can now log in with your credentials.")
+        if 'invitation_token' in self.request.session:
+            del self.request.session['invitation_token']
+        return super().form_valid(form)
+```
+
+6. Create invitation management interface templates:
+   - `templates/accounts/invitation_list.html` - List of active invitations
+   - `templates/accounts/create_invitation.html` - Form to create new invitations
+   - `templates/accounts/accept_invitation.html` - Landing page for invitation links
+   - `templates/accounts/invitation_registration.html` - Registration form for invited providers
+   - `templates/accounts/emails/provider_invitation.html` - Email template for invitations
+
+7. Add URL patterns in `accounts/urls.py`:
+```python
+urlpatterns = [
+    # ... existing URLs
+    path('invitations/', views.InvitationListView.as_view(), name='invitation_list'),
+    path('invitations/create/', views.CreateInvitationView.as_view(), name='create_invitation'),
+    path('invitations/accept/<str:token>/', views.AcceptInvitationView.as_view(), name='accept_invitation'),
+    path('invitations/register/', views.InvitationRegistrationView.as_view(), name='invitation_registration'),
+]
+```
+
+8. Add permissions in `accounts/models.py`:
+```python
+class Meta:
+    permissions = [
+        ('manage_invitations', 'Can manage provider invitations'),
+    ]
+```
+
+9. Implement invitation management interface with:
+   - List of pending invitations with status (sent, accepted, expired)
+   - Ability to resend invitations
+   - Ability to revoke invitations
+   - Filtering and sorting options
+
+10. Add audit logging for invitation actions:
+```python
+# In accounts/signals.py
+@receiver(post_save, sender=ProviderInvitation)
+def log_invitation_activity(sender, instance, created, **kwargs):
+    if created:
+        AuditLog.objects.create(
+            user=instance.invited_by,
+            action='CREATE',
+            resource_type='ProviderInvitation',
+            resource_id=str(instance.id),
+            data_accessed=f"Invitation created for {instance.email}"
+        )
+```
+
+# Test Strategy:
+To verify the Provider Invitation System implementation:
+
+1. Unit Tests:
+   - Test invitation model and token generation:
+   ```python
+   class ProviderInvitationModelTests(TestCase):
+       def setUp(self):
+           self.admin_user = User.objects.create_user('admin@example.com', 'password')
+           self.role = Role.objects.create(name='Provider', description='Healthcare provider role')
+       
+       def test_invitation_token_generation(self):
+           invitation = ProviderInvitation(
+               email='provider@example.com',
+               role=self.role,
+               invited_by=self.admin_user,
+               expires_at=timezone.now() + timezone.timedelta(days=7)
+           )
+           invitation.token = invitation.generate_token()
+           self.assertIsNotNone(invitation.token)
+           self.assertEqual(len(invitation.token), 64)
+       
+       def test_invitation_expiration(self):
+           # Test expired invitation
+           expired_invitation = ProviderInvitation.objects.create(
+               email='expired@example.com',
+               token='expired_token',
+               role=self.role,
+               invited_by=self.admin_user,
+               expires_at=timezone.now() - timezone.timedelta(days=1)
+           )
+           self.assertTrue(expired_invitation.is_expired())
+           
+           # Test valid invitation
+           valid_invitation = ProviderInvitation.objects.create(
+               email='valid@example.com',
+               token='valid_token',
+               role=self.role,
+               invited_by=self.admin_user,
+               expires_at=timezone.now() + timezone.timedelta(days=7)
+           )
+           self.assertFalse(valid_invitation.is_expired())
+   ```
+
+   - Test invitation service methods:
+   ```python
+   class InvitationServiceTests(TestCase):
+       def setUp(self):
+           self.admin_user = User.objects.create_user('admin@example.com', 'password')
+           self.role = Role.objects.create(name='Provider', description='Healthcare provider role')
+       
+       def test_create_invitation(self):
+           invitation = InvitationService.create_invitation(
+               email='provider@example.com',
+               role=self.role,
+               invited_by=self.admin_user
+           )
+           self.assertIsNotNone(invitation)
+           self.assertEqual(invitation.email, 'provider@example.com')
+           self.assertEqual(invitation.role, self.role)
+           self.assertEqual(invitation.invited_by, self.admin_user)
+           self.assertTrue(invitation.is_active)
+       
+       def test_get_invitation_by_token(self):
+           invitation = InvitationService.create_invitation(
+               email='provider@example.com',
+               role=self.role,
+               invited_by=self.admin_user
+           )
+           retrieved = InvitationService.get_invitation_by_token(invitation.token)
+           self.assertEqual(invitation, retrieved)
+           
+           # Test with invalid token
+           self.assertIsNone(InvitationService.get_invitation_by_token('invalid_token'))
+           
+           # Test with expired token
+           invitation.expires_at = timezone.now() - timezone.timedelta(days=1)
+           invitation.save()
+           self.assertIsNone(InvitationService.get_invitation_by_token(invitation.token))
+   ```
+
+2. Integration Tests:
+   - Test email sending functionality:
+   ```python
+   class InvitationEmailTests(TestCase):
+       def setUp(self):
+           self.admin_user = User.objects.create_user('admin@example.com', 'password')
+           self.role = Role.objects.create(name='Provider', description='Healthcare provider role')
+           self.invitation = InvitationService.create_invitation(
+               email='provider@example.com',
+               role=self.role,
+               invited_by=self.admin_user
+           )
+           self.factory = RequestFactory()
+       
+       @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+       def test_send_invitation_email(self):
+           request = self.factory.get('/')
+           InvitationService.send_invitation_email(self.invitation, request)
+           
+           # Test that one message has been sent
+           self.assertEqual(len(mail.outbox), 1)
+           
+           # Verify that the subject is correct
+           self.assertTrue('Invitation' in mail.outbox[0].subject)
+           
+           # Verify that the recipient is correct
+           self.assertEqual(mail.outbox[0].to, ['provider@example.com'])
+           
+           # Verify that the token is in the email body
+           self.assertTrue(self.invitation.token in mail.outbox[0].body or 
+                          self.invitation.token in mail.outbox[0].alternatives[0][0])
+   ```
+
+   - Test invitation acceptance flow:
+   ```python
+   class InvitationAcceptanceTests(TestCase):
+       def setUp(self):
+           self.admin_user = User.objects.create_user('admin@example.com', 'password')
+           self.role = Role.objects.create(name='Provider', description='Healthcare provider role')
+           self.invitation = InvitationService.create_invitation(
+               email='provider@example.com',
+               role=self.role,
+               invited_by=self.admin_user
+           )
+       
+       def test_accept_invitation(self):
+           # Create a new user
+           user = User.objects.create_user('provider@example.com', 'password')
+           
+           # Accept the invitation
+           InvitationService.accept_invitation(self.invitation, user)
+           
+           # Verify invitation is marked as accepted
+           self.invitation.refresh_from_db()
+           self.assertIsNotNone(self.invitation.accepted_at)
+           self.assertFalse(self.invitation.is_active)
+           
+           # Verify role is assigned to user
+           self.assertTrue(user.roles.filter(id=self.role.id).exists())
+           
+           # Verify provider profile is created
+           self.assertTrue(hasattr(user, 'provider_profile'))
+   ```
+
+3. View Tests:
+   - Test invitation creation view:
+   ```python
+   class CreateInvitationViewTests(TestCase):
+       def setUp(self):
+           self.admin_user = User.objects.create_superuser('admin@example.com', 'password')
+           self.role = Role.objects.create(name='Provider', description='Healthcare provider role')
+           self.client.login(username='admin@example.com', password='password')
+       
+       def test_create_invitation_view(self):
+           response = self.client.post(reverse('accounts:create_invitation'), {
+               'email': 'provider@example.com',
+               'role': self.role.id,
+           })
+           
+           # Verify redirect to invitation list
+           self.assertRedirects(response, reverse('accounts:invitation_list'))
+           
+           # Verify invitation was created
+           self.assertTrue(ProviderInvitation.objects.filter(email='provider@example.com').exists())
+   ```
+
+   - Test invitation acceptance view:
+   ```python
+   class AcceptInvitationViewTests(TestCase):
+       def setUp(self):
+           self.admin_user = User.objects.create_user('admin@example.com', 'password')
+           self.role = Role.objects.create(name='Provider', description='Healthcare provider role')
+           self.invitation = InvitationService.create_invitation(
+               email='provider@example.com',
+               role=self.role,
+               invited_by=self.admin_user
+           )
+       
+       def test_accept_invitation_view(self):
+           response = self.client.get(reverse('accounts:accept_invitation', 
+                                             kwargs={'token': self.invitation.token}))
+           
+           # Verify successful response
+           self.assertEqual(response.status_code, 200)
+           
+           # Verify token is stored in session
+           self.assertEqual(self.client.session['invitation_token'], self.invitation.token)
+           
+           # Test with invalid token
+           response = self.client.get(reverse('accounts:accept_invitation', 
+                                             kwargs={'token': 'invalid_token'}))
+           self.assertRedirects(response, reverse('accounts:login'))
+   ```
+
+4. End-to-End Tests:
+   - Test complete invitation flow from creation to registration:
+   ```python
+   class InvitationFlowTests(TestCase):
+       def setUp(self):
+           self.admin_user = User.objects.create_superuser('admin@example.com', 'password')
+           self.role = Role.objects.create(name='Provider', description='Healthcare provider role')
+           self.client.login(username='admin@example.com', password='password')
+       
+       def test_complete_invitation_flow(self):
+           # 1. Admin creates invitation
+           self.client.post(reverse('accounts:create_invitation'), {
+               'email': 'provider@example.com',
+               'role': self.role.id,
+           })
+           
+           invitation = ProviderInvitation.objects.get(email='provider@example.com')
+           
+           # 2. Provider clicks invitation link
+           self.client.logout()
+           response = self.client.get(reverse('accounts:accept_invitation', 
+                                             kwargs={'token': invitation.token}))
+           
+           # 3. Provider completes registration
+           response = self.client.post(reverse('accounts:invitation_registration'), {
+               'email': 'provider@example.com',
+               'first_name': 'Test',
+               'last_name': 'Provider',
+               'password1': 'securepassword123',
+               'password2': 'securepassword123',
+           })
+           
+           # Verify redirect to login
+           self.assertRedirects(response, reverse('accounts:login'))
+           
+           # Verify user was created
+           self.assertTrue(User.objects.filter(email='provider@example.com').exists())
+           
+           # Verify invitation was accepted
+           invitation.refresh_from_db()
+           self.assertIsNotNone(invitation.accepted_at)
+           self.assertFalse(invitation.is_active)
+           
+           # Verify user has correct role
+           user = User.objects.get(email='provider@example.com')
+           self.assertTrue(user.roles.filter(id=self.role.id).exists())
+   ```
+
+5. Security Tests:
+   - Test token security:
+   ```python
+   class InvitationSecurityTests(TestCase):
+       def setUp(self):
+           self.admin_user = User.objects.create_user('admin@example.com', 'password')
+           self.role = Role.objects.create(name='Provider', description='Healthcare provider role')
+       
+       def test_token_uniqueness(self):
+           # Generate multiple tokens and verify they're all unique
+           tokens = set()
+           for i in range(100):
+               invitation = ProviderInvitation(
+                   email=f'provider{i}@example.com',
+                   role=self.role,
+                   invited_by=self.admin_user,
+                   expires_at=timezone.now() + timezone.timedelta(days=7)
+               )
+               invitation.token = invitation.generate_token()
+               tokens.add(invitation.token)
+           
+           # Verify all tokens are unique
+           self.assertEqual(len(tokens), 100)
+       
+       def test_expired_invitation_security(self):
+           # Create expired invitation
+           invitation = InvitationService.create_invitation(
+               email='provider@example.com',
+               role=self.role,
+               invited_by=self.admin_user
+           )
+           invitation.expires_at = timezone.now() - timezone.timedelta(days=1)
+           invitation.save()
+           
+           # Attempt to use expired invitation
+           response = self.client.get(reverse('accounts:accept_invitation', 
+                                             kwargs={'token': invitation.token}))
+           
+           # Verify redirect to login with error
+           self.assertRedirects(response, reverse('accounts:login'))
+   ```
+
+6. Manual Testing:
+   - Verify invitation emails are properly formatted and contain correct links
+   - Test invitation flow with real email addresses
+   - Verify invitation expiration works correctly
+   - Test invitation management interface for administrators
+   - Verify proper role assignment during registration
+   - Test invitation revocation functionality
+   - Verify audit logging captures all invitation-related actions
