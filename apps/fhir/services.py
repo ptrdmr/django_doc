@@ -1797,12 +1797,26 @@ class ConflictDetector:
         )
     
     def _conditions_are_duplicates(self, cond1: Resource, cond2: Resource) -> bool:
-        """Check if two conditions are duplicates."""
-        return (
-            getattr(cond1, 'code', None) == getattr(cond2, 'code', None) and
-            getattr(cond1, 'clinicalStatus', None) == getattr(cond2, 'clinicalStatus', None) and
-            getattr(cond1, 'onsetDateTime', None) == getattr(cond2, 'onsetDateTime', None)
-        )
+        """Check if two conditions are duplicates based on condition code text."""
+        # Extract condition code text for comparison
+        code1 = None
+        code2 = None
+        
+        # Handle different code representations
+        if hasattr(cond1, 'code') and cond1.code:
+            if isinstance(cond1.code, dict):
+                code1 = cond1.code.get('text')
+            elif hasattr(cond1.code, 'text'):
+                code1 = cond1.code.text
+                
+        if hasattr(cond2, 'code') and cond2.code:
+            if isinstance(cond2.code, dict):
+                code2 = cond2.code.get('text')
+            elif hasattr(cond2.code, 'text'):
+                code2 = cond2.code.text
+        
+        # Conditions are duplicates only if they have the same condition code text
+        return code1 is not None and code2 is not None and code1 == code2
     
     def _medications_are_duplicates(self, med1: Resource, med2: Resource) -> bool:
         """Check if two medication statements are duplicates."""
