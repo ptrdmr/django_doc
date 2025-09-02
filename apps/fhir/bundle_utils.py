@@ -536,15 +536,30 @@ def _compare_conditions(cond1: ConditionResource, cond2: ConditionResource) -> b
     Returns:
         True if conditions are clinically equivalent
     """
-    # Compare condition codes
-    # Fallback to code.coding[0].code when wrapper helper absent
+    # Compare condition codes - check multiple code representations
+    # Try wrapper helper method first
     code1 = getattr(cond1, 'get_condition_code', lambda: None)()
+    code2 = getattr(cond2, 'get_condition_code', lambda: None)()
+    
+    # Fallback to code.coding[0].code if available
     if code1 is None and getattr(cond1, 'code', None) and getattr(cond1.code, 'coding', None):
         code1 = cond1.code.coding[0].code
-    code2 = getattr(cond2, 'get_condition_code', lambda: None)()
     if code2 is None and getattr(cond2, 'code', None) and getattr(cond2.code, 'coding', None):
         code2 = cond2.code.coding[0].code
     
+    # Fallback to code.text if coding not available
+    if code1 is None and getattr(cond1, 'code', None):
+        code1 = getattr(cond1.code, 'text', None)
+    if code2 is None and getattr(cond2, 'code', None):
+        code2 = getattr(cond2.code, 'text', None)
+    
+    # If we still don't have codes, try dict access for code.text
+    if code1 is None and hasattr(cond1, 'code') and isinstance(cond1.code, dict):
+        code1 = cond1.code.get('text')
+    if code2 is None and hasattr(cond2, 'code') and isinstance(cond2.code, dict):
+        code2 = cond2.code.get('text')
+    
+    # Compare the extracted codes
     if code1 != code2:
         return False
     
