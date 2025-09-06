@@ -3196,4 +3196,4 @@ class PatientQuerySet(models.QuerySet):
 
 ---
 
-*Updated: 2025-08-05 20:14:02 | Added FHIR Merge Integration Development Patterns (Task 14 - 6/20 subtasks complete with enterprise-grade conflict detection and resolution)*
+*Updated: 2025-09-06 15:34:02 | Added Comprehensive FHIR Data Capture Pipeline (Task 27.4 - 4/5 subtasks complete with 90%+ clinical data extraction capability)*
