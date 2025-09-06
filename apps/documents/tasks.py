@@ -168,9 +168,22 @@ def process_document_async(self, document_id: int):
                 if ai_result['success']:
                     logger.info(f"AI analysis successful: {len(ai_result['fields'])} fields extracted")
                     
-                    # STEP 3: Convert to FHIR format and accumulate to patient record
+                    # STEP 3: Convert to FHIR format using enhanced FHIR processor
                     patient_id = str(document.patient.id) if document.patient else None
-                    fhir_resources = ai_analyzer.convert_to_fhir(ai_result['fields'], patient_id)
+                    
+                    # Use the new FHIRProcessor for comprehensive resource processing
+                    try:
+                        from apps.fhir.services import FHIRProcessor
+                        
+                        fhir_processor = FHIRProcessor()
+                        fhir_resources = fhir_processor.process_extracted_data(ai_result['fields'], patient_id)
+                        
+                        logger.info(f"FHIRProcessor created {len(fhir_resources)} resources from extracted data")
+                        
+                    except Exception as fhir_proc_exc:
+                        logger.warning(f"FHIRProcessor failed, falling back to legacy converter: {fhir_proc_exc}")
+                        # Fallback to legacy converter if new processor fails
+                        fhir_resources = ai_analyzer.convert_to_fhir(ai_result['fields'], patient_id)
                     
                     # STEP 4: Accumulate FHIR resources to patient record
                     if document.patient and fhir_resources:

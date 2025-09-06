@@ -9,10 +9,12 @@ from .medication_service import MedicationService
 from .diagnostic_report_service import DiagnosticReportService
 from .service_request_service import ServiceRequestService
 from .encounter_service import EncounterService
+from .fhir_processor import FHIRProcessor
 
 __all__ = [
     'MedicationService',
     'DiagnosticReportService',
     'ServiceRequestService',
     'EncounterService',
+    'FHIRProcessor',
 ]
