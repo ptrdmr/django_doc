@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Complete Registration - Medical Document Parser{% endblock %}
+
+{% block body_class %}bg-gray-100{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <!-- Header -->
+        <div class="text-center">
+            <div class="mx-auto h-16 w-16 bg-green-100 rounded-full flex items-center justify-center">
+                <i class="fas fa-user-plus text-green-600 text-2xl"></i>
+            </div>
+            <h2 class="mt-6 text-3xl font-extrabold text-gray-900">
+                Complete Your Registration
+            </h2>
+            <p class="mt-2 text-sm text-gray-600">
+                Create your secure account to join the medical team
+            </p>
+        </div>
+
+        <!-- Invitation Summary -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div class="flex items-center space-x-3">
+                <div class="flex-shrink-0">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {{ invitation.role.display_name }}
+                    </span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900">{{ invitation.email }}</p>
+                    <p class="text-sm text-gray-500">Invited by {{ invitation.invited_by.get_full_name|default:invitation.invited_by.email }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Registration Form -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">Account Information</h3>
+                <p class="mt-1 text-sm text-gray-500">Please provide your details to create your secure account.</p>
+            </div>
+            
+            <form method="post" class="px-6 py-6 space-y-6">
+                {% csrf_token %}
+                
+                <!-- First Name -->
+                <div>
+                    <label for="{{ form.first_name.id_for_label }}" class="block text-sm font-medium text-gray-700">
+                        {{ form.first_name.label }}
+                        <span class="text-red-500">*</span>
+                    </label>
+                    <div class="mt-1">
+                        {{ form.first_name }}
+                    </div>
+                    {% if form.first_name.errors %}
+                    <div class="mt-1">
+                        {% for error in form.first_name.errors %}
+                        <p class="text-sm text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Last Name -->
+                <div>
+                    <label for="{{ form.last_name.id_for_label }}" class="block text-sm font-medium text-gray-700">
+                        {{ form.last_name.label }}
+                        <span class="text-red-500">*</span>
+                    </label>
+                    <div class="mt-1">
+                        {{ form.last_name }}
+                    </div>
+                    {% if form.last_name.errors %}
+                    <div class="mt-1">
+                        {% for error in form.last_name.errors %}
+                        <p class="text-sm text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Email (readonly) -->
+                <div>
+                    <label for="{{ form.email.id_for_label }}" class="block text-sm font-medium text-gray-700">
+                        {{ form.email.label }}
+                        <span class="text-red-500">*</span>
+                    </label>
+                    <div class="mt-1">
+                        {{ form.email }}
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">
+                        <i class="fas fa-lock mr-1"></i>
+                        This email address is from your invitation and cannot be changed.
+                    </p>
+                    {% if form.email.errors %}
+                    <div class="mt-1">
+                        {% for error in form.email.errors %}
+                        <p class="text-sm text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Password -->
+                <div>
+                    <label for="{{ form.password1.id_for_label }}" class="block text-sm font-medium text-gray-700">
+                        {{ form.password1.label }}
+                        <span class="text-red-500">*</span>
+                    </label>
+                    <div class="mt-1">
+                        {{ form.password1 }}
+                    </div>
+                    {% if form.password1.help_text %}
+                    <p class="mt-1 text-sm text-gray-500">{{ form.password1.help_text }}</p>
+                    {% endif %}
+                    {% if form.password1.errors %}
+                    <div class="mt-1">
+                        {% for error in form.password1.errors %}
+                        <p class="text-sm text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Confirm Password -->
+                <div>
+                    <label for="{{ form.password2.id_for_label }}" class="block text-sm font-medium text-gray-700">
+                        {{ form.password2.label }}
+                        <span class="text-red-500">*</span>
+                    </label>
+                    <div class="mt-1">
+                        {{ form.password2 }}
+                    </div>
+                    {% if form.password2.errors %}
+                    <div class="mt-1">
+                        {% for error in form.password2.errors %}
+                        <p class="text-sm text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Form-wide errors -->
+                {% if form.non_field_errors %}
+                <div class="bg-red-50 border border-red-200 rounded-md p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-exclamation-triangle text-red-400"></i>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">Please correct the following errors:</h3>
+                            <div class="mt-2 text-sm text-red-700">
+                                {% for error in form.non_field_errors %}
+                                <p>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Security Information -->
+                <div class="bg-blue-50 border border-blue-200 rounded-md p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-shield-alt text-blue-400"></i>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-blue-800">Security & Privacy</h3>
+                            <div class="mt-2 text-sm text-blue-700">
+                                <ul class="list-disc list-inside space-y-1">
+                                    <li>Your account will have {{ invitation.role.display_name }} permissions</li>
+                                    <li>All activity is logged for HIPAA compliance</li>
+                                    <li>Use a strong password with at least 8 characters</li>
+                                    <li>Your account will be immediately active after registration</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div>
+                    <button type="submit" 
+                            class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                        <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                            <i class="fas fa-check text-green-500 group-hover:text-green-400"></i>
+                        </span>
+                        Complete Registration
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Help -->
+        <div class="text-center">
+            <p class="text-sm text-gray-500">
+                Having trouble? Contact support at 
+                <a href="mailto:{{ support_email|default:'support@meddocparser.com' }}" class="font-medium text-blue-600 hover:text-blue-500">
+                    {{ support_email|default:'support@meddocparser.com' }}
+                </a>
+            </p>
+        </div>
+
+        <!-- Legal Notice -->
+        <div class="text-center">
+            <p class="text-xs text-gray-400">
+                By creating an account, you agree to our Terms of Service and Privacy Policy. 
+                This system is HIPAA-compliant and your information is protected.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

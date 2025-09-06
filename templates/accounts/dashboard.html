@@ -117,6 +117,20 @@
           <p class="text-xs text-gray-500">View reports and insights</p>
         </div>
       </a>
+      
+      {% if user.is_staff or user.is_superuser %}
+      <a href="{% url 'accounts:invitation_list' %}" class="card hover:shadow-lg transition-shadow group">
+        <div class="card-body text-center">
+          <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-orange-200 transition-colors">
+            <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
+            </svg>
+          </div>
+          <h3 class="text-sm font-medium text-gray-900 mb-1">Provider Invitations</h3>
+          <p class="text-xs text-gray-500">Invite new healthcare providers</p>
+        </div>
+      </a>
+      {% endif %}
     </div>
   </div>
   

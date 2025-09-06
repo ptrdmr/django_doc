@@ -1,0 +1,135 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PHI Encryption Audit Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .header { background: #2c3e50; color: white; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border-left: 4px solid #3498db; }
+        .evidence { background: #f8f9fa; padding: 15px; font-family: monospace; }
+        .encrypted { color: #e74c3c; }
+        .decrypted { color: #27ae60; }
+        .pass { color: #27ae60; font-weight: bold; }
+        .table { width: 100%; border-collapse: collapse; }
+        .table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .table th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>PHI Encryption Audit Report</h1>
+        <p>Generated: 2025-09-02 08:16:06 UTC</p>
+        <p>System: Medical Document Parser - HIPAA Compliant</p>
+    </div>
+
+    <div class="section">
+        <h2>Executive Summary</h2>
+        <p class="pass">✅ ALL PHI DATA IS PROPERLY ENCRYPTED AT REST</p>
+        <p>This report demonstrates compliance with HIPAA Technical Safeguards §164.312(a)(2)(iv) 
+        requiring encryption of electronic protected health information (PHI).</p>
+    </div>
+
+    <div class="section">
+        <h2>Encryption Implementation</h2>
+        <ul>
+            <li><strong>Library:</strong> django-cryptography</li>
+            <li><strong>Algorithm:</strong> Fernet (AES 128 in CBC mode + HMAC-SHA256)</li>
+            <li><strong>Key Management:</strong> 1 configured key(s)</li>
+            <li><strong>Key Rotation:</strong> Supported</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>Demonstration: Encrypted vs Decrypted Data</h2>
+        <p>The following shows identical data as stored in the database (encrypted) vs. as seen by the application (decrypted):</p>
+        
+        <table class="table">
+            <tr>
+                <th>Field</th>
+                <th>Application View (Decrypted)</th>
+                <th>Database Storage (Encrypted)</th>
+                <th>Status</th>
+            </tr>
+
+            <tr>
+                <td><strong>First Name</strong></td>
+                <td class="decrypted">Jane</td>
+                <td class="encrypted">800000000068b70a364e6c3e3a3ca62b6500987f... (89 bytes)</td>
+                <td class="pass">✅ ENCRYPTED</td>
+            </tr>
+
+            <tr>
+                <td><strong>Last Name</strong></td>
+                <td class="decrypted">Smith</td>
+                <td class="encrypted">800000000068b70a368e065581d32e6fb766a125... (89 bytes)</td>
+                <td class="pass">✅ ENCRYPTED</td>
+            </tr>
+
+            <tr>
+                <td><strong>Ssn</strong></td>
+                <td class="decrypted">987654321</td>
+                <td class="encrypted">800000000068b70a36f46b695745f3107f28b26d... (89 bytes)</td>
+                <td class="pass">✅ ENCRYPTED</td>
+            </tr>
+
+            <tr>
+                <td><strong>Address</strong></td>
+                <td class="decrypted">456 Oak Avenue, Springfield, IL 62701</td>
+                <td class="encrypted">800000000068b70a36664977934d069dee27faad... (121 bytes)</td>
+                <td class="pass">✅ ENCRYPTED</td>
+            </tr>
+
+            <tr>
+                <td><strong>Phone</strong></td>
+                <td class="decrypted">217-555-0123</td>
+                <td class="encrypted">800000000068b70a369d50e010dbcefb88228221... (89 bytes)</td>
+                <td class="pass">✅ ENCRYPTED</td>
+            </tr>
+
+            <tr>
+                <td><strong>Email</strong></td>
+                <td class="decrypted">jane.smith@email.com</td>
+                <td class="encrypted">800000000068b70a365228395b64fa231d4ffd3b... (105 bytes)</td>
+                <td class="pass">✅ ENCRYPTED</td>
+            </tr>
+
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>SQL Injection / Database Breach Simulation</h2>
+        <p>This demonstrates what an attacker would see if they gained direct database access:</p>
+        <div class="evidence">
+
+SQL Query: SELECT mrn, first_name, last_name, ssn FROM patients WHERE mrn = 'AUDIT716823';<br><br>
+Result:<br>
+&nbsp;&nbsp;MRN: AUDIT716823 (intentionally not encrypted - needed for indexing)<br>
+&nbsp;&nbsp;First Name: 800000000068b70a364e6c3e3a3ca62b6500987f6c2e02faa5c985a01626...<br>
+&nbsp;&nbsp;Last Name: 800000000068b70a368e065581d32e6fb766a12576ce0111c9e77f3e7a8e...<br>
+&nbsp;&nbsp;SSN: 800000000068b70a36f46b695745f3107f28b26d702c16d22247032a2976...<br><br>
+<span class="pass">✅ PHI DATA IS UNREADABLE TO ATTACKERS</span>
+
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Compliance Verification</h2>
+        <table class="table">
+            <tr><th>HIPAA Requirement</th><th>Implementation</th><th>Status</th></tr>
+            <tr><td>§164.312(a)(2)(iv) - Encryption</td><td>django-cryptography Fernet</td><td class="pass">✅ COMPLIANT</td></tr>
+            <tr><td>Data at Rest Protection</td><td>Database-level field encryption</td><td class="pass">✅ COMPLIANT</td></tr>
+            <tr><td>Key Management</td><td>Separate key storage</td><td class="pass">✅ COMPLIANT</td></tr>
+            <tr><td>Access Controls</td><td>Application-level decryption only</td><td class="pass">✅ COMPLIANT</td></tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Auditor Notes</h2>
+        <p>This report was generated automatically by the system's built-in compliance verification tools. 
+        The test data used in this demonstration has been removed from the system.</p>
+        <p><strong>Test Patient MRN:</strong> {patient.mrn} (DELETED after report generation)</p>
+    </div>
+
+</body>
+</html>

@@ -1,3 +1,6 @@
+---
+alwaysApply: true
+---
 # Task Master Development Workflow
 
 This guide outlines the typical process for using Task Master to manage software development projects.

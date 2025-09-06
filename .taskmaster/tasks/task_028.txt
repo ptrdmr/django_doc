@@ -1,0 +1,273 @@
+# Task ID: 28
+# Title: Implement Improved FHIR Condition Duplicate Detection Logic
+# Status: done
+# Dependencies: 5, 14, 27
+# Priority: high
+# Description: Enhance the FHIR condition duplicate detection algorithm to properly compare condition text values instead of entire objects, preventing critical data loss during FHIR accumulation.
+# Details:
+Implement improved FHIR condition duplicate detection logic with the following steps:
+
+1. Update the `_conditions_are_duplicates()` function in `apps/fhir/services.py` to compare only the condition text values:
+```python
+def _conditions_are_duplicates(condition1, condition2):
+    """
+    Compare two FHIR condition resources to determine if they represent the same clinical condition.
+    Only compare the code.text values rather than entire condition objects.
+    
+    Args:
+        condition1: First FHIR Condition resource
+        condition2: Second FHIR Condition resource
+        
+    Returns:
+        bool: True if conditions represent the same clinical condition, False otherwise
+    """
+    # Extract text values from both conditions
+    text1 = condition1.get('code', {}).get('text', '')
+    text2 = condition2.get('code', {}).get('text', '')
+    
+    # Compare normalized text values (case-insensitive)
+    return text1.lower().strip() == text2.lower().strip()
+```
+
+2. Update the `_compare_conditions()` function in `apps/fhir/bundle_utils.py` for consistency:
+```python
+def _compare_conditions(existing_condition, new_condition):
+    """
+    Compare two conditions to determine if they represent the same clinical condition.
+    Focus on comparing the condition text values rather than entire objects.
+    
+    Args:
+        existing_condition: Condition from existing FHIR bundle
+        new_condition: New condition to be potentially added
+        
+    Returns:
+        float: Similarity score between 0.0 and 1.0
+    """
+    # Extract text values
+    existing_text = existing_condition.get('code', {}).get('text', '')
+    new_text = new_condition.get('code', {}).get('text', '')
+    
+    # If exact match (case-insensitive)
+    if existing_text.lower().strip() == new_text.lower().strip():
+        return 1.0
+        
+    # Optional: Implement fuzzy matching for similar but not identical conditions
+    # This can help with slight variations in condition naming
+    # Example using fuzzywuzzy library:
+    # from fuzzywuzzy import fuzz
+    # return fuzz.ratio(existing_text.lower(), new_text.lower()) / 100.0
+    
+    return 0.0  # Not a match
+```
+
+3. Add comprehensive unit tests to verify the fix:
+```python
+def test_condition_duplicate_detection():
+    """Test that condition duplicate detection correctly compares text values only."""
+    # Different conditions with same metadata
+    condition1 = {
+        "resourceType": "Condition",
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+        "code": {"text": "Atrial Fibrillation"},
+        "onsetDateTime": "2023-01-01"
+    }
+    condition2 = {
+        "resourceType": "Condition",
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+        "code": {"text": "Hypertension"},
+        "onsetDateTime": "2023-01-01"
+    }
+    
+    # Should NOT be considered duplicates
+    self.assertFalse(_conditions_are_duplicates(condition1, condition2))
+    
+    # Same condition with different metadata
+    condition3 = {
+        "resourceType": "Condition",
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+        "code": {"text": "Atrial Fibrillation"},
+        "onsetDateTime": "2023-01-01"
+    }
+    condition4 = {
+        "resourceType": "Condition",
+        "clinicalStatus": {"coding": [{"code": "resolved"}]},
+        "code": {"text": "Atrial Fibrillation"},
+        "onsetDateTime": "2022-01-01"
+    }
+    
+    # Should be considered duplicates despite different metadata
+    self.assertTrue(_conditions_are_duplicates(condition3, condition4))
+```
+
+4. Update the FHIR accumulation process to ensure all conditions are properly captured:
+```python
+def accumulate_conditions(existing_bundle, new_conditions):
+    """
+    Add new conditions to the existing bundle, avoiding duplicates.
+    
+    Args:
+        existing_bundle: Current FHIR bundle with existing conditions
+        new_conditions: List of new condition resources to add
+        
+    Returns:
+        Updated FHIR bundle with new conditions added
+    """
+    # Extract existing conditions
+    existing_conditions = [r for r in existing_bundle.get('entry', []) 
+                          if r.get('resource', {}).get('resourceType') == 'Condition']
+    
+    # Track which new conditions were added
+    added_conditions = []
+    
+    for new_condition in new_conditions:
+        is_duplicate = False
+        
+        # Check against existing conditions
+        for existing in existing_conditions:
+            existing_resource = existing.get('resource', {})
+            if _conditions_are_duplicates(existing_resource, new_condition):
+                is_duplicate = True
+                break
+                
+        # If not a duplicate, add to bundle
+        if not is_duplicate:
+            # Create proper entry structure
+            entry = {
+                "resource": new_condition,
+                "request": {
+                    "method": "POST",
+                    "url": "Condition"
+                }
+            }
+            existing_bundle['entry'].append(entry)
+            added_conditions.append(new_condition)
+    
+    return existing_bundle, added_conditions
+```
+
+5. Add logging to track condition processing for debugging and monitoring:
+```python
+import logging
+logger = logging.getLogger(__name__)
+
+# Add to accumulate_conditions function
+logger.info(f"Processing {len(new_conditions)} conditions")
+logger.info(f"Added {len(added_conditions)} new conditions, {len(new_conditions) - len(added_conditions)} were duplicates")
+```
+
+# Test Strategy:
+To verify the improved FHIR condition duplicate detection logic:
+
+1. Unit Testing:
+   - Create comprehensive unit tests for the updated functions:
+   ```python
+   from django.test import TestCase
+   from fhir.services import _conditions_are_duplicates
+   from fhir.bundle_utils import _compare_conditions
+   
+   class ConditionDuplicateDetectionTests(TestCase):
+       def test_different_conditions_not_duplicates(self):
+           # Test that different conditions are not marked as duplicates
+           condition1 = {"code": {"text": "Atrial Fibrillation"}}
+           condition2 = {"code": {"text": "Hypertension"}}
+           self.assertFalse(_conditions_are_duplicates(condition1, condition2))
+       
+       def test_same_conditions_are_duplicates(self):
+           # Test that same conditions are marked as duplicates
+           condition1 = {"code": {"text": "Atrial Fibrillation"}}
+           condition2 = {"code": {"text": "Atrial Fibrillation"}}
+           self.assertTrue(_conditions_are_duplicates(condition1, condition2))
+       
+       def test_case_insensitive_comparison(self):
+           # Test that case differences don't affect duplicate detection
+           condition1 = {"code": {"text": "atrial fibrillation"}}
+           condition2 = {"code": {"text": "Atrial Fibrillation"}}
+           self.assertTrue(_conditions_are_duplicates(condition1, condition2))
+       
+       def test_whitespace_handling(self):
+           # Test that whitespace differences don't affect duplicate detection
+           condition1 = {"code": {"text": "Atrial Fibrillation"}}
+           condition2 = {"code": {"text": "  Atrial Fibrillation  "}}
+           self.assertTrue(_conditions_are_duplicates(condition1, condition2))
+   ```
+
+2. Integration Testing:
+   - Create test cases with sample FHIR bundles containing multiple conditions:
+   ```python
+   def test_condition_accumulation():
+       # Create test bundle with existing conditions
+       existing_bundle = {
+           "resourceType": "Bundle",
+           "type": "transaction",
+           "entry": [
+               {
+                   "resource": {
+                       "resourceType": "Condition",
+                       "code": {"text": "Hypertension"}
+                   }
+               }
+           ]
+       }
+       
+       # New conditions to add
+       new_conditions = [
+           {
+               "resourceType": "Condition",
+               "code": {"text": "Hypertension"}  # Duplicate
+           },
+           {
+               "resourceType": "Condition",
+               "code": {"text": "Diabetes"}  # New
+           },
+           {
+               "resourceType": "Condition",
+               "code": {"text": "Asthma"}  # New
+           }
+       ]
+       
+       # Process conditions
+       updated_bundle, added = accumulate_conditions(existing_bundle, new_conditions)
+       
+       # Should have added 2 new conditions (3 total)
+       self.assertEqual(len(updated_bundle["entry"]), 3)
+       self.assertEqual(len(added), 2)
+   ```
+
+3. End-to-End Testing:
+   - Test the full document processing pipeline with a document containing multiple conditions
+   - Verify all distinct conditions are correctly extracted and added to the patient's FHIR bundle
+   - Compare the number of conditions before and after processing
+
+4. Regression Testing:
+   - Create a test case that simulates the original bug scenario:
+   ```python
+   def test_regression_different_conditions_with_same_metadata():
+       # Create conditions with identical metadata but different text
+       conditions = []
+       for condition_text in ["Atrial Fibrillation", "Hypertension", "Diabetes", "Asthma", "COPD"]:
+           conditions.append({
+               "resourceType": "Condition",
+               "clinicalStatus": {"coding": [{"code": "active"}]},
+               "code": {"text": condition_text},
+               "onsetDateTime": "2023-01-01"
+           })
+       
+       # Empty starting bundle
+       bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
+       
+       # Process all conditions
+       updated_bundle, added = accumulate_conditions(bundle, conditions)
+       
+       # Should have added all 5 conditions
+       self.assertEqual(len(updated_bundle["entry"]), 5)
+       self.assertEqual(len(added), 5)
+   ```
+
+5. Performance Testing:
+   - Test with a large number of conditions (100+) to ensure the algorithm remains efficient
+   - Measure processing time before and after the fix
+
+6. Manual Verification:
+   - Process a test document with known conditions through the system
+   - Verify in the database that all distinct conditions are properly stored
+   - Check the FHIR bundle JSON to confirm all conditions are present

@@ -36,4 +36,19 @@ urlpatterns = [
     # API endpoints for AJAX interactions
     path('api/roles/<uuid:role_id>/permissions/', views.role_permissions_api, name='role_permissions_api'),
     path('api/users/<int:user_id>/roles/', views.user_roles_api, name='user_roles_api'),
+    
+    # Provider Invitation Management (Admin only)
+    path('invitations/', views.InvitationListView.as_view(), name='invitation_list'),
+    path('invitations/create/', views.CreateInvitationView.as_view(), name='create_invitation'),
+    path('invitations/bulk/', views.BulkInvitationView.as_view(), name='bulk_invitation'),
+    path('invitations/<uuid:invitation_id>/resend/', views.resend_invitation, name='resend_invitation'),
+    path('invitations/<uuid:invitation_id>/revoke/', views.revoke_invitation, name='revoke_invitation'),
+    path('invitations/cleanup/', views.cleanup_expired_invitations, name='cleanup_invitations'),
+    
+    # Invitation Acceptance (Public)
+    path('invitations/accept/<str:token>/', views.AcceptInvitationView.as_view(), name='accept_invitation'),
+    path('invitations/register/', views.InvitationRegistrationView.as_view(), name='invitation_registration'),
+    
+    # API endpoints for invitation management
+    path('api/invitations/stats/', views.invitation_stats_api, name='invitation_stats_api'),
 ] 

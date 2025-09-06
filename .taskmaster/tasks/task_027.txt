@@ -1,0 +1,605 @@
+# Task ID: 27
+# Title: Implement Comprehensive FHIR Data Capture Improvements
+# Status: pending
+# Dependencies: 5, 6, 14
+# Priority: high
+# Description: Enhance the FHIR processing pipeline to increase medical data capture from ~35% to ~90%+ by implementing support for additional FHIR resource types and improving the medication pipeline.
+# Details:
+Implement comprehensive FHIR data capture improvements with the following steps:
+
+1. Fix the medication pipeline for 100% medication capture:
+```python
+# fhir/services/medication_service.py
+class MedicationService:
+    def process_medications(self, extracted_data):
+        """Process all medications with complete dosage and schedule information"""
+        medications = []
+        for med_data in extracted_data.get('medications', []):
+            # Create MedicationStatement resource
+            med_resource = {
+                "resourceType": "MedicationStatement",
+                "status": "active",
+                "medicationCodeableConcept": {
+                    "text": med_data.get('name')
+                },
+                "dosage": [{
+                    "text": med_data.get('dosage'),
+                    "timing": {
+                        "code": {
+                            "text": med_data.get('schedule')
+                        }
+                    }
+                }],
+                "subject": {
+                    "reference": f"Patient/{extracted_data.get('patient_id')}"
+                }
+            }
+            
+            # Add route if available
+            if 'route' in med_data:
+                med_resource["dosage"][0]["route"] = {
+                    "text": med_data.get('route')
+                }
+                
+            medications.append(med_resource)
+        return medications
+```
+
+2. Add support for missing FHIR resource types:
+
+   a. Implement DiagnosticReport resource handling:
+   ```python
+   # fhir/services/diagnostic_report_service.py
+   class DiagnosticReportService:
+       def process_diagnostic_reports(self, extracted_data):
+           reports = []
+           for report_data in extracted_data.get('diagnostic_reports', []):
+               report = {
+                   "resourceType": "DiagnosticReport",
+                   "status": "final",
+                   "code": {
+                       "text": report_data.get('procedure_type')
+                   },
+                   "subject": {
+                       "reference": f"Patient/{extracted_data.get('patient_id')}"
+                   },
+                   "effectiveDateTime": report_data.get('date'),
+                   "conclusion": report_data.get('conclusion')
+               }
+               reports.append(report)
+           return reports
+   ```
+
+   b. Implement ServiceRequest resource handling:
+   ```python
+   # fhir/services/service_request_service.py
+   class ServiceRequestService:
+       def process_service_requests(self, extracted_data):
+           requests = []
+           for request_data in extracted_data.get('service_requests', []):
+               request = {
+                   "resourceType": "ServiceRequest",
+                   "status": "active",
+                   "intent": "order",
+                   "code": {
+                       "text": request_data.get('service')
+                   },
+                   "subject": {
+                       "reference": f"Patient/{extracted_data.get('patient_id')}"
+                   },
+                   "authoredOn": request_data.get('date')
+               }
+               requests.append(request)
+           return requests
+   ```
+
+   c. Implement Encounter resource handling:
+   ```python
+   # fhir/services/encounter_service.py
+   class EncounterService:
+       def process_encounters(self, extracted_data):
+           if not extracted_data.get('encounter'):
+               return None
+               
+           encounter_data = extracted_data.get('encounter')
+           encounter = {
+               "resourceType": "Encounter",
+               "status": "finished",
+               "class": {
+                   "code": encounter_data.get('type', 'AMB'),
+                   "display": encounter_data.get('type_display', 'Ambulatory')
+               },
+               "subject": {
+                   "reference": f"Patient/{extracted_data.get('patient_id')}"
+               },
+               "period": {
+                   "start": encounter_data.get('date')
+               }
+           }
+           
+           return encounter
+   ```
+
+   d. Implement remaining resource types (CarePlan, Organization, PractitionerRole, Procedure, AllergyIntolerance) following similar patterns.
+
+3. Update the FHIR processing pipeline to integrate all resource types:
+```python
+# fhir/services/fhir_processor.py
+from .medication_service import MedicationService
+from .diagnostic_report_service import DiagnosticReportService
+from .service_request_service import ServiceRequestService
+from .encounter_service import EncounterService
+from .care_plan_service import CarePlanService
+from .organization_service import OrganizationService
+from .practitioner_service import PractitionerService
+from .procedure_service import ProcedureService
+from .allergy_service import AllergyService
+
+class FHIRProcessor:
+    def __init__(self):
+        self.medication_service = MedicationService()
+        self.diagnostic_report_service = DiagnosticReportService()
+        self.service_request_service = ServiceRequestService()
+        self.encounter_service = EncounterService()
+        self.care_plan_service = CarePlanService()
+        self.organization_service = OrganizationService()
+        self.practitioner_service = PractitionerService()
+        self.procedure_service = ProcedureService()
+        self.allergy_service = AllergyService()
+        
+    def process_extracted_data(self, extracted_data):
+        """Process all extracted data into FHIR resources"""
+        fhir_resources = []
+        
+        # Process medications
+        medications = self.medication_service.process_medications(extracted_data)
+        fhir_resources.extend(medications)
+        
+        # Process diagnostic reports
+        reports = self.diagnostic_report_service.process_diagnostic_reports(extracted_data)
+        fhir_resources.extend(reports)
+        
+        # Process service requests
+        requests = self.service_request_service.process_service_requests(extracted_data)
+        fhir_resources.extend(requests)
+        
+        # Process encounter
+        encounter = self.encounter_service.process_encounters(extracted_data)
+        if encounter:
+            fhir_resources.append(encounter)
+            
+        # Process remaining resource types
+        care_plans = self.care_plan_service.process_care_plans(extracted_data)
+        fhir_resources.extend(care_plans)
+        
+        organizations = self.organization_service.process_organizations(extracted_data)
+        fhir_resources.extend(organizations)
+        
+        practitioners = self.practitioner_service.process_practitioners(extracted_data)
+        fhir_resources.extend(practitioners)
+        
+        procedures = self.procedure_service.process_procedures(extracted_data)
+        fhir_resources.extend(procedures)
+        
+        allergies = self.allergy_service.process_allergies(extracted_data)
+        fhir_resources.extend(allergies)
+        
+        return fhir_resources
+```
+
+4. Enhance AI prompts for complete clinical data extraction:
+```python
+# documents/services/ai_extraction_service.py
+class AIExtractionService:
+    def generate_extraction_prompt(self, document_text):
+        """Generate an enhanced prompt for AI to extract complete clinical data"""
+        prompt = f"""
+        Extract ALL clinical information from the following medical document into a structured JSON format.
+        Include the following categories:
+        
+        1. Patient information (name, DOB, MRN)
+        2. ALL medications with complete dosage, route, and schedule information
+        3. ALL diagnostic procedures and their results (e.g., EKG, X-rays, labs)
+        4. ALL diagnoses and conditions mentioned
+        5. ALL provider information (name, specialty, organization)
+        6. Encounter details (date, type, location)
+        7. ALL treatment plans and care plans
+        8. ALL service requests and orders
+        9. ALL procedures performed
+        10. ALL allergies and intolerances
+        
+        Format the response as a valid JSON object with these categories as keys.
+        For each medication, include name, dosage, route, and schedule.
+        For each diagnostic procedure, include the procedure type, date, and results/conclusion.
+        
+        Document text:
+        {document_text}
+        """
+        return prompt
+        
+    def extract_clinical_data(self, document_text):
+        """Extract clinical data using AI with enhanced prompts"""
+        prompt = self.generate_extraction_prompt(document_text)
+        # Call Claude or GPT API with the prompt
+        # Process and validate the response
+        # Return structured data
+```
+
+5. Update the document processing pipeline to use the enhanced FHIR processor:
+```python
+# documents/tasks.py
+from fhir.services.fhir_processor import FHIRProcessor
+from documents.services.ai_extraction_service import AIExtractionService
+
+@shared_task
+def process_document(document_id):
+    document = Document.objects.get(id=document_id)
+    
+    # Extract text from document
+    document_text = extract_text_from_pdf(document.file.path)
+    
+    # Extract clinical data using AI
+    extraction_service = AIExtractionService()
+    extracted_data = extraction_service.extract_clinical_data(document_text)
+    
+    # Process extracted data into FHIR resources
+    fhir_processor = FHIRProcessor()
+    fhir_resources = fhir_processor.process_extracted_data(extracted_data)
+    
+    # Store the extracted FHIR resources
+    document.extracted_fhir_resources = fhir_resources
+    document.processing_status = 'completed'
+    document.save()
+    
+    # Trigger FHIR data integration into patient record
+    integrate_fhir_data.delay(document.patient.id, document.id)
+```
+
+6. Implement metrics tracking to measure data capture improvements:
+```python
+# fhir/services/metrics_service.py
+class FHIRMetricsService:
+    def calculate_data_capture_metrics(self, extracted_ai_data, processed_fhir_resources):
+        """Calculate what percentage of extracted data was successfully captured in FHIR"""
+        metrics = {
+            'total_data_points': 0,
+            'captured_data_points': 0,
+            'capture_rate': 0
+        }
+        
+        # Count total data points from AI extraction
+        metrics['total_data_points'] += len(extracted_ai_data.get('medications', []))
+        metrics['total_data_points'] += len(extracted_ai_data.get('diagnostic_reports', []))
+        metrics['total_data_points'] += len(extracted_ai_data.get('service_requests', []))
+        # Count other data points...
+        
+        # Count captured data points in FHIR resources
+        medication_statements = [r for r in processed_fhir_resources if r.get('resourceType') == 'MedicationStatement']
+        diagnostic_reports = [r for r in processed_fhir_resources if r.get('resourceType') == 'DiagnosticReport']
+        service_requests = [r for r in processed_fhir_resources if r.get('resourceType') == 'ServiceRequest']
+        # Count other resource types...
+        
+        metrics['captured_data_points'] += len(medication_statements)
+        metrics['captured_data_points'] += len(diagnostic_reports)
+        metrics['captured_data_points'] += len(service_requests)
+        # Add other resource counts...
+        
+        # Calculate capture rate
+        if metrics['total_data_points'] > 0:
+            metrics['capture_rate'] = (metrics['captured_data_points'] / metrics['total_data_points']) * 100
+            
+        return metrics
+```
+
+7. Update the document review interface to display all captured FHIR resources:
+```python
+# documents/views.py
+def document_review(request, document_id):
+    document = get_object_or_404(Document, id=document_id)
+    
+    # Group FHIR resources by type for display
+    resource_groups = {}
+    for resource in document.extracted_fhir_resources:
+        resource_type = resource.get('resourceType')
+        if resource_type not in resource_groups:
+            resource_groups[resource_type] = []
+        resource_groups[resource_type].append(resource)
+    
+    # Calculate metrics
+    metrics_service = FHIRMetricsService()
+    metrics = metrics_service.calculate_data_capture_metrics(
+        document.extracted_ai_data,
+        document.extracted_fhir_resources
+    )
+    
+    return render(request, 'documents/review.html', {
+        'document': document,
+        'resource_groups': resource_groups,
+        'metrics': metrics
+    })
+```
+
+# Test Strategy:
+To verify the implementation of the comprehensive FHIR data capture improvements:
+
+1. Unit Tests for Resource Type Services:
+   ```python
+   # fhir/tests/test_resource_services.py
+   from django.test import TestCase
+   from fhir.services.medication_service import MedicationService
+   from fhir.services.diagnostic_report_service import DiagnosticReportService
+   from fhir.services.encounter_service import EncounterService
+   # Import other services
+   
+   class MedicationServiceTests(TestCase):
+       def test_process_medications_complete_data(self):
+           # Test with complete medication data
+           service = MedicationService()
+           test_data = {
+               'patient_id': '123',
+               'medications': [
+                   {
+                       'name': 'Lisinopril',
+                       'dosage': '10mg',
+                       'route': 'oral',
+                       'schedule': 'once daily'
+                   }
+               ]
+           }
+           
+           result = service.process_medications(test_data)
+           
+           self.assertEqual(len(result), 1)
+           self.assertEqual(result[0]['resourceType'], 'MedicationStatement')
+           self.assertEqual(result[0]['medicationCodeableConcept']['text'], 'Lisinopril')
+           self.assertEqual(result[0]['dosage'][0]['text'], '10mg')
+           self.assertEqual(result[0]['dosage'][0]['route']['text'], 'oral')
+           
+       def test_process_medications_partial_data(self):
+           # Test with partial medication data
+           service = MedicationService()
+           test_data = {
+               'patient_id': '123',
+               'medications': [
+                   {
+                       'name': 'Aspirin',
+                       'dosage': '81mg'
+                       # Missing route and schedule
+                   }
+               ]
+           }
+           
+           result = service.process_medications(test_data)
+           
+           self.assertEqual(len(result), 1)
+           self.assertEqual(result[0]['resourceType'], 'MedicationStatement')
+           self.assertEqual(result[0]['medicationCodeableConcept']['text'], 'Aspirin')
+           self.assertEqual(result[0]['dosage'][0]['text'], '81mg')
+           self.assertNotIn('route', result[0]['dosage'][0])
+   
+   # Similar tests for other resource type services
+   ```
+
+2. Integration Tests for FHIR Processor:
+   ```python
+   # fhir/tests/test_fhir_processor.py
+   from django.test import TestCase
+   from fhir.services.fhir_processor import FHIRProcessor
+   
+   class FHIRProcessorIntegrationTests(TestCase):
+       def test_process_complete_extracted_data(self):
+           processor = FHIRProcessor()
+           
+           # Create a comprehensive test dataset with all resource types
+           test_data = {
+               'patient_id': '123',
+               'medications': [
+                   {'name': 'Metformin', 'dosage': '500mg', 'route': 'oral', 'schedule': 'twice daily'},
+                   {'name': 'Lisinopril', 'dosage': '10mg', 'route': 'oral', 'schedule': 'once daily'}
+               ],
+               'diagnostic_reports': [
+                   {'procedure_type': 'EKG', 'date': '2023-05-15', 'conclusion': 'Normal sinus rhythm'},
+                   {'procedure_type': 'Chest X-ray', 'date': '2023-05-15', 'conclusion': 'Clear lung fields'}
+               ],
+               'service_requests': [
+                   {'service': 'Cardiology consult', 'date': '2023-05-16'}
+               ],
+               'encounter': {
+                   'type': 'AMB',
+                   'type_display': 'Ambulatory visit',
+                   'date': '2023-05-15'
+               },
+               # Add data for other resource types
+           }
+           
+           result = processor.process_extracted_data(test_data)
+           
+           # Verify all resources were created
+           self.assertEqual(len(result), 6)  # 2 meds + 2 reports + 1 request + 1 encounter
+           
+           # Count resources by type
+           resource_counts = {}
+           for resource in result:
+               resource_type = resource['resourceType']
+               if resource_type not in resource_counts:
+                   resource_counts[resource_type] = 0
+               resource_counts[resource_type] += 1
+               
+           self.assertEqual(resource_counts['MedicationStatement'], 2)
+           self.assertEqual(resource_counts['DiagnosticReport'], 2)
+           self.assertEqual(resource_counts['ServiceRequest'], 1)
+           self.assertEqual(resource_counts['Encounter'], 1)
+   ```
+
+3. End-to-End Tests with Sample Documents:
+   ```python
+   # documents/tests/test_document_processing.py
+   from django.test import TestCase
+   from django.core.files.uploadedfile import SimpleUploadedFile
+   from documents.models import Document
+   from patients.models import Patient
+   from documents.tasks import process_document
+   import os
+   
+   class DocumentProcessingE2ETests(TestCase):
+       @classmethod
+       def setUpTestData(cls):
+           # Create test patient
+           cls.patient = Patient.objects.create(
+               mrn='TEST12345',
+               first_name='Test',
+               last_name='Patient',
+               dob='1980-01-01'
+           )
+           
+           # Prepare test PDF files
+           cls.test_pdf_path = os.path.join(os.path.dirname(__file__), 'test_files/sample_medical_note.pdf')
+           
+       def test_complete_document_processing_pipeline(self):
+           # Create document with test PDF
+           with open(self.test_pdf_path, 'rb') as f:
+               pdf_content = f.read()
+               
+           document = Document.objects.create(
+               patient=self.patient,
+               file=SimpleUploadedFile('test_doc.pdf', pdf_content, content_type='application/pdf'),
+               document_type='Clinical Note',
+               processing_status='pending'
+           )
+           
+           # Process document (mock AI extraction for testing)
+           with patch('documents.services.ai_extraction_service.AIExtractionService.extract_clinical_data') as mock_extract:
+               # Return comprehensive mock data
+               mock_extract.return_value = {
+                   'patient_id': self.patient.id,
+                   'medications': [
+                       {'name': 'Metformin', 'dosage': '500mg', 'route': 'oral', 'schedule': 'twice daily'},
+                       {'name': 'Lisinopril', 'dosage': '10mg', 'route': 'oral', 'schedule': 'once daily'}
+                   ],
+                   # Add other mock data
+               }
+               
+               # Run the task
+               process_document(document.id)
+           
+           # Refresh document from DB
+           document.refresh_from_db()
+           
+           # Verify processing completed
+           self.assertEqual(document.processing_status, 'completed')
+           
+           # Verify FHIR resources were created
+           self.assertGreater(len(document.extracted_fhir_resources), 0)
+           
+           # Verify metrics
+           metrics_service = FHIRMetricsService()
+           metrics = metrics_service.calculate_data_capture_metrics(
+               document.extracted_ai_data,
+               document.extracted_fhir_resources
+           )
+           
+           # Verify capture rate is above 90%
+           self.assertGreaterEqual(metrics['capture_rate'], 90.0)
+   ```
+
+4. Metrics Validation Tests:
+   ```python
+   # fhir/tests/test_metrics_service.py
+   from django.test import TestCase
+   from fhir.services.metrics_service import FHIRMetricsService
+   
+   class FHIRMetricsServiceTests(TestCase):
+       def test_calculate_data_capture_metrics_perfect_capture(self):
+           # Test with perfect capture (100%)
+           service = FHIRMetricsService()
+           
+           extracted_data = {
+               'medications': [{'name': 'Med1'}, {'name': 'Med2'}],
+               'diagnostic_reports': [{'procedure_type': 'EKG'}],
+               'service_requests': [{'service': 'Consult'}]
+           }
+           
+           processed_resources = [
+               {'resourceType': 'MedicationStatement', 'medicationCodeableConcept': {'text': 'Med1'}},
+               {'resourceType': 'MedicationStatement', 'medicationCodeableConcept': {'text': 'Med2'}},
+               {'resourceType': 'DiagnosticReport', 'code': {'text': 'EKG'}},
+               {'resourceType': 'ServiceRequest', 'code': {'text': 'Consult'}}
+           ]
+           
+           metrics = service.calculate_data_capture_metrics(extracted_data, processed_resources)
+           
+           self.assertEqual(metrics['total_data_points'], 4)
+           self.assertEqual(metrics['captured_data_points'], 4)
+           self.assertEqual(metrics['capture_rate'], 100.0)
+           
+       def test_calculate_data_capture_metrics_partial_capture(self):
+           # Test with partial capture
+           service = FHIRMetricsService()
+           
+           extracted_data = {
+               'medications': [{'name': 'Med1'}, {'name': 'Med2'}],
+               'diagnostic_reports': [{'procedure_type': 'EKG'}],
+               'service_requests': [{'service': 'Consult'}]
+           }
+           
+           processed_resources = [
+               {'resourceType': 'MedicationStatement', 'medicationCodeableConcept': {'text': 'Med1'}},
+               {'resourceType': 'DiagnosticReport', 'code': {'text': 'EKG'}}
+               # Missing Med2 and Consult
+           ]
+           
+           metrics = service.calculate_data_capture_metrics(extracted_data, processed_resources)
+           
+           self.assertEqual(metrics['total_data_points'], 4)
+           self.assertEqual(metrics['captured_data_points'], 2)
+           self.assertEqual(metrics['capture_rate'], 50.0)
+   ```
+
+5. Manual Testing with Real Documents:
+   - Upload a set of 10 diverse real medical documents (discharge summaries, progress notes, consultation reports)
+   - Process each document through the enhanced pipeline
+   - Manually verify the extracted FHIR resources against the original document content
+   - Calculate the actual capture rate and compare with the target of 90%+
+   - Document any missing data points or extraction failures
+
+6. Performance Testing:
+   - Measure processing time before and after the improvements
+   - Verify that the enhanced pipeline doesn't significantly increase processing time
+   - Test with large documents (10+ pages) to ensure performance remains acceptable
+
+7. UI Testing:
+   - Verify that all captured FHIR resources are correctly displayed in the document review interface
+   - Test the metrics display to ensure it accurately reflects the capture rate
+   - Verify that users can review and edit all resource types in the interface
+
+# Subtasks:
+## 1. Fix medication pipeline for 100% capture [pending]
+### Dependencies: None
+### Description: Update the MedicationService class to ensure all medication data extracted by AI is properly converted to FHIR MedicationStatement resources.
+### Details:
+Modify fhir/services/medication_service.py to correctly process all medication data, including dosage, route, and schedule information. Ensure the process_medications method creates complete MedicationStatement resources for each medication.
+
+## 2. Implement missing FHIR resource types [pending]
+### Dependencies: 27.1
+### Description: Add support for DiagnosticReport, ServiceRequest, Encounter, and other missing FHIR resource types.
+### Details:
+Create new service classes for each missing resource type (e.g., DiagnosticReportService, ServiceRequestService, EncounterService) in the fhir/services/ directory. Implement methods to process and convert extracted data into the corresponding FHIR resources.
+
+## 3. Enhance AI prompts for complete clinical data extraction [pending]
+### Dependencies: 27.2
+### Description: Update the AIExtractionService to generate more comprehensive prompts for AI, ensuring all relevant clinical data is extracted.
+### Details:
+Modify documents/services/ai_extraction_service.py to include prompts for all supported FHIR resource types. Ensure the generate_extraction_prompt method creates detailed instructions for extracting complete clinical information.
+
+## 4. Update FHIR processing pipeline [pending]
+### Dependencies: 27.2, 27.3
+### Description: Integrate all new resource type services into the main FHIR processing pipeline.
+### Details:
+Update fhir/services/fhir_processor.py to include instances of all new service classes. Modify the process_extracted_data method to call the appropriate service for each resource type.
+
+## 5. Implement metrics tracking for data capture improvements [pending]
+### Dependencies: 27.4
+### Description: Create a FHIRMetricsService to calculate and track data capture rates and improvements.
+### Details:
+Implement a new FHIRMetricsService class in fhir/services/metrics_service.py. Include methods to calculate data capture rates by comparing extracted AI data with processed FHIR resources. Integrate this service into the document processing pipeline.
+
