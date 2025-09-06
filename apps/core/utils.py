@@ -174,4 +174,5 @@ class ActivityTypes:
     PROVIDER_UPDATE = 'provider_update'
     PROVIDER_VIEW = 'provider_view'
     REPORT_GENERATE = 'report_generate'
-    PROFILE_UPDATE = 'profile_update' 
+    PROFILE_UPDATE = 'profile_update'
+    ADMIN = 'admin_action' 

@@ -16,8 +16,11 @@ import json
 from datetime import datetime, timedelta
 
 from apps.core.models import AuditLog, SecurityEvent, ComplianceReport
+from apps.accounts.decorators import audit_access_required, admin_required
+from django.utils.decorators import method_decorator
 
 
+@method_decorator(audit_access_required, name='dispatch')
 class AuditTrailReportView(LoginRequiredMixin, PermissionRequiredMixin, ListView):
     """
     HIPAA-compliant audit trail report view with comprehensive filtering.
@@ -158,6 +161,7 @@ class AuditTrailReportView(LoginRequiredMixin, PermissionRequiredMixin, ListView
         return context
 
 
+@method_decorator(audit_access_required, name='dispatch')
 class AuditLogExportView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """
     Export audit logs to CSV for compliance reporting.

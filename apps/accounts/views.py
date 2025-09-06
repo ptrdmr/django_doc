@@ -3,8 +3,8 @@ Views for user accounts and dashboard.
 Handles user authentication, dashboard display, and account management.
 """
 from django.shortcuts import render, redirect, get_object_or_404
-from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView, FormView
+from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.utils.decorators import method_decorator
@@ -13,7 +13,7 @@ from django.contrib import messages
 from django.apps import apps
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
-from django.urls import reverse_lazy
+from django.urls import reverse_lazy, reverse
 from django.http import JsonResponse
 from django.core.paginator import Paginator
 from datetime import timedelta
@@ -29,9 +29,11 @@ from apps.core.utils import (
 )
 
 # Import our RBAC components
-from .models import Role, UserProfile
+from .models import Role, UserProfile, ProviderInvitation
 from .decorators import admin_required, has_role, has_permission
 from .permissions import PermissionChecker, invalidate_user_permission_cache
+from .forms import ProviderInvitationForm, InvitationRegistrationForm, InvitationSearchForm, BulkInvitationForm
+from .services import InvitationService, UserManagementService
 
 logger = logging.getLogger(__name__)
 
@@ -758,5 +760,420 @@ def user_roles_api(request, user_id):
             'can_access_phi': profile.can_access_phi(),
             'is_locked': profile.is_account_locked(),
         })
+    
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+# Provider Invitation Views
+
+@method_decorator(admin_required, name='dispatch')
+class InvitationListView(LoginRequiredMixin, ListView):
+    """
+    List view for managing provider invitations.
+    Shows all invitations with filtering and search capabilities.
+    """
+    model = ProviderInvitation
+    template_name = 'accounts/invitation_list.html'
+    context_object_name = 'invitations'
+    paginate_by = 25
+    
+    def get_queryset(self):
+        """Get invitations with filtering and search."""
+        queryset = ProviderInvitation.objects.select_related(
+            'role', 'invited_by'
+        ).order_by('-created_at')
+        
+        # Apply search filters
+        form = InvitationSearchForm(self.request.GET)
+        if form.is_valid():
+            search_term = form.cleaned_data.get('search_term')
+            search_field = form.cleaned_data.get('search_field')
+            status = form.cleaned_data.get('status')
+            role = form.cleaned_data.get('role')
+            
+            # Apply search term filter
+            if search_term:
+                if search_field == 'email':
+                    queryset = queryset.filter(email__icontains=search_term)
+                elif search_field == 'role':
+                    queryset = queryset.filter(role__display_name__icontains=search_term)
+                elif search_field == 'invited_by':
+                    queryset = queryset.filter(
+                        Q(invited_by__email__icontains=search_term) |
+                        Q(invited_by__first_name__icontains=search_term) |
+                        Q(invited_by__last_name__icontains=search_term)
+                    )
+            
+            # Apply status filter
+            if status:
+                now = timezone.now()
+                if status == 'pending':
+                    queryset = queryset.filter(
+                        is_active=True,
+                        accepted_at__isnull=True,
+                        expires_at__gt=now
+                    )
+                elif status == 'accepted':
+                    queryset = queryset.filter(accepted_at__isnull=False)
+                elif status == 'expired':
+                    queryset = queryset.filter(
+                        is_active=True,
+                        accepted_at__isnull=True,
+                        expires_at__lte=now
+                    )
+                elif status == 'revoked':
+                    queryset = queryset.filter(
+                        is_active=False,
+                        accepted_at__isnull=True
+                    )
+            
+            # Apply role filter
+            if role:
+                queryset = queryset.filter(role=role)
+        
+        return queryset
+    
+    def get_context_data(self, **kwargs):
+        """Add search form and statistics to context."""
+        context = super().get_context_data(**kwargs)
+        
+        # Add search form
+        context['search_form'] = InvitationSearchForm(self.request.GET)
+        
+        # Add invitation statistics
+        context['stats'] = InvitationService.get_invitation_statistics()
+        
+        # Log access for audit trail
+        log_user_activity(
+            user=self.request.user,
+            activity_type=ActivityTypes.ADMIN,
+            description="Viewed invitation management list",
+            request=self.request
+        )
+        
+        return context
+
+
+@method_decorator(admin_required, name='dispatch')
+class CreateInvitationView(LoginRequiredMixin, FormView):
+    """
+    View for creating new provider invitations.
+    """
+    template_name = 'accounts/create_invitation.html'
+    form_class = ProviderInvitationForm
+    success_url = reverse_lazy('accounts:invitation_list')
+    
+    def form_valid(self, form):
+        """Handle successful form submission."""
+        try:
+            # Create the invitation
+            invitation = InvitationService.create_invitation(
+                email=form.cleaned_data['email'],
+                role=form.cleaned_data['role'],
+                invited_by=self.request.user,
+                expiration_days=form.cleaned_data['expiration_days'],
+                personal_message=form.cleaned_data.get('personal_message', '')
+            )
+            
+            # Send the invitation email
+            if InvitationService.send_invitation_email(invitation, self.request):
+                messages.success(
+                    self.request,
+                    f'Invitation sent successfully to {invitation.email}. '
+                    f'The invitation will expire on {invitation.expires_at.strftime("%B %d, %Y")}.'
+                )
+                
+                # Log invitation creation
+                log_user_activity(
+                    user=self.request.user,
+                    activity_type=ActivityTypes.ADMIN,
+                    description=f"Created and sent invitation to {invitation.email}",
+                    request=self.request
+                )
+            else:
+                messages.warning(
+                    self.request,
+                    f'Invitation created for {invitation.email} but email sending failed. '
+                    'You can resend the invitation from the invitation list.'
+                )
+            
+            return super().form_valid(form)
+            
+        except Exception as e:
+            logger.error(f"Error creating invitation: {e}")
+            messages.error(
+                self.request,
+                'An error occurred while creating the invitation. Please try again.'
+            )
+            return self.form_invalid(form)
+
+
+@method_decorator(admin_required, name='dispatch')
+class BulkInvitationView(LoginRequiredMixin, FormView):
+    """
+    View for creating multiple invitations at once.
+    """
+    template_name = 'accounts/bulk_invitation.html'
+    form_class = BulkInvitationForm
+    success_url = reverse_lazy('accounts:invitation_list')
+    
+    def form_valid(self, form):
+        """Handle bulk invitation creation."""
+        try:
+            # Create bulk invitations
+            results = InvitationService.create_bulk_invitations(
+                emails=form.cleaned_data['emails'],
+                role=form.cleaned_data['role'],
+                invited_by=self.request.user,
+                expiration_days=form.cleaned_data['expiration_days'],
+                personal_message=form.cleaned_data.get('personal_message', '')
+            )
+            
+            # Send emails for successful invitations
+            if results['successful']:
+                invitation_ids = [item['invitation_id'] for item in results['successful']]
+                email_results = InvitationService.send_bulk_invitation_emails(
+                    invitation_ids, self.request
+                )
+                
+                # Report results
+                if email_results['successful']:
+                    messages.success(
+                        self.request,
+                        f"Successfully sent {len(email_results['successful'])} invitations."
+                    )
+                
+                if email_results['failed']:
+                    messages.warning(
+                        self.request,
+                        f"{len(email_results['failed'])} invitations were created but emails failed to send. "
+                        "You can resend them from the invitation list."
+                    )
+            
+            # Report any creation failures
+            if results['failed']:
+                failed_emails = [item['email'] for item in results['failed']]
+                messages.error(
+                    self.request,
+                    f"Failed to create invitations for: {', '.join(failed_emails)}"
+                )
+            
+            # Log bulk invitation creation
+            log_user_activity(
+                user=self.request.user,
+                activity_type=ActivityTypes.ADMIN,
+                description=f"Created {len(results['successful'])} bulk invitations",
+                request=self.request
+            )
+            
+            return super().form_valid(form)
+            
+        except Exception as e:
+            logger.error(f"Error creating bulk invitations: {e}")
+            messages.error(
+                self.request,
+                'An error occurred while creating invitations. Please try again.'
+            )
+            return self.form_invalid(form)
+
+
+class AcceptInvitationView(TemplateView):
+    """
+    Landing page for invitation acceptance.
+    Validates invitation and stores token in session.
+    """
+    template_name = 'accounts/accept_invitation.html'
+    
+    def get(self, request, *args, **kwargs):
+        """Handle invitation link access."""
+        token = kwargs.get('token')
+        invitation = InvitationService.get_invitation_by_token(token)
+        
+        if not invitation:
+            messages.error(
+                request,
+                'This invitation link is invalid or has expired. '
+                'Please contact your administrator for a new invitation.'
+            )
+            return redirect('accounts:login')
+        
+        # Store invitation token in session for registration
+        request.session['invitation_token'] = token
+        
+        # Add invitation info to context
+        context = self.get_context_data(**kwargs)
+        context['invitation'] = invitation
+        
+        return self.render_to_response(context)
+
+
+class InvitationRegistrationView(FormView):
+    """
+    Registration form for users accepting invitations.
+    """
+    template_name = 'accounts/invitation_registration.html'
+    form_class = InvitationRegistrationForm
+    success_url = reverse_lazy('accounts:login')
+    
+    def dispatch(self, request, *args, **kwargs):
+        """Validate invitation before showing registration form."""
+        token = request.session.get('invitation_token')
+        self.invitation = InvitationService.get_invitation_by_token(token)
+        
+        if not self.invitation:
+            messages.error(
+                request,
+                'Your invitation has expired or is no longer valid. '
+                'Please contact your administrator for a new invitation.'
+            )
+            return redirect('accounts:login')
+        
+        return super().dispatch(request, *args, **kwargs)
+    
+    def get_form_kwargs(self):
+        """Add invitation to form kwargs."""
+        kwargs = super().get_form_kwargs()
+        kwargs['invitation'] = self.invitation
+        return kwargs
+    
+    def get_context_data(self, **kwargs):
+        """Add invitation to context."""
+        context = super().get_context_data(**kwargs)
+        context['invitation'] = self.invitation
+        return context
+    
+    def form_valid(self, form):
+        """Handle successful registration."""
+        try:
+            # Create user account and accept invitation
+            user = form.save()
+            
+            # Clear invitation token from session
+            if 'invitation_token' in self.request.session:
+                del self.request.session['invitation_token']
+            
+            messages.success(
+                self.request,
+                f'Welcome! Your account has been created successfully. '
+                f'You have been assigned the {self.invitation.role.display_name} role. '
+                'You can now log in with your credentials.'
+            )
+            
+            # Log successful registration
+            log_user_activity(
+                user=user,
+                activity_type=ActivityTypes.PROFILE_UPDATE,
+                description=f"Registered account via invitation for {self.invitation.role.display_name} role",
+                request=self.request
+            )
+            
+            return super().form_valid(form)
+            
+        except Exception as e:
+            logger.error(f"Error during invitation registration: {e}")
+            messages.error(
+                self.request,
+                'An error occurred during registration. Please try again or contact support.'
+            )
+            return self.form_invalid(form)
+
+
+# Invitation Management Actions
+
+@admin_required
+def resend_invitation(request, invitation_id):
+    """
+    Resend an invitation email.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+    
+    try:
+        if InvitationService.resend_invitation(invitation_id, request):
+            messages.success(request, 'Invitation email resent successfully.')
+            
+            # Log resend action
+            log_user_activity(
+                user=request.user,
+                activity_type=ActivityTypes.ADMIN,
+                description=f"Resent invitation {invitation_id}",
+                request=request
+            )
+        else:
+            messages.error(request, 'Failed to resend invitation. The invitation may be expired or invalid.')
+    
+    except Exception as e:
+        logger.error(f"Error resending invitation {invitation_id}: {e}")
+        messages.error(request, 'An error occurred while resending the invitation.')
+    
+    return redirect('accounts:invitation_list')
+
+
+@admin_required
+def revoke_invitation(request, invitation_id):
+    """
+    Revoke an invitation.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+    
+    try:
+        if InvitationService.revoke_invitation(invitation_id, request.user):
+            messages.success(request, 'Invitation revoked successfully.')
+            
+            # Log revoke action
+            log_user_activity(
+                user=request.user,
+                activity_type=ActivityTypes.ADMIN,
+                description=f"Revoked invitation {invitation_id}",
+                request=request
+            )
+        else:
+            messages.error(request, 'Failed to revoke invitation. It may already be accepted or inactive.')
+    
+    except Exception as e:
+        logger.error(f"Error revoking invitation {invitation_id}: {e}")
+        messages.error(request, 'An error occurred while revoking the invitation.')
+    
+    return redirect('accounts:invitation_list')
+
+
+@admin_required
+def cleanup_expired_invitations(request):
+    """
+    Clean up expired invitations.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=405)
+    
+    try:
+        count = InvitationService.cleanup_expired_invitations()
+        messages.success(request, f'Cleaned up {count} expired invitations.')
+        
+        # Log cleanup action
+        log_user_activity(
+            user=request.user,
+            activity_type=ActivityTypes.ADMIN,
+            description=f"Cleaned up {count} expired invitations",
+            request=request
+        )
+    
+    except Exception as e:
+        logger.error(f"Error during invitation cleanup: {e}")
+        messages.error(request, 'An error occurred during cleanup.')
+    
+    return redirect('accounts:invitation_list')
+
+
+# API Views for Invitation Management
+
+@admin_required
+def invitation_stats_api(request):
+    """
+    API endpoint for invitation statistics.
+    """
+    if request.method == 'GET':
+        stats = InvitationService.get_invitation_statistics()
+        return JsonResponse(stats)
     
     return JsonResponse({'error': 'Method not allowed'}, status=405)

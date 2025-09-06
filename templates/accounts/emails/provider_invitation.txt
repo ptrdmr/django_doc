@@ -1,0 +1,50 @@
+{{ site_name }} - Healthcare Provider Invitation
+
+Dear Healthcare Professional,
+
+You have been invited by {{ invited_by_name }} to join {{ site_name }} as a healthcare provider.
+
+INVITATION DETAILS
+==================
+Role: {{ role_name }}
+Invited by: {{ invited_by_name }}
+Expiration: {{ expiration_date }}
+{% if days_until_expiry <= 3 %}
+⚠️  WARNING: This invitation expires in {{ days_until_expiry }} day{{ days_until_expiry|pluralize }}!
+{% endif %}
+
+{% if personal_message %}
+PERSONAL MESSAGE
+================
+{{ personal_message }}
+
+{% endif %}
+ACCEPT YOUR INVITATION
+======================
+To create your account and start using the platform, visit:
+{{ invitation_url }}
+
+WHAT HAPPENS NEXT
+=================
+1. Click the invitation link above
+2. Create your secure account with a strong password
+3. Complete your provider profile information
+4. Start managing patient records securely
+
+SECURITY NOTICE
+===============
+🔒 This invitation link is unique and secure. It will expire on {{ expiration_date }}.
+Do not share this link with others. If you did not expect this invitation, 
+please contact {{ support_email }}.
+
+NEED HELP?
+==========
+If you have any questions or need assistance, contact our support team:
+{{ support_email }}
+
+Best regards,
+The {{ site_name }} Team
+
+---
+{{ site_name }} - Secure Medical Document Processing Platform
+This invitation was sent to {{ invitation.email }} and expires on {{ expiration_date }}.

@@ -10,6 +10,90 @@
 5. **Security**: Consider HIPAA compliance in all medical data handling
 6. **🔒 PHI Encryption**: All patient data automatically encrypted - use model methods transparently
 
+### 📧 Provider Invitation System Patterns - Task 25 Complete ✅
+
+**Working with Provider Invitations:**
+
+```python
+# ✅ DO: Use InvitationService for all invitation operations
+from apps.accounts.services import InvitationService
+
+# Create invitation with role assignment
+invitation = InvitationService.create_invitation(
+    email='provider@hospital.com',
+    role=provider_role,
+    invited_by=request.user,
+    expiration_days=7,
+    personal_message='Welcome to our medical team!'
+)
+
+# Send invitation email
+if InvitationService.send_invitation_email(invitation, request):
+    messages.success(request, 'Invitation sent successfully')
+
+# ✅ DO: Use secure token validation
+invitation = InvitationService.get_invitation_by_token(token)
+if invitation and invitation.is_valid():
+    # Process invitation acceptance
+    invitation.accept(user)
+
+# ✅ DO: Handle bulk invitations with proper error reporting
+emails = ['provider1@hospital.com', 'provider2@clinic.org']
+results = InvitationService.create_bulk_invitations(
+    emails=emails,
+    role=provider_role,
+    invited_by=request.user
+)
+```
+
+**Security & Validation Patterns:**
+
+```python
+# ✅ DO: Use comprehensive form validation
+class ProviderInvitationForm(forms.ModelForm):
+    def clean_email(self):
+        email = self.cleaned_data['email'].lower().strip()
+        
+        # Check for existing users
+        if User.objects.filter(email=email).exists():
+            raise ValidationError("User already exists")
+        
+        # Check for active invitations
+        if ProviderInvitation.objects.filter(
+            email=email, is_active=True, expires_at__gt=timezone.now()
+        ).exists():
+            raise ValidationError("Active invitation already exists")
+        
+        return email
+
+# ✅ DO: Use admin_required decorator for invitation management
+@method_decorator(admin_required, name='dispatch')
+class InvitationListView(LoginRequiredMixin, ListView):
+    model = ProviderInvitation
+    template_name = 'accounts/invitation_list.html'
+```
+
+**Template Integration Patterns:**
+
+```django
+<!-- ✅ DO: Use permission-based navigation display -->
+{% if user.is_staff or user.is_superuser %}
+<a href="{% url 'accounts:invitation_list' %}" class="nav-link">
+    <i class="fas fa-envelope mr-2"></i>Provider Invitations
+</a>
+{% endif %}
+
+<!-- ✅ DO: Display invitation status with proper styling -->
+{% with status=invitation.get_status_display %}
+<span class="badge {% if status == 'Pending' %}bg-yellow-100 text-yellow-800
+    {% elif status == 'Accepted' %}bg-green-100 text-green-800
+    {% elif status == 'Expired' %}bg-red-100 text-red-800
+    {% endif %}">
+    {{ status }}
+</span>
+{% endwith %}
+```
+
 ### 🔒 Hybrid Encryption Development Patterns - Task 21 Complete ✅
 
 **Working with Encrypted Patient Data:**

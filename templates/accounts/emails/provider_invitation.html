@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Healthcare Provider Invitation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8fafc;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .content {
+            padding: 30px;
+        }
+        .invitation-details {
+            background-color: #f1f5f9;
+            border-left: 4px solid #2563eb;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .invitation-details h3 {
+            margin: 0 0 10px 0;
+            color: #1e40af;
+            font-size: 18px;
+        }
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .cta-button:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+        }
+        .footer {
+            background-color: #f8fafc;
+            padding: 20px 30px;
+            text-align: center;
+            color: #64748b;
+            font-size: 14px;
+            border-top: 1px solid #e2e8f0;
+        }
+        .security-note {
+            background-color: #fef3c7;
+            border: 1px solid #f59e0b;
+            color: #92400e;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        .expiry-warning {
+            background-color: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #dc2626;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 15px 0;
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>Healthcare Provider Invitation</h1>
+            <p style="margin: 10px 0 0 0; opacity: 0.9;">Join {{ site_name }} as a Healthcare Provider</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <p>Dear Healthcare Professional,</p>
+            
+            <p>You have been invited by <strong>{{ invited_by_name }}</strong> to join {{ site_name }} as a healthcare provider. This secure medical document processing platform will allow you to manage patient records and process medical documents efficiently.</p>
+
+            {% if personal_message %}
+            <div class="invitation-details">
+                <h3>Personal Message</h3>
+                <p>{{ personal_message|linebreaks }}</p>
+            </div>
+            {% endif %}
+
+            <div class="invitation-details">
+                <h3>Invitation Details</h3>
+                <p><strong>Role:</strong> {{ role_name }}</p>
+                <p><strong>Invited by:</strong> {{ invited_by_name }}</p>
+                <p><strong>Expiration:</strong> {{ expiration_date }}</p>
+                {% if days_until_expiry <= 3 %}
+                <div class="expiry-warning">
+                    ⚠️ This invitation expires in {{ days_until_expiry }} day{{ days_until_expiry|pluralize }}
+                </div>
+                {% endif %}
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{{ invitation_url }}" class="cta-button">Accept Invitation & Create Account</a>
+            </div>
+
+            <div class="security-note">
+                <strong>🔒 Security Notice:</strong> This invitation link is unique and secure. It will expire on {{ expiration_date }}. Do not share this link with others. If you did not expect this invitation, please contact {{ support_email }}.
+            </div>
+
+            <h3>What happens next?</h3>
+            <ol>
+                <li>Click the "Accept Invitation" button above</li>
+                <li>Create your secure account with a strong password</li>
+                <li>Complete your provider profile information</li>
+                <li>Start managing patient records securely</li>
+            </ol>
+
+            <p>If you have any questions or need assistance, please contact our support team at <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>
+
+            <p>Best regards,<br>
+            The {{ site_name }} Team</p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>{{ site_name }} - Secure Medical Document Processing Platform</p>
+            <p>This invitation was sent to {{ invitation.email }} and expires on {{ expiration_date }}.</p>
+            <p>If you're having trouble clicking the button, copy and paste this URL into your browser:<br>
+            <span style="word-break: break-all; color: #2563eb;">{{ invitation_url }}</span></p>
+        </div>
+    </div>
+</body>
+</html>

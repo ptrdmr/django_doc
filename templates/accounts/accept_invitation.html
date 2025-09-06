@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Accept Invitation - Medical Document Parser{% endblock %}
+
+{% block body_class %}bg-gray-100{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <!-- Header -->
+        <div class="text-center">
+            <div class="mx-auto h-16 w-16 bg-blue-100 rounded-full flex items-center justify-center">
+                <i class="fas fa-envelope-open text-blue-600 text-2xl"></i>
+            </div>
+            <h2 class="mt-6 text-3xl font-extrabold text-gray-900">
+                Welcome to {{ site_name|default:"Medical Document Parser" }}
+            </h2>
+            <p class="mt-2 text-sm text-gray-600">
+                You've been invited to join as a healthcare provider
+            </p>
+        </div>
+
+        <!-- Invitation Details Card -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="px-6 py-4 bg-blue-50 border-b border-blue-100">
+                <h3 class="text-lg font-medium text-blue-900">Invitation Details</h3>
+            </div>
+            <div class="px-6 py-4">
+                <div class="space-y-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Email Address</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ invitation.email }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Assigned Role</dt>
+                        <dd class="mt-1">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {{ invitation.role.display_name }}
+                            </span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Invited By</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ invitation.invited_by.get_full_name|default:invitation.invited_by.email }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Expires</dt>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            {{ invitation.expires_at|date:"F d, Y \a\t g:i A" }}
+                            {% with days=invitation.get_days_until_expiry %}
+                            <span class="{% if days <= 1 %}text-red-600{% elif days <= 3 %}text-orange-600{% else %}text-green-600{% endif %} font-medium">
+                                {% if days < 0 %}(Expired {% widthratio days 1 -1 %} day{% if days != -1 %}s{% endif %} ago)
+                                {% elif days == 0 %}(Expires today)
+                                {% elif days == 1 %}(Expires tomorrow)
+                                {% else %}({{ days }} day{{ days|pluralize }} remaining)
+                                {% endif %}
+                            </span>
+                            {% endwith %}
+                        </dd>
+                    </div>
+                    {% if invitation.personal_message %}
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Personal Message</dt>
+                        <dd class="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded-md">
+                            {{ invitation.personal_message|linebreaks }}
+                        </dd>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="space-y-4">
+            <div class="text-center">
+                <a href="{% url 'accounts:invitation_registration' %}" 
+                   class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                        <i class="fas fa-user-plus text-blue-500 group-hover:text-blue-400"></i>
+                    </span>
+                    Create Your Account
+                </a>
+            </div>
+            
+            <div class="text-center">
+                <p class="text-sm text-gray-600">
+                    Already have an account? 
+                    <a href="{% url 'account_login' %}" class="font-medium text-blue-600 hover:text-blue-500">
+                        Sign in here
+                    </a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Security Notice -->
+        <div class="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-shield-alt text-yellow-400"></i>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-yellow-800">Security Notice</h3>
+                    <div class="mt-2 text-sm text-yellow-700">
+                        <p>This invitation link is secure and can only be used once. If you did not expect this invitation or have concerns about its authenticity, please contact the administrator who sent it or our support team.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help -->
+        <div class="text-center">
+            <p class="text-sm text-gray-500">
+                Need help? Contact us at 
+                <a href="mailto:{{ support_email|default:'support@meddocparser.com' }}" class="font-medium text-blue-600 hover:text-blue-500">
+                    {{ support_email|default:'support@meddocparser.com' }}
+                </a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

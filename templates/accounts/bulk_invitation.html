@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Bulk Provider Invitations - Medical Document Parser{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50">
+    <!-- Header Section -->
+    <div class="bg-white shadow">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="py-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <h1 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
+                            <i class="fas fa-users text-blue-600 mr-3"></i>
+                            Bulk Provider Invitations
+                        </h1>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Send invitations to multiple healthcare providers at once
+                        </p>
+                    </div>
+                    <div class="mt-4 flex md:mt-0 md:ml-4">
+                        <a href="{% url 'accounts:invitation_list' %}" 
+                           class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                            <i class="fas fa-arrow-left mr-2"></i>
+                            Back to Invitations
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form Section -->
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">Bulk Invitation Details</h3>
+                <p class="mt-1 text-sm text-gray-500">
+                    Send the same invitation to multiple providers. Maximum 20 providers per batch.
+                </p>
+            </div>
+            
+            <form method="post" class="px-6 py-4">
+                {% csrf_token %}
+                
+                <!-- Email Addresses Field -->
+                <div class="mb-6">
+                    <label for="{{ form.emails.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                        {{ form.emails.label }}
+                        <span class="text-red-500">*</span>
+                    </label>
+                    {{ form.emails }}
+                    {% if form.emails.help_text %}
+                    <p class="mt-1 text-sm text-gray-500">{{ form.emails.help_text }}</p>
+                    {% endif %}
+                    {% if form.emails.errors %}
+                    <div class="mt-1">
+                        {% for error in form.emails.errors %}
+                        <p class="text-sm text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Role Field -->
+                    <div>
+                        <label for="{{ form.role.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            {{ form.role.label }}
+                            <span class="text-red-500">*</span>
+                        </label>
+                        {{ form.role }}
+                        {% if form.role.help_text %}
+                        <p class="mt-1 text-sm text-gray-500">{{ form.role.help_text }}</p>
+                        {% endif %}
+                        {% if form.role.errors %}
+                        <div class="mt-1">
+                            {% for error in form.role.errors %}
+                            <p class="text-sm text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Expiration Days Field -->
+                    <div>
+                        <label for="{{ form.expiration_days.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            {{ form.expiration_days.label }}
+                            <span class="text-red-500">*</span>
+                        </label>
+                        {{ form.expiration_days }}
+                        {% if form.expiration_days.help_text %}
+                        <p class="mt-1 text-sm text-gray-500">{{ form.expiration_days.help_text }}</p>
+                        {% endif %}
+                        {% if form.expiration_days.errors %}
+                        <div class="mt-1">
+                            {% for error in form.expiration_days.errors %}
+                            <p class="text-sm text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Personal Message Field -->
+                <div class="mb-6">
+                    <label for="{{ form.personal_message.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                        {{ form.personal_message.label }}
+                    </label>
+                    {{ form.personal_message }}
+                    {% if form.personal_message.help_text %}
+                    <p class="mt-1 text-sm text-gray-500">{{ form.personal_message.help_text }}</p>
+                    {% endif %}
+                    {% if form.personal_message.errors %}
+                    <div class="mt-1">
+                        {% for error in form.personal_message.errors %}
+                        <p class="text-sm text-red-600"><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Information Notice -->
+                <div class="bg-amber-50 border border-amber-200 rounded-md p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-info-circle text-amber-400"></i>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-amber-800">Bulk Invitation Process</h3>
+                            <div class="mt-2 text-sm text-amber-700">
+                                <ul class="list-disc list-inside space-y-1">
+                                    <li>Each email address will receive the same invitation</li>
+                                    <li>Invalid or duplicate emails will be automatically filtered out</li>
+                                    <li>You'll receive a summary of successful and failed invitations</li>
+                                    <li>All invitations will have the same role and expiration period</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex items-center justify-end space-x-4 pt-4 border-t border-gray-200">
+                    <a href="{% url 'accounts:invitation_list' %}" 
+                       class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        Cancel
+                    </a>
+                    <button type="submit" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        <i class="fas fa-paper-plane mr-2"></i>
+                        Send Bulk Invitations
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Example Section -->
+        <div class="mt-8 bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">
+                    <i class="fas fa-lightbulb text-yellow-500 mr-2"></i>
+                    Email Format Example
+                </h3>
+            </div>
+            <div class="px-6 py-4">
+                <div class="bg-gray-50 rounded-md p-4">
+                    <pre class="text-sm text-gray-700">dr.smith@hospital.com
+provider@clinic.org
+nurse.johnson@healthcare.net
+admin@medicalgroup.com</pre>
+                </div>
+                <p class="mt-2 text-sm text-gray-500">
+                    Enter one email address per line. Blank lines and invalid emails will be automatically ignored.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript for form enhancements -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const emailTextarea = document.querySelector('textarea[name="emails"]');
+    const submitButton = document.querySelector('button[type="submit"]');
+    
+    if (emailTextarea && submitButton) {
+        // Add real-time email count
+        const countDisplay = document.createElement('div');
+        countDisplay.className = 'mt-2 text-sm text-gray-500';
+        countDisplay.innerHTML = '<i class="fas fa-envelope mr-1"></i>Email count: 0';
+        emailTextarea.parentNode.insertBefore(countDisplay, emailTextarea.nextSibling);
+        
+        emailTextarea.addEventListener('input', function() {
+            const emails = this.value.split('\n').filter(line => line.trim().length > 0);
+            countDisplay.innerHTML = `<i class="fas fa-envelope mr-1"></i>Email count: ${emails.length}`;
+            
+            // Update submit button text
+            if (emails.length > 0) {
+                submitButton.innerHTML = `<i class="fas fa-paper-plane mr-2"></i>Send ${emails.length} Invitation${emails.length !== 1 ? 's' : ''}`;
+            } else {
+                submitButton.innerHTML = `<i class="fas fa-paper-plane mr-2"></i>Send Bulk Invitations`;
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,247 @@
+# Task ID: 29
+# Title: Configure Email Service for Provider Invitation System
+# Status: pending
+# Dependencies: 25
+# Priority: medium
+# Description: Set up a production email service (Gmail, SendGrid, or AWS SES) to replace the current console backend for the Provider Invitation System, enabling actual email delivery to healthcare providers.
+# Details:
+Implement a production-ready email service for the Provider Invitation System:
+
+1. Select an appropriate email service provider:
+   - Options include Gmail SMTP, SendGrid, or AWS SES
+   - Consider HIPAA compliance requirements when selecting the provider
+   - Document the decision and rationale
+
+2. Update environment configuration:
+   - Add the following email settings to `.env` file:
+   ```
+   EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+   EMAIL_HOST=smtp.provider.com
+   EMAIL_PORT=587
+   EMAIL_USE_TLS=True
+   EMAIL_HOST_USER=your_username
+   EMAIL_HOST_PASSWORD=your_password
+   DEFAULT_FROM_EMAIL=noreply@yourdomain.com
+   ```
+
+3. Update Docker configuration:
+   - Add the email environment variables to `docker-compose.yml`:
+   ```yaml
+   services:
+     web:
+       environment:
+         - EMAIL_BACKEND=${EMAIL_BACKEND}
+         - EMAIL_HOST=${EMAIL_HOST}
+         - EMAIL_PORT=${EMAIL_PORT}
+         - EMAIL_USE_TLS=${EMAIL_USE_TLS}
+         - EMAIL_HOST_USER=${EMAIL_HOST_USER}
+         - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
+         - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+   ```
+
+4. Modify the invitation email sending code:
+   - Update the email sending function in the Provider Invitation System:
+   ```python
+   from django.core.mail import send_mail
+   from django.conf import settings
+   
+   def send_invitation_email(invitation):
+       """
+       Send invitation email to provider using configured email backend
+       """
+       subject = "Invitation to join the Medical Document Parser System"
+       message = f"""
+       Hello,
+       
+       You have been invited to join the Medical Document Parser System as a healthcare provider.
+       Please click the following link to create your account:
+       
+       {settings.BASE_URL}/invitations/accept/{invitation.token}/
+       
+       This invitation will expire in 7 days.
+       
+       Thank you,
+       Medical Document Parser Team
+       """
+       html_message = f"""
+       <p>Hello,</p>
+       <p>You have been invited to join the Medical Document Parser System as a healthcare provider.</p>
+       <p>Please click the following link to create your account:</p>
+       <p><a href="{settings.BASE_URL}/invitations/accept/{invitation.token}/">Accept Invitation</a></p>
+       <p>This invitation will expire in 7 days.</p>
+       <p>Thank you,<br>Medical Document Parser Team</p>
+       """
+       
+       return send_mail(
+           subject=subject,
+           message=message,
+           from_email=settings.DEFAULT_FROM_EMAIL,
+           recipient_list=[invitation.email],
+           html_message=html_message,
+           fail_silently=False,
+       )
+   ```
+
+5. Add BASE_URL setting:
+   - Ensure the `BASE_URL` setting is defined in settings.py:
+   ```python
+   # Base URL for generating absolute URLs
+   BASE_URL = os.environ.get('BASE_URL', 'http://localhost:8000')
+   ```
+   - Add this to the `.env` file:
+   ```
+   BASE_URL=https://yourdomain.com
+   ```
+
+6. Create a fallback mechanism:
+   - Implement a fallback to console backend for development environments:
+   ```python
+   # settings/development.py
+   EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+   ```
+   - Ensure production settings use the SMTP backend from environment variables
+
+7. Add email sending error handling:
+   ```python
+   from django.core.mail import send_mail
+   from django.core.exceptions import ValidationError
+   import logging
+   
+   logger = logging.getLogger(__name__)
+   
+   def send_invitation_email(invitation):
+       try:
+           # Email sending code from above
+           send_mail(...)
+           invitation.email_sent = True
+           invitation.save(update_fields=['email_sent'])
+           logger.info(f"Invitation email sent successfully to {invitation.email}")
+           return True
+       except Exception as e:
+           logger.error(f"Failed to send invitation email to {invitation.email}: {str(e)}")
+           return False
+   ```
+
+8. Update the ProviderInvitation model to track email status:
+   ```python
+   class ProviderInvitation(models.Model):
+       # Existing fields
+       email_sent = models.BooleanField(default=False)
+       email_sent_at = models.DateTimeField(null=True, blank=True)
+       
+       # Add method to resend invitation if needed
+       def resend_invitation(self):
+           from django.utils import timezone
+           result = send_invitation_email(self)
+           if result:
+               self.email_sent = True
+               self.email_sent_at = timezone.now()
+               self.save(update_fields=['email_sent', 'email_sent_at'])
+           return result
+   ```
+
+# Test Strategy:
+To verify the email service configuration for the Provider Invitation System:
+
+1. Unit Testing:
+   - Create tests for the email sending functionality:
+   ```python
+   from django.test import TestCase
+   from django.core import mail
+   from accounts.models import ProviderInvitation, Role
+   from django.contrib.auth import get_user_model
+   
+   class EmailServiceTests(TestCase):
+       @classmethod
+       def setUpTestData(cls):
+           User = get_user_model()
+           cls.admin_user = User.objects.create_user('admin@example.com', 'password')
+           cls.role = Role.objects.create(name='Provider', description='Healthcare Provider')
+       
+       def test_invitation_email_sending(self):
+           # Create a test invitation
+           invitation = ProviderInvitation.objects.create(
+               email='provider@example.com',
+               token='testtoken123',
+               role=self.role,
+               invited_by=self.admin_user
+           )
+           
+           # Send the invitation email
+           invitation.resend_invitation()
+           
+           # Check that one message has been sent
+           self.assertEqual(len(mail.outbox), 1)
+           
+           # Verify the message content
+           email = mail.outbox[0]
+           self.assertEqual(email.subject, "Invitation to join the Medical Document Parser System")
+           self.assertEqual(email.to, ['provider@example.com'])
+           self.assertIn('testtoken123', email.body)
+           self.assertIn('testtoken123', email.alternatives[0][0])  # HTML content
+   ```
+
+2. Integration Testing:
+   - Set up a test email account with the chosen provider
+   - Configure the application with test credentials
+   - Send actual test emails and verify delivery:
+   ```python
+   from django.core.management.base import BaseCommand
+   from accounts.models import ProviderInvitation
+   
+   class Command(BaseCommand):
+       help = 'Test email delivery by sending a test invitation'
+       
+       def add_arguments(self, parser):
+           parser.add_argument('email', type=str, help='Email address to send test to')
+       
+       def handle(self, *args, **options):
+           # Get the first invitation or create one
+           invitation = ProviderInvitation.objects.first()
+           if not invitation:
+               self.stdout.write(self.style.ERROR('No invitations found. Create one first.'))
+               return
+           
+           # Override the email for testing
+           invitation.email = options['email']
+           
+           # Send the email
+           result = invitation.resend_invitation()
+           
+           if result:
+               self.stdout.write(self.style.SUCCESS(f'Test email sent to {options["email"]}'))
+           else:
+               self.stdout.write(self.style.ERROR(f'Failed to send test email to {options["email"]}'))
+   ```
+
+3. Manual Testing:
+   - Test the invitation flow end-to-end:
+     1. Log in as an administrator
+     2. Create a new provider invitation
+     3. Verify the email is received at the specified address
+     4. Click the invitation link and complete the account creation process
+     5. Verify the new provider account is created with the correct role
+
+4. Email Delivery Verification:
+   - Check email delivery logs in the provider's dashboard (SendGrid, AWS SES, etc.)
+   - Verify emails are not being marked as spam
+   - Test delivery to different email providers (Gmail, Outlook, etc.)
+
+5. Error Handling Testing:
+   - Test with invalid email configurations to verify error handling:
+     - Incorrect SMTP credentials
+     - Invalid sender email
+     - Server connection issues
+   - Verify appropriate error messages are logged
+   - Ensure the application degrades gracefully when email sending fails
+
+6. Environment Configuration Testing:
+   - Verify the correct email backend is used in different environments:
+     - Development should use console backend
+     - Production should use SMTP backend
+   - Test environment variable overrides work correctly
+
+7. Security Testing:
+   - Verify email credentials are properly secured in environment variables
+   - Ensure no sensitive information is included in email logs
+   - Check that TLS/SSL is properly configured for secure email transmission

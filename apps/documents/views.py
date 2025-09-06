@@ -17,10 +17,13 @@ from .models import Document
 from .forms import DocumentUploadForm
 from apps.patients.models import Patient
 from apps.providers.models import Provider
+from apps.accounts.decorators import has_permission, provider_required, admin_required
+from django.utils.decorators import method_decorator
 
 logger = logging.getLogger(__name__)
 
 
+@method_decorator([provider_required, has_permission('documents.add_document')], name='dispatch')
 class DocumentUploadView(LoginRequiredMixin, CreateView):
     """
     Handle document upload with comprehensive validation and error handling.
@@ -193,6 +196,7 @@ class DocumentUploadView(LoginRequiredMixin, CreateView):
         return super().form_invalid(form)
 
 
+@method_decorator([provider_required, has_permission('documents.view_document')], name='dispatch')
 class DocumentUploadSuccessView(LoginRequiredMixin, DetailView):
     """
     Display upload success page with document details.
@@ -237,6 +241,7 @@ class DocumentUploadSuccessView(LoginRequiredMixin, DetailView):
         return context
 
 
+@method_decorator(has_permission('documents.view_document'), name='dispatch')
 class DocumentListView(LoginRequiredMixin, ListView):
     """
     Display list of uploaded documents with search and filtering.
@@ -301,6 +306,7 @@ class DocumentListView(LoginRequiredMixin, ListView):
         return context
 
 
+@method_decorator(has_permission('documents.view_document'), name='dispatch')
 class DocumentDetailView(LoginRequiredMixin, DetailView):
     """
     Display detailed information about a specific document.
@@ -345,6 +351,7 @@ class DocumentDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
+@method_decorator([provider_required, has_permission('documents.change_document')], name='dispatch')
 class DocumentRetryView(LoginRequiredMixin, View):
     """
     Handle document processing retry with enhanced error handling.
@@ -421,6 +428,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
                 return redirect('documents:detail', pk=document.pk)
 
 
+@method_decorator(has_permission('documents.view_document'), name='dispatch')
 class ProcessingStatusAPIView(LoginRequiredMixin, View):
     """
     API endpoint for real-time processing status monitoring.
@@ -485,6 +493,7 @@ class ProcessingStatusAPIView(LoginRequiredMixin, View):
             }, status=500)
 
 
+@method_decorator(has_permission('documents.view_document'), name='dispatch')
 class RecentUploadsAPIView(LoginRequiredMixin, View):
     """
     API endpoint for refreshing recent uploads list.
@@ -517,6 +526,7 @@ class RecentUploadsAPIView(LoginRequiredMixin, View):
             )
 
 
+@method_decorator(has_permission('documents.view_document'), name='dispatch')
 class DocumentPreviewAPIView(LoginRequiredMixin, View):
     """
     API endpoint for document preview functionality.

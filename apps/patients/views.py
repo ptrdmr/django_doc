@@ -19,6 +19,8 @@ from difflib import SequenceMatcher
 
 from .models import Patient, PatientHistory
 from .forms import PatientForm
+from apps.accounts.decorators import has_permission, requires_phi_access, provider_required, admin_required
+from django.utils.decorators import method_decorator
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,7 @@ class PatientSearchForm(forms.Form):
         return query
 
 
+@method_decorator(has_permission('patients.view_patient'), name='dispatch')
 class PatientListView(LoginRequiredMixin, ListView):
     """
     Display a list of patients with search and pagination functionality.
@@ -194,6 +197,7 @@ class PatientListView(LoginRequiredMixin, ListView):
             return super().get_context_data(**kwargs)
 
 
+@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
 class PatientDetailView(LoginRequiredMixin, DetailView):
     """
     Display detailed information for a specific patient.
@@ -340,6 +344,7 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             return super().get_context_data(**kwargs)
 
 
+@method_decorator([provider_required, has_permission('patients.add_patient')], name='dispatch')
 class PatientCreateView(LoginRequiredMixin, CreateView):
     """
     Create a new patient record.
@@ -396,6 +401,7 @@ class PatientCreateView(LoginRequiredMixin, CreateView):
             return self.form_invalid(form)
 
 
+@method_decorator([provider_required, has_permission('patients.change_patient')], name='dispatch')
 class PatientUpdateView(LoginRequiredMixin, UpdateView):
     """
     Update an existing patient record.
@@ -456,6 +462,7 @@ class PatientUpdateView(LoginRequiredMixin, UpdateView):
 # FHIR Export Views
 # ============================================================================
 
+@method_decorator([requires_phi_access, has_permission('patients.export_patient_data')], name='dispatch')
 class PatientFHIRExportView(LoginRequiredMixin, View):
     """
     Export patient data as FHIR JSON file download.
@@ -580,6 +587,7 @@ class PatientFHIRExportView(LoginRequiredMixin, View):
         return gender_map.get(gender, 'unknown')
 
 
+@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
 class PatientFHIRJSONView(LoginRequiredMixin, View):
     """
     Return patient FHIR data as JSON (for API access).
@@ -615,6 +623,7 @@ class PatientFHIRJSONView(LoginRequiredMixin, View):
 # Patient History Views
 # ============================================================================
 
+@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
 class PatientHistoryDetailView(LoginRequiredMixin, DetailView):
     """
     Detailed view of patient history timeline.
@@ -660,6 +669,7 @@ class PatientHistoryDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
+@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
 class PatientHistoryItemView(LoginRequiredMixin, DetailView):
     """
     View individual history record details.
@@ -685,6 +695,7 @@ class PatientHistoryItemView(LoginRequiredMixin, DetailView):
 # Patient Merge Views
 # ============================================================================
 
+@method_decorator([admin_required, has_permission('patients.view_patient')], name='dispatch')
 class FindDuplicatePatientsView(LoginRequiredMixin, TemplateView):
     """
     Find and display potential duplicate patient records.
@@ -784,6 +795,7 @@ class FindDuplicatePatientsView(LoginRequiredMixin, TemplateView):
         return SequenceMatcher(None, name1, name2).ratio()
 
 
+@method_decorator([admin_required, has_permission('patients.merge_patients')], name='dispatch')
 class PatientMergeListView(LoginRequiredMixin, TemplateView):
     """
     List view for selecting patients to merge.
@@ -823,6 +835,7 @@ class PatientMergeListView(LoginRequiredMixin, TemplateView):
         return context
 
 
+@method_decorator([admin_required, has_permission('patients.merge_patients')], name='dispatch')
 class PatientMergeView(LoginRequiredMixin, TemplateView):
     """
     Merge two patient records.

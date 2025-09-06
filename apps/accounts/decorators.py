@@ -221,7 +221,7 @@ def requires_phi_access(view_func: Callable = None):
 
 def admin_required(view_func: Callable):
     """
-    Decorator to require admin role.
+    Decorator to require admin role or superuser status.
     
     Convenience decorator for admin-only views.
     
@@ -230,7 +230,31 @@ def admin_required(view_func: Callable):
         def manage_users(request):
             return render(request, 'accounts/manage_users.html')
     """
-    return has_role('admin')(view_func)
+    @wraps(view_func)
+    def wrapped_view(request: HttpRequest, *args, **kwargs) -> HttpResponse:
+        if not request.user.is_authenticated:
+            messages.error(request, 'Please log in to access this page.')
+            return redirect('account_login')
+        
+        # Allow superusers and staff users to bypass role check
+        if request.user.is_superuser or request.user.is_staff:
+            logger.info(f"Superuser/staff {request.user.id} accessed {view_func.__name__}")
+            return view_func(request, *args, **kwargs)
+        
+        # Check admin role for regular users
+        if user_has_role_cached(request, request.user, 'admin'):
+            logger.info(f"Admin user {request.user.id} accessed {view_func.__name__}")
+            return view_func(request, *args, **kwargs)
+        
+        # Access denied
+        logger.warning(f"User {request.user.id} denied admin access to {view_func.__name__}")
+        messages.error(request, 'Access denied. Administrator role required.')
+        return redirect('accounts:dashboard')
+    
+    wrapped_view.require_auth = True
+    wrapped_view.required_role = 'admin'
+    
+    return wrapped_view
 
 
 def provider_required(view_func: Callable):

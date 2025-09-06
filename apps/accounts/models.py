@@ -9,6 +9,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 import uuid
+import secrets
 
 
 class Role(models.Model):
@@ -500,3 +501,248 @@ class UserProfile(models.Model):
         """
         profile, created = cls.objects.get_or_create(user=user)
         return profile
+
+
+class ProviderInvitation(models.Model):
+    """
+    Provider invitation model for sending invitation links to healthcare providers.
+    
+    Allows administrators to invite healthcare providers to create accounts with
+    pre-assigned roles and permissions. Includes security features like token
+    expiration and audit logging.
+    """
+    
+    # Invitation identification
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+        help_text="Unique identifier for the invitation"
+    )
+    email = models.EmailField(
+        help_text="Email address of the invited provider"
+    )
+    token = models.CharField(
+        max_length=64,
+        unique=True,
+        help_text="Secure token for invitation link"
+    )
+    
+    # Role assignment
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.CASCADE,
+        help_text="Role to be assigned to the provider upon registration"
+    )
+    
+    # Invitation metadata
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='sent_invitations',
+        help_text="Administrator who sent the invitation"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="When the invitation was created"
+    )
+    expires_at = models.DateTimeField(
+        help_text="When the invitation expires"
+    )
+    accepted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the invitation was accepted (null if not accepted)"
+    )
+    
+    # Status tracking
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this invitation is still active"
+    )
+    
+    # Additional invitation details
+    personal_message = models.TextField(
+        blank=True,
+        help_text="Optional personal message to include in the invitation"
+    )
+    
+    class Meta:
+        db_table = 'provider_invitations'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['email']),
+            models.Index(fields=['token']),
+            models.Index(fields=['is_active', 'expires_at']),
+            models.Index(fields=['invited_by', 'created_at']),
+            models.Index(fields=['role']),
+        ]
+        verbose_name = 'Provider Invitation'
+        verbose_name_plural = 'Provider Invitations'
+        permissions = [
+            ('manage_invitations', 'Can manage provider invitations'),
+        ]
+    
+    def __str__(self):
+        """String representation of the invitation."""
+        status = "accepted" if self.accepted_at else ("expired" if self.is_expired() else "pending")
+        return f"Invitation for {self.email} ({status})"
+    
+    def save(self, *args, **kwargs):
+        """Override save to generate token if not provided."""
+        if not self.token:
+            self.token = self.generate_token()
+        super().save(*args, **kwargs)
+    
+    def generate_token(self):
+        """
+        Generate a secure random token for the invitation.
+        
+        Returns:
+            str: 64-character secure token
+        """
+        return secrets.token_urlsafe(48)
+    
+    def is_expired(self):
+        """
+        Check if the invitation has expired.
+        
+        Returns:
+            bool: True if the invitation has expired
+        """
+        return timezone.now() > self.expires_at
+    
+    def is_valid(self):
+        """
+        Check if the invitation is valid (active and not expired).
+        
+        Returns:
+            bool: True if the invitation is valid
+        """
+        return self.is_active and not self.is_expired()
+    
+    def accept(self, user):
+        """
+        Mark invitation as accepted and assign role to user.
+        
+        Args:
+            user: User instance who accepted the invitation
+            
+        Returns:
+            bool: True if invitation was successfully accepted
+        """
+        if not self.is_valid():
+            return False
+        
+        # Mark invitation as accepted
+        self.accepted_at = timezone.now()
+        self.is_active = False
+        self.save(update_fields=['accepted_at', 'is_active'])
+        
+        # Get or create user profile
+        profile, created = UserProfile.objects.get_or_create(user=user)
+        
+        # Assign the role to the user
+        profile.roles.add(self.role)
+        
+        # Create provider profile if user has provider role
+        if self.role.name == 'provider':
+            self._create_provider_profile(user)
+        
+        return True
+    
+    def _create_provider_profile(self, user):
+        """
+        Create provider profile if it doesn't exist.
+        
+        Args:
+            user: User instance to create provider profile for
+        """
+        try:
+            from apps.providers.models import Provider
+            
+            # Check if provider profile already exists
+            # Note: Provider model doesn't have a direct user relationship yet
+            # This will be implemented when provider-user relationships are established
+            if not Provider.objects.filter(
+                first_name=user.first_name or 'Unknown',
+                last_name=user.last_name or 'Provider'
+            ).exists():
+                Provider.objects.create(
+                    first_name=user.first_name or 'Unknown',
+                    last_name=user.last_name or 'Provider',
+                    # These fields will need to be filled out by the provider later
+                    npi=f'temp_{user.id}',  # Temporary NPI, to be updated by provider
+                    specialty='General',  # Default specialty
+                    organization='',  # Will be updated by provider
+                )
+        except ImportError:
+            # Provider model not available yet
+            pass
+    
+    def revoke(self):
+        """
+        Revoke the invitation (mark as inactive).
+        
+        Returns:
+            bool: True if invitation was revoked
+        """
+        if self.is_active and not self.accepted_at:
+            self.is_active = False
+            self.save(update_fields=['is_active'])
+            return True
+        return False
+    
+    def get_status_display(self):
+        """
+        Get human-readable status of the invitation.
+        
+        Returns:
+            str: Status display text
+        """
+        if self.accepted_at:
+            return "Accepted"
+        elif not self.is_active:
+            return "Revoked"
+        elif self.is_expired():
+            return "Expired"
+        else:
+            return "Pending"
+    
+    def get_days_until_expiry(self):
+        """
+        Get number of days until expiry.
+        
+        Returns:
+            int: Days until expiry (negative if expired)
+        """
+        delta = self.expires_at - timezone.now()
+        return delta.days
+    
+    @classmethod
+    def get_active_invitations(cls):
+        """Get all active (non-expired, non-accepted) invitations."""
+        return cls.objects.filter(
+            is_active=True,
+            accepted_at__isnull=True,
+            expires_at__gt=timezone.now()
+        )
+    
+    @classmethod
+    def cleanup_expired_invitations(cls):
+        """
+        Clean up expired invitations by marking them inactive.
+        
+        Returns:
+            int: Number of invitations cleaned up
+        """
+        expired_invitations = cls.objects.filter(
+            is_active=True,
+            accepted_at__isnull=True,
+            expires_at__lte=timezone.now()
+        )
+        
+        count = expired_invitations.count()
+        expired_invitations.update(is_active=False)
+        
+        return count
