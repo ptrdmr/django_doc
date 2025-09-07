@@ -173,12 +173,41 @@ def process_document_async(self, document_id: int):
                     
                     # Use the new FHIRProcessor for comprehensive resource processing
                     try:
-                        from apps.fhir.services import FHIRProcessor
+                        from apps.fhir.services import FHIRProcessor, FHIRMetricsService
                         
                         fhir_processor = FHIRProcessor()
                         fhir_resources = fhir_processor.process_extracted_data(ai_result['fields'], patient_id)
                         
                         logger.info(f"FHIRProcessor created {len(fhir_resources)} resources from extracted data")
+                        
+                        # Calculate data capture metrics
+                        try:
+                            metrics_service = FHIRMetricsService()
+                            capture_metrics = metrics_service.calculate_data_capture_metrics(
+                                ai_result['fields'], fhir_resources
+                            )
+                            
+                            # Store metrics in AI result for reporting
+                            ai_result['capture_metrics'] = capture_metrics
+                            
+                            # Log metrics summary
+                            overall_rate = capture_metrics['overall']['capture_rate']
+                            total_points = capture_metrics['overall']['total_data_points']
+                            captured_points = capture_metrics['overall']['captured_data_points']
+                            
+                            logger.info(
+                                f"Data capture metrics for document {document_id}: "
+                                f"{overall_rate:.1f}% capture rate "
+                                f"({captured_points}/{total_points} data points)"
+                            )
+                            
+                            # Generate and log detailed metrics report
+                            metrics_report = metrics_service.generate_metrics_report(capture_metrics)
+                            logger.info(f"Detailed metrics report for document {document_id}:\n{metrics_report}")
+                            
+                        except Exception as metrics_exc:
+                            logger.warning(f"Metrics calculation failed for document {document_id}: {metrics_exc}")
+                            # Don't fail the task if metrics calculation fails
                         
                     except Exception as fhir_proc_exc:
                         logger.warning(f"FHIRProcessor failed, falling back to legacy converter: {fhir_proc_exc}")
@@ -256,7 +285,8 @@ def process_document_async(self, document_id: int):
                             fhir_delta_json=fhir_resources if fhir_resources else {},
                             extraction_confidence=ai_result.get('confidence', 0.0),
                             ai_model_used=ai_result.get('model_used', 'unknown'),
-                            processing_time_seconds=ai_result.get('processing_time', 0.0)  # Model has processing_time_seconds, not processing_duration_ms
+                            processing_time_seconds=ai_result.get('processing_time', 0.0),  # Model has processing_time_seconds, not processing_duration_ms
+                            capture_metrics=ai_result.get('capture_metrics', {})
                         )
                         
                         logger.info(f"Created ParsedData record {parsed_data.id} for document {document_id}")
@@ -294,17 +324,20 @@ def process_document_async(self, document_id: int):
                 'error_message': document.error_message
             }
         
-        # Mark document as completed
-        document.status = 'completed'
+        # Mark document as ready for review (NOT completed yet)
+        # Data should only be marked 'completed' after user review and approval
+        document.status = 'review'
         document.processed_at = timezone.now()
         document.error_message = ''
         document.save()
+        
+        logger.info(f"Document {document_id} processed successfully and marked for review")
         
         # Prepare comprehensive result
         result = {
             'success': True,
             'document_id': document_id,
-            'status': 'completed',
+            'status': 'review',
             'task_id': self.request.id,
             'pdf_extraction': {
                 'success': extraction_result['success'],

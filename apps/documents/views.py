@@ -617,7 +617,168 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
         """
         context = super().get_context_data(**kwargs)
         
-        # Add any extracted data or additional context needed for review
-        # This will be expanded in later subtasks
+        # Add parsed data for review if available
+        try:
+            parsed_data = self.object.parsed_data
+            context['parsed_data'] = parsed_data
+            context['fhir_data'] = parsed_data.fhir_delta_json
+            context['extracted_fields'] = parsed_data.extraction_json
+        except Exception:
+            # No parsed data available yet
+            context['parsed_data'] = None
+            context['fhir_data'] = {}
+            context['extracted_fields'] = []
         
         return context
+    
+    def post(self, request, *args, **kwargs):
+        """
+        Handle document approval/rejection workflow.
+        
+        Args:
+            request: HTTP POST request
+            
+        Returns:
+            HttpResponse: Redirect or error response
+        """
+        self.object = self.get_object()
+        
+        # Check if document is in reviewable state
+        if self.object.status != 'review':
+            messages.error(request, "This document is not available for review.")
+            return redirect('documents:detail', pk=self.object.pk)
+        
+        try:
+            action = request.POST.get('action')
+            
+            if action == 'approve':
+                return self.handle_approval(request)
+            elif action == 'reject':
+                return self.handle_rejection(request)
+            elif action == 'request_changes':
+                return self.handle_request_changes(request)
+            else:
+                messages.error(request, "Invalid action specified.")
+                
+        except Exception as workflow_error:
+            logger.error(f"Error in document review workflow: {workflow_error}")
+            messages.error(request, "An error occurred processing your request.")
+        
+        return redirect('documents:review', pk=self.object.pk)
+    
+    def handle_approval(self, request):
+        """
+        Handle document approval and merge data into patient record.
+        
+        Args:
+            request: HTTP request
+            
+        Returns:
+            HttpResponse: Redirect response
+        """
+        try:
+            parsed_data = self.object.parsed_data
+            
+            # Mark parsed data as approved
+            parsed_data.is_approved = True
+            parsed_data.reviewed_by = request.user
+            parsed_data.reviewed_at = timezone.now()
+            parsed_data.save()
+            
+            # Update document status to completed
+            self.object.status = 'completed'
+            self.object.save()
+            
+            # TODO: Trigger merge to patient record (will be implemented in later subtask)
+            # merge_to_patient_record.delay(parsed_data.id)
+            
+            messages.success(
+                request,
+                f"Document '{self.object.filename}' approved successfully. "
+                f"Data will be merged into {self.object.patient.first_name} {self.object.patient.last_name}'s record."
+            )
+            
+            logger.info(f"Document {self.object.id} approved by user {request.user.id}")
+            
+        except Exception as approval_error:
+            logger.error(f"Error approving document {self.object.id}: {approval_error}")
+            messages.error(request, "Failed to approve document. Please try again.")
+            return redirect('documents:review', pk=self.object.pk)
+        
+        return redirect('documents:detail', pk=self.object.pk)
+    
+    def handle_rejection(self, request):
+        """
+        Handle document rejection.
+        
+        Args:
+            request: HTTP request
+            
+        Returns:
+            HttpResponse: Redirect response
+        """
+        try:
+            notes = request.POST.get('rejection_notes', '').strip()
+            
+            parsed_data = self.object.parsed_data
+            parsed_data.is_approved = False
+            parsed_data.reviewed_by = request.user
+            parsed_data.reviewed_at = timezone.now()
+            parsed_data.review_notes = notes
+            parsed_data.save()
+            
+            # Update document status to failed (rejected)
+            self.object.status = 'failed'
+            self.object.error_message = f"Rejected by {request.user.get_full_name()}: {notes}"
+            self.object.save()
+            
+            messages.warning(
+                request,
+                f"Document '{self.object.filename}' has been rejected. "
+                f"The extracted data will not be added to the patient record."
+            )
+            
+            logger.info(f"Document {self.object.id} rejected by user {request.user.id}")
+            
+        except Exception as rejection_error:
+            logger.error(f"Error rejecting document {self.object.id}: {rejection_error}")
+            messages.error(request, "Failed to reject document. Please try again.")
+            return redirect('documents:review', pk=self.object.pk)
+        
+        return redirect('documents:detail', pk=self.object.pk)
+    
+    def handle_request_changes(self, request):
+        """
+        Handle request for changes to extracted data.
+        
+        Args:
+            request: HTTP request
+            
+        Returns:
+            HttpResponse: Redirect response
+        """
+        try:
+            notes = request.POST.get('change_notes', '').strip()
+            
+            parsed_data = self.object.parsed_data
+            parsed_data.reviewed_by = request.user
+            parsed_data.reviewed_at = timezone.now()
+            parsed_data.review_notes = notes
+            parsed_data.save()
+            
+            # Keep document in review status for further editing
+            # In future subtasks, this would trigger re-processing or manual editing
+            
+            messages.info(
+                request,
+                f"Change request submitted for '{self.object.filename}'. "
+                f"The document remains in review status."
+            )
+            
+            logger.info(f"Changes requested for document {self.object.id} by user {request.user.id}")
+            
+        except Exception as change_error:
+            logger.error(f"Error requesting changes for document {self.object.id}: {change_error}")
+            messages.error(request, "Failed to submit change request. Please try again.")
+        
+        return redirect('documents:review', pk=self.object.pk)

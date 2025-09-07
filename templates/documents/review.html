@@ -130,9 +130,23 @@
             
             <!-- Status Badge -->
             <div class="flex items-center space-x-3">
+                {% if document.status == 'review' %}
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
                     Pending Review
                 </span>
+                {% elif document.status == 'completed' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                    Approved
+                </span>
+                {% elif document.status == 'processing' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                    Processing
+                </span>
+                {% else %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                    {{ document.get_status_display }}
+                </span>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -155,24 +169,132 @@
         <div class="extraction-review">
             <div class="p-4 border-b border-gray-200">
                 <h2 class="text-lg font-semibold text-gray-900">Extracted Data Review</h2>
-                <p class="text-sm text-gray-600">Review and edit extracted information</p>
+                <p class="text-sm text-gray-600">Review extracted information before committing to patient record</p>
             </div>
-            <div class="p-4 space-y-4">
-                <!-- Placeholder for review forms -->
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <h3 class="text-sm font-medium text-gray-900 mb-2">Patient Information</h3>
-                    <p class="text-sm text-gray-500">Patient data forms will be implemented here</p>
-                </div>
+            <div class="p-4 space-y-4 overflow-y-auto" style="max-height: calc(100vh - 300px);">
                 
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <h3 class="text-sm font-medium text-gray-900 mb-2">Medical Data</h3>
-                    <p class="text-sm text-gray-500">Medical data forms will be implemented here</p>
+                {% if parsed_data %}
+                <!-- Extracted Fields Display -->
+                {% if extracted_fields %}
+                <div class="bg-white border border-gray-200 rounded-lg">
+                    <div class="p-3 border-b border-gray-200">
+                        <h3 class="text-sm font-medium text-gray-900">Extracted Information</h3>
+                    </div>
+                    <div class="p-3 space-y-3">
+                        {% for field in extracted_fields %}
+                        <div class="flex justify-between items-start py-2 border-b border-gray-100 last:border-b-0">
+                            <div class="flex-1">
+                                <dt class="text-xs font-medium text-gray-500 uppercase">{{ field.label|default:field.name }}</dt>
+                                <dd class="mt-1 text-sm text-gray-900">{{ field.value|default:"Not specified" }}</dd>
+                                {% if field.confidence %}
+                                <div class="mt-1">
+                                    <span class="text-xs text-gray-500">Confidence: {{ field.confidence|floatformat:1 }}%</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
+                {% endif %}
                 
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <h3 class="text-sm font-medium text-gray-900 mb-2">Approval Actions</h3>
-                    <p class="text-sm text-gray-500">Approval workflow will be implemented here</p>
+                <!-- FHIR Resources Preview -->
+                {% if fhir_data %}
+                <div class="bg-white border border-gray-200 rounded-lg">
+                    <div class="p-3 border-b border-gray-200">
+                        <h3 class="text-sm font-medium text-gray-900">FHIR Resources Generated</h3>
+                    </div>
+                    <div class="p-3">
+                        {% for resource_type, resources in fhir_data.items %}
+                        {% if resources %}
+                        <div class="mb-3 last:mb-0">
+                            <h4 class="text-xs font-medium text-gray-700 mb-2">{{ resource_type }} ({{ resources|length }})</h4>
+                            {% for resource in resources|slice:":3" %}
+                            <div class="bg-gray-50 rounded p-2 mb-2 text-xs">
+                                <pre class="text-gray-600 whitespace-pre-wrap">{{ resource|truncatechars:200 }}</pre>
+                            </div>
+                            {% endfor %}
+                            {% if resources|length > 3 %}
+                            <p class="text-xs text-gray-500">... and {{ resources|length|add:"-3" }} more {{ resource_type }} resource{{ resources|length|add:"-3"|pluralize }}</p>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
                 </div>
+                {% endif %}
+                
+                {% else %}
+                <!-- No Parsed Data Available -->
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div class="flex">
+                        <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                        </svg>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-yellow-800">Document Still Processing</h3>
+                            <p class="mt-2 text-sm text-yellow-700">This document is still being processed. Please wait for extraction to complete before reviewing.</p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- Approval Actions -->
+                {% if document.status == 'review' and parsed_data %}
+                <div class="bg-white border border-gray-200 rounded-lg">
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="text-sm font-medium text-gray-900">Review Actions</h3>
+                    </div>
+                    <div class="p-4">
+                        <form method="post" id="review-form">
+                            {% csrf_token %}
+                            
+                            <!-- Action Buttons -->
+                            <div class="flex flex-col space-y-3">
+                                <button type="submit" name="action" value="approve" 
+                                        class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    Approve & Commit to Patient Record
+                                </button>
+                                
+                                <button type="button" onclick="showRejectionModal()" 
+                                        class="w-full inline-flex justify-center items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                    Reject Document
+                                </button>
+                                
+                                <button type="button" onclick="showChangesModal()" 
+                                        class="w-full inline-flex justify-center items-center px-4 py-2 border border-yellow-300 text-sm font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                    </svg>
+                                    Request Changes
+                                </button>
+                            </div>
+                            
+                            <!-- Hidden fields for modal forms -->
+                            <input type="hidden" name="rejection_notes" id="rejection-notes-field">
+                            <input type="hidden" name="change_notes" id="change-notes-field">
+                        </form>
+                    </div>
+                </div>
+                {% elif document.status == 'completed' %}
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div class="flex">
+                        <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-green-800">Document Approved</h3>
+                            <p class="mt-2 text-sm text-green-700">This document has been approved and the data has been committed to the patient's record.</p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -246,6 +368,37 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Store viewer instance globally for potential use by other components
     window.currentDocumentViewer = documentViewer;
+});
+
+// Modal functions for rejection and change requests
+function showRejectionModal() {
+    const notes = prompt("Please provide a reason for rejecting this document:");
+    if (notes !== null && notes.trim() !== "") {
+        document.getElementById('rejection-notes-field').value = notes.trim();
+        document.getElementById('review-form').action.value = 'reject';
+        document.getElementById('review-form').submit();
+    }
+}
+
+function showChangesModal() {
+    const notes = prompt("Please describe the changes needed for this document:");
+    if (notes !== null && notes.trim() !== "") {
+        document.getElementById('change-notes-field').value = notes.trim();
+        document.getElementById('review-form').action.value = 'request_changes';
+        document.getElementById('review-form').submit();
+    }
+}
+
+// Confirmation for approval
+document.addEventListener('DOMContentLoaded', function() {
+    const approveButton = document.querySelector('button[value="approve"]');
+    if (approveButton) {
+        approveButton.addEventListener('click', function(e) {
+            if (!confirm('Are you sure you want to approve this document? The extracted data will be permanently added to the patient\'s record.')) {
+                e.preventDefault();
+            }
+        });
+    }
 });
 </script>
 {% endblock %}
