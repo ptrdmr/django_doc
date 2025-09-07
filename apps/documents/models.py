@@ -338,6 +338,11 @@ class ParsedData(BaseModel):
         blank=True,
         help_text="Quality score for extraction (0.0-1.0)"
     )
+    capture_metrics = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="FHIR data capture metrics and analysis"
+    )
     
     # Notes and corrections (encrypted for HIPAA compliance)
     review_notes = encrypt(models.TextField(
@@ -384,13 +389,22 @@ class ParsedData(BaseModel):
         if not self.fhir_delta_json:
             return 0
         
-        count = 0
-        for resource_type, resources in self.fhir_delta_json.items():
-            if isinstance(resources, list):
-                count += len(resources)
-            elif isinstance(resources, dict):
-                count += 1
-        return count
+        # Handle both list format (from FHIRProcessor) and dict format (legacy)
+        if isinstance(self.fhir_delta_json, list):
+            # New format: list of FHIR resources
+            return len(self.fhir_delta_json)
+        elif isinstance(self.fhir_delta_json, dict):
+            # Legacy format: dictionary with resource types as keys
+            count = 0
+            for resource_type, resources in self.fhir_delta_json.items():
+                if isinstance(resources, list):
+                    count += len(resources)
+                elif isinstance(resources, dict):
+                    count += 1
+            return count
+        else:
+            # Unknown format
+            return 0
     
     def has_high_confidence_extraction(self, threshold=0.8):
         """Check if extraction has high confidence score."""
