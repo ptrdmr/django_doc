@@ -329,22 +329,64 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- PDF.js Library -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" 
-        integrity="sha512-0G2O+WEbKJKXJQmG6FoJNgWMTqzSzKUOSRCXHo2AXLOxS1UzFbLrGtlwWqDvBNgTj+Ey3lOWRjJFoEFSEMxvw==" 
-        crossorigin="anonymous"></script>
+<!-- PDF.js Library - using multiple CDN fallbacks -->
+<script>
+// Load PDF.js with fallback CDNs
+(function() {
+    const cdnSources = [
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+        'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js',
+        'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'
+    ];
+    
+    let currentCdnIndex = 0;
+    
+    function loadPdfJs() {
+        if (currentCdnIndex >= cdnSources.length) {
+            console.error('All PDF.js CDN sources failed to load');
+            return;
+        }
+        
+        const script = document.createElement('script');
+        script.src = cdnSources[currentCdnIndex];
+        script.onload = function() {
+            console.log('PDF.js loaded successfully from:', cdnSources[currentCdnIndex]);
+            // Set worker source
+            if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+                window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            }
+        };
+        script.onerror = function() {
+            console.warn('Failed to load PDF.js from:', cdnSources[currentCdnIndex]);
+            currentCdnIndex++;
+            loadPdfJs();
+        };
+        document.head.appendChild(script);
+    }
+    
+    loadPdfJs();
+})();
+</script>
 
 <!-- Document Viewer Module -->
 <script src="{% static 'js/document-viewer.js' %}"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the document viewer
-    const documentViewer = new DocumentViewer('pdf-viewer-container', {
-        minScale: 0.5,
-        maxScale: 4.0,
-        scaleStep: 0.25
-    });
+    // Wait for PDF.js to load before initializing viewer
+    function initializeViewer() {
+        if (typeof window.pdfjsLib === 'undefined') {
+            // PDF.js not loaded yet, wait and try again
+            setTimeout(initializeViewer, 100);
+            return;
+        }
+        
+        // Initialize the document viewer
+        const documentViewer = new DocumentViewer('pdf-viewer-container', {
+            minScale: 0.5,
+            maxScale: 4.0,
+            scaleStep: 0.25
+        });
     
     // Load the document if available
     {% if document.file %}
@@ -393,8 +435,12 @@ document.addEventListener('DOMContentLoaded', function() {
     `;
     {% endif %}
     
-    // Store viewer instance globally for potential use by other components
-    window.currentDocumentViewer = documentViewer;
+        // Store viewer instance globally for potential use by other components
+        window.currentDocumentViewer = documentViewer;
+    }
+    
+    // Start initialization
+    initializeViewer();
 });
 
 // Modal functions for rejection and change requests
