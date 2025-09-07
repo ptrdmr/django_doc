@@ -185,7 +185,12 @@
                         {% for field in extracted_fields %}
                         <div class="flex justify-between items-start py-2 border-b border-gray-100 last:border-b-0">
                             <div class="flex-1">
-                                <dt class="text-xs font-medium text-gray-500 uppercase">{{ field.label|default:field.name }}</dt>
+                                <dt class="text-xs font-medium text-gray-500 uppercase">
+                                    {{ field.label|default:"Extracted Field" }}
+                                    {% if field.fhir_resource and field.fhir_field %}
+                                    <span class="ml-2 text-blue-600">({{ field.fhir_resource }}.{{ field.fhir_field }})</span>
+                                    {% endif %}
+                                </dt>
                                 <dd class="mt-1 text-sm text-gray-900">{{ field.value|default:"Not specified" }}</dd>
                                 {% if field.confidence %}
                                 <div class="mt-1">
