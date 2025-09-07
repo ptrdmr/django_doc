@@ -205,21 +205,42 @@
                         <h3 class="text-sm font-medium text-gray-900">FHIR Resources Generated</h3>
                     </div>
                     <div class="p-3">
-                        {% for resource_type, resources in fhir_data.items %}
-                        {% if resources %}
-                        <div class="mb-3 last:mb-0">
-                            <h4 class="text-xs font-medium text-gray-700 mb-2">{{ resource_type }} ({{ resources|length }})</h4>
-                            {% for resource in resources|slice:":3" %}
-                            <div class="bg-gray-50 rounded p-2 mb-2 text-xs">
-                                <pre class="text-gray-600 whitespace-pre-wrap">{{ resource|truncatechars:200 }}</pre>
-                            </div>
-                            {% endfor %}
-                            {% if resources|length > 3 %}
-                            <p class="text-xs text-gray-500">... and {{ resources|length|add:"-3" }} more {{ resource_type }} resource{{ resources|length|add:"-3"|pluralize }}</p>
+                        {% if fhir_data|length > 0 %}
+                            {% if fhir_data.0.resourceType %}
+                                <!-- New format: list of FHIR resources -->
+                                <div class="mb-3">
+                                    <h4 class="text-xs font-medium text-gray-700 mb-2">FHIR Resources ({{ fhir_data|length }})</h4>
+                                    {% for resource in fhir_data|slice:":5" %}
+                                    <div class="bg-gray-50 rounded p-2 mb-2 text-xs">
+                                        <div class="font-medium text-gray-800 mb-1">{{ resource.resourceType }}</div>
+                                        <pre class="text-gray-600 whitespace-pre-wrap">{{ resource|truncatechars:150 }}</pre>
+                                    </div>
+                                    {% endfor %}
+                                    {% if fhir_data|length > 5 %}
+                                    <p class="text-xs text-gray-500">... and {{ fhir_data|length|add:"-5" }} more resource{{ fhir_data|length|add:"-5"|pluralize }}</p>
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <!-- Legacy format: dictionary with resource types as keys -->
+                                {% for resource_type, resources in fhir_data.items %}
+                                {% if resources %}
+                                <div class="mb-3 last:mb-0">
+                                    <h4 class="text-xs font-medium text-gray-700 mb-2">{{ resource_type }} ({{ resources|length }})</h4>
+                                    {% for resource in resources|slice:":3" %}
+                                    <div class="bg-gray-50 rounded p-2 mb-2 text-xs">
+                                        <pre class="text-gray-600 whitespace-pre-wrap">{{ resource|truncatechars:200 }}</pre>
+                                    </div>
+                                    {% endfor %}
+                                    {% if resources|length > 3 %}
+                                    <p class="text-xs text-gray-500">... and {{ resources|length|add:"-3" }} more {{ resource_type }} resource{{ resources|length|add:"-3"|pluralize }}</p>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
+                                {% endfor %}
                             {% endif %}
-                        </div>
+                        {% else %}
+                            <p class="text-xs text-gray-500">No FHIR resources generated</p>
                         {% endif %}
-                        {% endfor %}
                     </div>
                 </div>
                 {% endif %}
