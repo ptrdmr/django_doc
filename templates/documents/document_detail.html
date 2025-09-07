@@ -277,6 +277,16 @@
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
                     
                     <div class="space-y-2">
+                        <!-- Review Document Button - Primary Action -->
+                        {% if document.status == 'review' or document.status == 'completed' %}
+                        <a href="{% url 'documents:review' document.pk %}" class="block w-full text-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                            <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                            </svg>
+                            {% if document.status == 'review' %}Review Document{% else %}View Review{% endif %}
+                        </a>
+                        {% endif %}
+                        
                         <a href="{% url 'documents:upload' %}" class="block w-full text-center px-4 py-2 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                             Upload Another Document
                         </a>
