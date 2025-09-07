@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Review Document - {{ document.filename }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .document-review-container {
+        display: grid;
+        grid-template-columns: 1fr 400px;
+        gap: 1.5rem;
+        min-height: calc(100vh - 200px);
+    }
+    
+    .document-preview {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    
+    .extraction-review {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    
+    @media (max-width: 1024px) {
+        .document-review-container {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+        
+        .extraction-review {
+            order: -1;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="p-6">
+    <!-- Header with breadcrumbs -->
+    <div class="mb-6">
+        <nav class="flex mb-4" aria-label="Breadcrumb">
+            <ol class="inline-flex items-center space-x-1 md:space-x-3">
+                <li class="inline-flex items-center">
+                    <a href="{% url 'documents:list' %}" class="text-blue-600 hover:text-blue-800">
+                        Documents
+                    </a>
+                </li>
+                <li>
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 text-gray-400 mx-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                        </svg>
+                        <a href="{% url 'documents:detail' document.pk %}" class="text-blue-600 hover:text-blue-800">
+                            {{ document.filename }}
+                        </a>
+                    </div>
+                </li>
+                <li>
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 text-gray-400 mx-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span class="text-gray-500">Review</span>
+                    </div>
+                </li>
+            </ol>
+        </nav>
+        
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Review Document</h1>
+                    <p class="text-gray-600">{{ document.filename }} - {{ document.patient.first_name }} {{ document.patient.last_name }}</p>
+                </div>
+            </div>
+            
+            <!-- Status Badge -->
+            <div class="flex items-center space-x-3">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                    Pending Review
+                </span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Review Interface -->
+    <div class="document-review-container">
+        <!-- Document Preview Panel -->
+        <div class="document-preview">
+            <div class="p-4 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900">Document Preview</h2>
+                <p class="text-sm text-gray-600">Original document with highlighted extracted data</p>
+            </div>
+            <div class="p-4">
+                <!-- Placeholder for PDF.js viewer -->
+                <div class="bg-gray-100 rounded-lg h-96 flex items-center justify-center">
+                    <div class="text-center">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <h3 class="mt-2 text-sm font-medium text-gray-900">Document Preview</h3>
+                        <p class="mt-1 text-sm text-gray-500">PDF viewer will be implemented here</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Extraction Review Panel -->
+        <div class="extraction-review">
+            <div class="p-4 border-b border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900">Extracted Data Review</h2>
+                <p class="text-sm text-gray-600">Review and edit extracted information</p>
+            </div>
+            <div class="p-4 space-y-4">
+                <!-- Placeholder for review forms -->
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-gray-900 mb-2">Patient Information</h3>
+                    <p class="text-sm text-gray-500">Patient data forms will be implemented here</p>
+                </div>
+                
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-gray-900 mb-2">Medical Data</h3>
+                    <p class="text-sm text-gray-500">Medical data forms will be implemented here</p>
+                </div>
+                
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-gray-900 mb-2">Approval Actions</h3>
+                    <p class="text-sm text-gray-500">Approval workflow will be implemented here</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Placeholder for future JavaScript functionality
+    console.log('Document review interface loaded');
+</script>
+{% endblock %}

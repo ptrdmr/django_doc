@@ -583,3 +583,41 @@ class DocumentPreviewAPIView(LoginRequiredMixin, View):
                 'success': False,
                 'error': 'Unable to load document preview'
             }, status=500)
+
+
+@method_decorator(has_permission('documents.view_document'), name='dispatch')
+class DocumentReviewView(LoginRequiredMixin, DetailView):
+    """
+    Document review interface for reviewing extracted data before merging.
+    
+    This view displays the document preview alongside extracted data forms
+    for user review and approval.
+    """
+    model = Document
+    template_name = 'documents/review.html'
+    context_object_name = 'document'
+    
+    def get_queryset(self):
+        """
+        Filter documents to only those the user has access to.
+        
+        Returns:
+            QuerySet: Filtered documents
+        """
+        return Document.objects.filter(
+            created_by=self.request.user
+        ).select_related('patient').prefetch_related('providers')
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add additional context for the review template.
+        
+        Returns:
+            dict: Enhanced context data
+        """
+        context = super().get_context_data(**kwargs)
+        
+        # Add any extracted data or additional context needed for review
+        # This will be expanded in later subtasks
+        
+        return context
