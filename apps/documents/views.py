@@ -689,13 +689,16 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             self.object.status = 'completed'
             self.object.save()
             
-            # TODO: Trigger merge to patient record (will be implemented in later subtask)
-            # merge_to_patient_record.delay(parsed_data.id)
+            # Trigger merge to patient record
+            from .tasks import merge_to_patient_record
+            merge_task = merge_to_patient_record.delay(parsed_data.id)
+            
+            logger.info(f"Triggered merge task {merge_task.id} for ParsedData {parsed_data.id}")
             
             messages.success(
                 request,
                 f"Document '{self.object.filename}' approved successfully. "
-                f"Data will be merged into {self.object.patient.first_name} {self.object.patient.last_name}'s record."
+                f"Data is being merged into {self.object.patient.first_name} {self.object.patient.last_name}'s record."
             )
             
             logger.info(f"Document {self.object.id} approved by user {request.user.id}")
