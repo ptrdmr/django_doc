@@ -233,22 +233,31 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             dict: FHIR resource summary with counts and last updated info
         """
         try:
-            fhir_data = self.object.cumulative_fhir_json
-            if not fhir_data:
+            # Access the encrypted FHIR bundle (current field, not legacy cumulative_fhir_json)
+            fhir_bundle = self.object.encrypted_fhir_bundle
+            if not fhir_bundle or not fhir_bundle.get('entry'):
                 return {}
             
+            # Count resources by type from the FHIR Bundle entries
             summary = {}
-            for resource_type, resources in fhir_data.items():
-                if isinstance(resources, list):
-                    summary[resource_type] = {
-                        'count': len(resources),
-                        'last_updated': self.get_latest_resource_date(resources)
-                    }
-                else:
-                    summary[resource_type] = {
-                        'count': 1,
-                        'last_updated': self.get_latest_resource_date([resources])
-                    }
+            for entry in fhir_bundle.get('entry', []):
+                resource = entry.get('resource', {})
+                resource_type = resource.get('resourceType')
+                
+                if resource_type:
+                    if resource_type not in summary:
+                        summary[resource_type] = {
+                            'count': 0,
+                            'resources': []
+                        }
+                    summary[resource_type]['count'] += 1
+                    summary[resource_type]['resources'].append(resource)
+            
+            # Add last updated info for each resource type
+            for resource_type, data in summary.items():
+                data['last_updated'] = self.get_latest_resource_date(data['resources'])
+                # Remove resources list from summary to keep it clean
+                del data['resources']
             
             return summary
         except (TypeError, KeyError) as fhir_error:
