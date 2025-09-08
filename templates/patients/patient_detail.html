@@ -116,8 +116,8 @@
                 FHIR Data Summary
             </h2>
             <div class="space-y-3">
-                {% if patient.cumulative_fhir_json %}
-                    {% for resource_type, resources in patient.cumulative_fhir_json.items %}
+                {% if fhir_summary %}
+                    {% for resource_type, resource_info in fhir_summary.items %}
                     <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div class="flex items-center space-x-3">
                             <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
@@ -126,10 +126,10 @@
                             <div>
                                 <p class="text-sm font-medium text-gray-900">{{ resource_type }}</p>
                                 <p class="text-xs text-gray-500">
-                                    {% if resources|length == 1 %}
+                                    {% if resource_info.count == 1 %}
                                         1 resource
                                     {% else %}
-                                        {{ resources|length }} resources
+                                        {{ resource_info.count }} resources
                                     {% endif %}
                                 </p>
                             </div>
@@ -358,7 +358,7 @@
 {% block extra_js %}
 <script>
 // FHIR data for JavaScript access
-const fhirData = {{ patient.cumulative_fhir_json|safe }};
+const fhirData = {{ patient.encrypted_fhir_bundle|safe }};
 const patientId = '{{ patient.id }}';
 
 function viewFHIRResource(resourceType) {
@@ -368,8 +368,17 @@ function viewFHIRResource(resourceType) {
     
     modalTitle.textContent = `FHIR ${resourceType} Resources`;
     
-    if (fhirData[resourceType]) {
-        const resources = fhirData[resourceType];
+    // Extract resources of the specified type from FHIR Bundle
+    const resources = [];
+    if (fhirData && fhirData.entry) {
+        for (const entry of fhirData.entry) {
+            if (entry.resource && entry.resource.resourceType === resourceType) {
+                resources.push(entry.resource);
+            }
+        }
+    }
+    
+    if (resources.length > 0) {
         modalContent.innerHTML = `<pre class="text-sm text-gray-800 whitespace-pre-wrap">${JSON.stringify(resources, null, 2)}</pre>`;
     } else {
         modalContent.innerHTML = '<p class="text-gray-500">No resources found for this type.</p>';
@@ -390,7 +399,7 @@ function closeFHIRModal() {
 }
 
 function exportFHIR() {
-    if (Object.keys(fhirData).length === 0) {
+    if (!fhirData || !fhirData.entry || fhirData.entry.length === 0) {
         alert('No FHIR data available to export.');
         return;
     }
