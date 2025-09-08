@@ -689,11 +689,37 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             self.object.status = 'completed'
             self.object.save()
             
-            # Trigger merge to patient record
-            from .tasks import merge_to_patient_record
-            merge_task = merge_to_patient_record.delay(parsed_data.id)
-            
-            logger.info(f"Triggered merge task {merge_task.id} for ParsedData {parsed_data.id}")
+            # Merge FHIR data to patient record immediately (synchronous)
+            try:
+                fhir_data = parsed_data.fhir_delta_json
+                if fhir_data:
+                    # Convert FHIR data to list format if needed
+                    fhir_resources = []
+                    if isinstance(fhir_data, dict):
+                        if fhir_data.get('resourceType') == 'Bundle' and 'entry' in fhir_data:
+                            fhir_resources = [entry['resource'] for entry in fhir_data['entry'] if 'resource' in entry]
+                        else:
+                            fhir_resources = [fhir_data]
+                    elif isinstance(fhir_data, list):
+                        fhir_resources = fhir_data
+                    
+                    # Merge directly to patient record
+                    if fhir_resources:
+                        success = self.object.patient.add_fhir_resources(fhir_resources, document_id=self.object.id)
+                        
+                        if success:
+                            # Mark as merged
+                            parsed_data.is_merged = True
+                            parsed_data.merged_at = timezone.now()
+                            parsed_data.save()
+                            
+                            logger.info(f"Successfully merged {len(fhir_resources)} FHIR resources from document {self.object.id} to patient {self.object.patient.mrn}")
+                        else:
+                            logger.error(f"Failed to merge FHIR resources from document {self.object.id}")
+                            
+            except Exception as merge_error:
+                logger.error(f"Error merging FHIR data for document {self.object.id}: {merge_error}")
+                # Don't fail the approval, just log the error
             
             messages.success(
                 request,
@@ -785,3 +811,116 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             messages.error(request, "Failed to submit change request. Please try again.")
         
         return redirect('documents:review', pk=self.object.pk)
+
+
+@method_decorator([admin_required], name='dispatch')  
+class MigrateFHIRDataView(LoginRequiredMixin, View):
+    """
+    Simple view to migrate FHIR data from old completed documents.
+    Only accessible to admins.
+    """
+    
+    def get(self, request):
+        """Show migration status and options."""
+        from datetime import timedelta
+        from .models import ParsedData
+        
+        # Get recent completed documents that might need migration
+        recent_cutoff = timezone.now() - timedelta(hours=24)
+        completed_docs = Document.objects.filter(
+            status='completed',
+            uploaded_at__gte=recent_cutoff
+        ).select_related('patient')
+        
+        migration_candidates = []
+        for doc in completed_docs:
+            try:
+                parsed_data = doc.parsed_data
+                if not parsed_data.is_merged and parsed_data.fhir_delta_json:
+                    migration_candidates.append({
+                        'doc': doc,
+                        'parsed_data': parsed_data,
+                        'fhir_count': len(parsed_data.fhir_delta_json) if isinstance(parsed_data.fhir_delta_json, list) else 1
+                    })
+            except ParsedData.DoesNotExist:
+                continue
+        
+        return render(request, 'documents/migrate_fhir.html', {
+            'migration_candidates': migration_candidates,
+            'total_candidates': len(migration_candidates)
+        })
+    
+    def post(self, request):
+        """Trigger FHIR data migration for selected documents."""
+        from .tasks import merge_to_patient_record
+        from .models import ParsedData
+        
+        doc_ids = request.POST.getlist('document_ids')
+        if not doc_ids:
+            messages.error(request, "No documents selected for migration.")
+            return redirect('documents:migrate-fhir')
+        
+        success_count = 0
+        error_count = 0
+        
+        for doc_id in doc_ids:
+            try:
+                document = Document.objects.get(id=doc_id, status='completed')
+                parsed_data = document.parsed_data
+                
+                # Auto-approve if not already approved
+                if not parsed_data.is_approved:
+                    parsed_data.is_approved = True
+                    parsed_data.reviewed_by = request.user
+                    parsed_data.reviewed_at = timezone.now()
+                    parsed_data.save()
+                
+                # Merge FHIR data immediately (synchronous)
+                if not parsed_data.is_merged and parsed_data.fhir_delta_json:
+                    try:
+                        fhir_data = parsed_data.fhir_delta_json
+                        
+                        # Convert to list format if needed
+                        fhir_resources = []
+                        if isinstance(fhir_data, dict):
+                            if fhir_data.get('resourceType') == 'Bundle' and 'entry' in fhir_data:
+                                fhir_resources = [entry['resource'] for entry in fhir_data['entry'] if 'resource' in entry]
+                            else:
+                                fhir_resources = [fhir_data]
+                        elif isinstance(fhir_data, list):
+                            fhir_resources = fhir_data
+                        
+                        # Merge to patient record
+                        if fhir_resources:
+                            success = document.patient.add_fhir_resources(fhir_resources, document_id=document.id)
+                            
+                            if success:
+                                parsed_data.is_merged = True
+                                parsed_data.merged_at = timezone.now()
+                                parsed_data.save()
+                                
+                                logger.info(f"Admin migration: merged {len(fhir_resources)} FHIR resources from document {doc_id} to patient {document.patient.mrn}")
+                                success_count += 1
+                            else:
+                                logger.error(f"Failed to merge FHIR resources from document {doc_id}")
+                                error_count += 1
+                        else:
+                            logger.warning(f"No valid FHIR resources found in document {doc_id}")
+                            error_count += 1
+                            
+                    except Exception as merge_error:
+                        logger.error(f"Error during migration for document {doc_id}: {merge_error}")
+                        error_count += 1
+                else:
+                    logger.info(f"Document {doc_id} already merged, skipping")
+                    
+            except (Document.DoesNotExist, ParsedData.DoesNotExist) as e:
+                logger.error(f"Error migrating document {doc_id}: {e}")
+                error_count += 1
+        
+        if success_count > 0:
+            messages.success(request, f"Successfully started migration for {success_count} documents.")
+        if error_count > 0:
+            messages.error(request, f"Failed to migrate {error_count} documents.")
+        
+        return redirect('documents:migrate-fhir')
