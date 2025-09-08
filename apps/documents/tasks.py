@@ -214,53 +214,10 @@ def process_document_async(self, document_id: int):
                         # Fallback to legacy converter if new processor fails
                         fhir_resources = ai_analyzer.convert_to_fhir(ai_result['fields'], patient_id)
                     
-                    # STEP 4: Accumulate FHIR resources to patient record
-                    if document.patient and fhir_resources:
-                        try:
-                            from apps.fhir.services import FHIRAccumulator
-                            
-                            logger.info(f"Step 3: Accumulating {len(fhir_resources)} FHIR resources to patient {document.patient.mrn}")
-                            
-                            accumulator = FHIRAccumulator()
-                            accumulation_result = accumulator.add_resources_to_patient(
-                                patient=document.patient,
-                                fhir_resources=fhir_resources,
-                                source_system="DocumentAnalyzer",
-                                responsible_user=document.uploaded_by,
-                                source_document_id=str(document.id),
-                                reason="Medical document processing",
-                                validate_fhir=True,
-                                resolve_conflicts=True
-                            )
-                            
-                            if accumulation_result['success']:
-                                logger.info(
-                                    f"FHIR accumulation successful: {accumulation_result['resources_added']} "
-                                    f"resources added, {accumulation_result['resources_skipped']} skipped, "
-                                    f"{accumulation_result['conflicts_resolved']} conflicts resolved"
-                                )
-                                
-                                # Store accumulation result for task response
-                                ai_result['fhir_accumulation'] = {
-                                    'success': True,
-                                    'resources_added': accumulation_result['resources_added'],
-                                    'resources_skipped': accumulation_result['resources_skipped'],
-                                    'conflicts_resolved': accumulation_result['conflicts_resolved'],
-                                    'bundle_version': accumulation_result['bundle_version']
-                                }
-                            else:
-                                logger.error(f"FHIR accumulation failed: {accumulation_result.get('errors', [])}")
-                                ai_result['fhir_accumulation'] = {
-                                    'success': False,
-                                    'errors': accumulation_result.get('errors', [])
-                                }
-                        
-                        except Exception as fhir_exc:
-                            logger.error(f"FHIR accumulation error for document {document_id}: {fhir_exc}")
-                            ai_result['fhir_accumulation'] = {
-                                'success': False,
-                                'error': str(fhir_exc)
-                            }
+                    # FHIR resources are now stored in ParsedData for review workflow
+                    # Actual accumulation to patient record happens after user approval
+                    # via the merge_to_patient_record task
+                    logger.info(f"FHIR processing completed: {len(fhir_resources)} resources ready for review and approval")
                     
                     # Store AI results (for backward compatibility and debugging)
                     if hasattr(document, 'ai_extracted_data'):
@@ -356,7 +313,8 @@ def process_document_async(self, document_id: int):
                 'fields_extracted': len(ai_result['fields']),
                 'model_used': ai_result.get('model_used'),
                 'processing_method': ai_result.get('processing_method'),
-                'tokens_used': ai_result.get('usage', {}).get('total_tokens', 0)
+                'tokens_used': ai_result.get('usage', {}).get('total_tokens', 0),
+                'fhir_resources_created': len(fhir_resources) if fhir_resources else 0
             })
         
         logger.info(f"Document {document_id} processing completed successfully")
