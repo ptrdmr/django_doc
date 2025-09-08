@@ -152,7 +152,18 @@
                                 
                                 <!-- Actions -->
                                 <div class="flex items-center space-x-2">
-                                    {% if document.status == 'failed' %}
+                                    {% if document.status == 'review' %}
+                                        <a 
+                                            href="{% url 'documents:review' document.pk %}"
+                                            class="inline-flex items-center px-3 py-1 border border-yellow-300 text-sm font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                                            title="Review extracted data"
+                                        >
+                                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                                            </svg>
+                                            Review
+                                        </a>
+                                    {% elif document.status == 'failed' %}
                                         <form method="post" action="{% url 'documents:retry' document.pk %}" class="inline">
                                             {% csrf_token %}
                                             <button 
