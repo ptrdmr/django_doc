@@ -396,6 +396,156 @@ def process_document_async(self, document_id: int):
             }
 
 
+@shared_task(bind=True, name="apps.documents.tasks.merge_to_patient_record")
+def merge_to_patient_record(self, parsed_data_id: int):
+    """
+    Merge approved FHIR data from ParsedData into patient's cumulative record.
+    
+    This task is triggered when a document is approved during the review process.
+    It takes the FHIR data from the ParsedData record and merges it into the
+    patient's encrypted_fhir_bundle using the patient's add_fhir_resources method.
+    
+    Args:
+        parsed_data_id (int): ID of the ParsedData record to merge
+        
+    Returns:
+        dict: Task result with success status and details
+    """
+    import django
+    django.setup()
+    
+    from .models import ParsedData
+    from apps.patients.models import Patient
+    
+    try:
+        logger.info(f"Starting FHIR data merge for ParsedData {parsed_data_id}")
+        
+        # Get the ParsedData record
+        try:
+            parsed_data = ParsedData.objects.select_related('patient', 'document').get(id=parsed_data_id)
+        except ParsedData.DoesNotExist:
+            error_msg = f"ParsedData with ID {parsed_data_id} does not exist"
+            logger.error(error_msg)
+            return {
+                'success': False,
+                'parsed_data_id': parsed_data_id,
+                'error_message': error_msg,
+                'task_id': self.request.id
+            }
+        
+        # Verify the data is approved and not already merged
+        if not parsed_data.is_approved:
+            error_msg = f"ParsedData {parsed_data_id} is not approved for merging"
+            logger.error(error_msg)
+            return {
+                'success': False,
+                'parsed_data_id': parsed_data_id,
+                'error_message': error_msg,
+                'task_id': self.request.id
+            }
+        
+        if parsed_data.is_merged:
+            logger.warning(f"ParsedData {parsed_data_id} is already merged")
+            return {
+                'success': True,
+                'parsed_data_id': parsed_data_id,
+                'message': 'Data already merged',
+                'task_id': self.request.id
+            }
+        
+        # Get FHIR data to merge
+        fhir_data = parsed_data.fhir_delta_json
+        if not fhir_data:
+            error_msg = f"No FHIR data found in ParsedData {parsed_data_id}"
+            logger.error(error_msg)
+            return {
+                'success': False,
+                'parsed_data_id': parsed_data_id,
+                'error_message': error_msg,
+                'task_id': self.request.id
+            }
+        
+        # Convert FHIR data to list format if it's a dict
+        fhir_resources = []
+        if isinstance(fhir_data, dict):
+            # If it's a bundle, extract resources
+            if fhir_data.get('resourceType') == 'Bundle' and 'entry' in fhir_data:
+                fhir_resources = [entry['resource'] for entry in fhir_data['entry'] if 'resource' in entry]
+            else:
+                # Single resource
+                fhir_resources = [fhir_data]
+        elif isinstance(fhir_data, list):
+            fhir_resources = fhir_data
+        else:
+            error_msg = f"Invalid FHIR data format in ParsedData {parsed_data_id}: {type(fhir_data)}"
+            logger.error(error_msg)
+            return {
+                'success': False,
+                'parsed_data_id': parsed_data_id,
+                'error_message': error_msg,
+                'task_id': self.request.id
+            }
+        
+        # Merge FHIR data into patient record
+        try:
+            patient = parsed_data.patient
+            success = patient.add_fhir_resources(fhir_resources, document_id=parsed_data.document.id)
+            
+            if success:
+                # Mark ParsedData as merged
+                parsed_data.is_merged = True
+                parsed_data.merged_at = timezone.now()
+                parsed_data.save()
+                
+                logger.info(
+                    f"Successfully merged {len(fhir_resources)} FHIR resources from ParsedData {parsed_data_id} "
+                    f"into patient {patient.mrn} record"
+                )
+                
+                return {
+                    'success': True,
+                    'parsed_data_id': parsed_data_id,
+                    'patient_mrn': patient.mrn,
+                    'resources_merged': len(fhir_resources),
+                    'document_id': parsed_data.document.id,
+                    'task_id': self.request.id,
+                    'message': f'Successfully merged {len(fhir_resources)} FHIR resources into patient record'
+                }
+            else:
+                error_msg = f"Failed to add FHIR resources to patient {patient.mrn}"
+                logger.error(error_msg)
+                return {
+                    'success': False,
+                    'parsed_data_id': parsed_data_id,
+                    'error_message': error_msg,
+                    'task_id': self.request.id
+                }
+                
+        except Exception as merge_error:
+            logger.error(f"Error merging FHIR data for ParsedData {parsed_data_id}: {merge_error}")
+            return {
+                'success': False,
+                'parsed_data_id': parsed_data_id,
+                'error_message': f"Merge error: {str(merge_error)}",
+                'task_id': self.request.id
+            }
+        
+    except Exception as exc:
+        logger.error(f"Unexpected error in merge task for ParsedData {parsed_data_id}: {exc}")
+        
+        # Retry the task if it's a retryable error
+        if hasattr(self, 'retry') and self.request.retries < 3:
+            logger.info(f"Retrying merge task for ParsedData {parsed_data_id} (attempt {self.request.retries + 1})")
+            raise self.retry(exc=exc, countdown=60, max_retries=3)
+        else:
+            return {
+                'success': False,
+                'parsed_data_id': parsed_data_id,
+                'error_message': f"Task failed after retries: {str(exc)}",
+                'task_id': self.request.id
+            }
+
+
 @shared_task
 def cleanup_old_documents():
     """
