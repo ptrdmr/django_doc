@@ -567,14 +567,11 @@ class PatientFHIRExportView(LoginRequiredMixin, View):
         }
         bundle["entry"].append(patient_resource)
         
-        # Add existing FHIR data
-        if patient.cumulative_fhir_json:
-            for resource_type, resources in patient.cumulative_fhir_json.items():
-                if isinstance(resources, list):
-                    for resource in resources:
-                        bundle["entry"].append({"resource": resource})
-                else:
-                    bundle["entry"].append({"resource": resources})
+        # Add existing FHIR data from encrypted bundle
+        if patient.encrypted_fhir_bundle and patient.encrypted_fhir_bundle.get('entry'):
+            for entry in patient.encrypted_fhir_bundle.get('entry', []):
+                if 'resource' in entry:
+                    bundle["entry"].append({"resource": entry["resource"]})
         
         return bundle
     
@@ -619,7 +616,7 @@ class PatientFHIRJSONView(LoginRequiredMixin, View):
             return JsonResponse({
                 'patient_id': str(patient.id),
                 'mrn': patient.mrn,
-                'fhir_data': patient.cumulative_fhir_json,
+                'fhir_data': patient.encrypted_fhir_bundle,
                 'last_updated': patient.updated_at.isoformat()
             })
             
