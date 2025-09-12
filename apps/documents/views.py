@@ -777,6 +777,13 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 
                 context['categorized_data'] = dict(categorized_data)
                 context['review_progress'] = round((approved_fields / total_fields * 100) if total_fields > 0 else 0)
+                context['review_stats'] = {
+                    'total_fields': total_fields,
+                    'approved_fields': approved_fields,
+                    'pending_fields': total_fields - approved_fields,
+                    'total_categories': len(categorized_data),
+                    'categories_with_data': len([cat for cat, items in categorized_data.items() if items])
+                }
                 
                 # Identify potentially missing fields
                 context['missing_fields'] = self._identify_missing_fields(categorized_data)
