@@ -1,6 +1,6 @@
 # Task ID: 30
 # Title: Implement Backend Support for Text Snippet Review System
-# Status: pending
+# Status: done
 # Dependencies: 6, 14
 # Priority: high
 # Description: Implement backend changes to capture and store source text context around extracted data values, enabling the new snippet-based review interface.
@@ -297,7 +297,7 @@ def test_end_to_end_extraction_with_snippets():
    - Check the document review interface to ensure it can access and display the snippets
 
 # Subtasks:
-## 1. Add source_snippets JSONField to ParsedData model [pending]
+## 1. Add source_snippets JSONField to ParsedData model [done]
 ### Dependencies: None
 ### Description: Update the ParsedData model to include a JSONField for storing text snippets that provide context around extracted values. Create and apply the necessary database migration.
 ### Details:
@@ -307,7 +307,7 @@ def test_end_to_end_extraction_with_snippets():
 4. Apply the migration using the migrate command
 5. Update any relevant model documentation
 
-## 2. Update MedicalExtractionPrompts to request context snippets [pending]
+## 2. Update MedicalExtractionPrompts to request context snippets [done]
 ### Dependencies: 30.1
 ### Description: Modify all prompt templates in the MedicalExtractionPrompts class to explicitly request source context (200-300 characters) around extracted values.
 ### Details:
@@ -317,7 +317,7 @@ def test_end_to_end_extraction_with_snippets():
 4. Ensure prompts clearly specify the 200-300 character context requirement
 5. Add examples in the prompts to guide the AI response format
 
-## 3. Modify DocumentAnalyzer.extract_with_ai() method [pending]
+## 3. Modify DocumentAnalyzer.extract_with_ai() method [done]
 ### Dependencies: 30.2
 ### Description: Update the extract_with_ai() method to handle the extraction of surrounding text context along with field values.
 ### Details:
@@ -327,7 +327,7 @@ def test_end_to_end_extraction_with_snippets():
 4. Add error handling for cases where context extraction fails
 5. Maintain backward compatibility with existing code that expects only values
 
-## 4. Update parse_ai_response method for snippet handling [pending]
+## 4. Update parse_ai_response method for snippet handling [done]
 ### Dependencies: 30.3
 ### Description: Modify the parse_ai_response method to properly extract and structure the source text snippets from AI responses.
 ### Details:
@@ -338,7 +338,7 @@ def test_end_to_end_extraction_with_snippets():
 5. Implement error handling for malformed or unexpected response structures
 6. Return a consistent data structure regardless of input format
 
-## 5. Implement snippet extraction utility functions [pending]
+## 5. Implement snippet extraction utility functions [done]
 ### Dependencies: 30.1
 ### Description: Create utility functions to handle text snippet extraction, formatting, and validation to ensure consistent snippet handling throughout the application.
 ### Details:
@@ -349,7 +349,7 @@ def test_end_to_end_extraction_with_snippets():
 5. Implement helpers for snippet length normalization
 6. Create documentation for the utility functions
 
-## 6. Update document processing pipeline for snippet storage [pending]
+## 6. Update document processing pipeline for snippet storage [done]
 ### Dependencies: 30.1, 30.3, 30.4
 ### Description: Modify the document processing pipeline to store the extracted snippet data in the ParsedData model.
 ### Details:
@@ -360,7 +360,7 @@ def test_end_to_end_extraction_with_snippets():
 5. Update any related background tasks or async processing code
 6. Maintain backward compatibility with existing document processing code
 
-## 7. Update API endpoints to include snippet data [pending]
+## 7. Update API endpoints to include snippet data [done]
 ### Dependencies: 30.1, 30.6
 ### Description: Modify API serializers and endpoints to include source snippet data in responses, enabling frontend access to the context information.
 ### Details:
@@ -371,7 +371,7 @@ def test_end_to_end_extraction_with_snippets():
 5. Ensure backward compatibility for existing API consumers
 6. Add appropriate permissions for accessing snippet data
 
-## 8. Implement comprehensive tests for snippet functionality [pending]
+## 8. Implement comprehensive tests for snippet functionality [done]
 ### Dependencies: 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7
 ### Description: Create a comprehensive test suite for the snippet extraction and storage functionality to ensure reliability and correctness.
 ### Details:

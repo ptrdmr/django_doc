@@ -1,7 +1,7 @@
 # Task ID: 23
 # Title: Final System Integration and Deployment Preparation
 # Status: pending
-# Dependencies: 3, 4, 6, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22
+# Dependencies: 3, 4, 6, 14, 15, 16, 17, 18, 19, 20, 21, 22, 30, 31, 32
 # Priority: medium
 # Description: Handle the final integration between all polished modules and prepare the system for deployment, including cross-module testing, final performance optimization, deployment configuration, and system-wide integration verification.
 # Details:
@@ -152,6 +152,25 @@ Implement the final system integration and deployment preparation:
    - Verify HIPAA compliance across all components
    - Test backup and restore procedures
    - Conduct user acceptance testing with stakeholders
+<info added on 2025-09-11T14:57:03.713Z>
+## DEPENDENCY UPDATE - SNIPPET-BASED REVIEW INTEGRATION
+
+7. Dependency Updates:
+   - Removed dependency on Task 13 (Old Document Review Interface) due to strategic pivot from PDF highlighting to snippet-based document review
+   - Added new dependencies:
+     * Task 30 (Backend Support for Text Snippet Review System)
+     * Task 31 (Update Document Review Interface for Snippet-Based Review)
+     * Task 32 (Remove PDF Highlighting Components and Clean Up)
+   - Updated dependency list: [3, 4, 6, 30, 31, 32, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+
+8. Snippet-Based Review Integration:
+   - Verify integration between the new snippet-based document review system and all other modules
+   - Update integration test suite to include snippet-based review workflows
+   - Ensure document processing pipeline correctly supports snippet extraction and management
+   - Validate that snippet-based annotations are properly stored and retrieved
+   - Test performance of snippet-based review system under production-like conditions
+   - Verify that all PDF highlighting components have been completely removed from the codebase
+</info added on 2025-09-11T14:57:03.713Z>
 
 # Test Strategy:
 1. Integration Testing:

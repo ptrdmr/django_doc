@@ -5,81 +5,11 @@
 
 {% block extra_css %}
 <style>
+    /* Placeholder for snippet-based review styles - will be implemented in subsequent subtasks */
     .document-review-container {
-        display: grid;
-        grid-template-columns: 1fr 400px;
-        gap: 1.5rem;
-        min-height: calc(100vh - 200px);
-    }
-    
-    .document-preview {
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-    }
-    
-    .extraction-review {
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        overflow: hidden;
-    }
-    
-    /* Document Viewer Styles */
-    .document-viewer {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        position: relative;
-    }
-    
-    .viewer-content {
-        flex: 1;
-        min-height: 400px;
-    }
-    
-    .btn {
-        @apply px-3 py-1 rounded border font-medium text-sm transition-colors;
-    }
-    
-    .btn-sm {
-        @apply px-2 py-1 text-xs;
-    }
-    
-    .btn-secondary {
-        @apply bg-white border-gray-300 text-gray-700 hover:bg-gray-50;
-    }
-    
-    .btn:disabled {
-        @apply opacity-50 cursor-not-allowed;
-    }
-    
-    #canvas-container {
-        display: inline-block;
-    }
-    
-    #pdf-canvas {
-        display: block;
-        max-width: 100%;
-        height: auto;
-    }
-    
-    @media (max-width: 1024px) {
-        .document-review-container {
-            grid-template-columns: 1fr;
-            gap: 1rem;
-        }
-        
-        .extraction-review {
-            order: -1;
-        }
-        
-        .document-preview {
-            min-height: 500px;
-        }
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px;
     }
 </style>
 {% endblock %}
@@ -154,19 +84,7 @@
     
     <!-- Main Review Interface -->
     <div class="document-review-container">
-        <!-- Document Preview Panel -->
-        <div class="document-preview">
-            <div class="p-4 border-b border-gray-200">
-                <h2 class="text-lg font-semibold text-gray-900">Document Preview</h2>
-                <p class="text-sm text-gray-600">Original document with navigation and zoom controls</p>
-            </div>
-            <!-- PDF Viewer Container -->
-            <div id="pdf-viewer-container" class="flex-1">
-                <!-- PDF.js viewer will be initialized here -->
-            </div>
-        </div>
-        
-        <!-- Extraction Review Panel -->
+        <!-- Extraction Review Section (single-column layout) -->
         <div class="extraction-review">
             <div class="p-4 border-b border-gray-200">
                 <h2 class="text-lg font-semibold text-gray-900">Extracted Data Review</h2>
@@ -329,121 +247,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- PDF.js Library - using multiple CDN fallbacks -->
 <script>
-// Load PDF.js with fallback CDNs
-(function() {
-    const cdnSources = [
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-        'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js',
-        'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'
-    ];
-    
-    let currentCdnIndex = 0;
-    
-    function loadPdfJs() {
-        if (currentCdnIndex >= cdnSources.length) {
-            console.error('All PDF.js CDN sources failed to load');
-            return;
-        }
-        
-        const script = document.createElement('script');
-        script.src = cdnSources[currentCdnIndex];
-        script.onload = function() {
-            console.log('PDF.js loaded successfully from:', cdnSources[currentCdnIndex]);
-            // Set worker source
-            if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
-                window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-            }
-        };
-        script.onerror = function() {
-            console.warn('Failed to load PDF.js from:', cdnSources[currentCdnIndex]);
-            currentCdnIndex++;
-            loadPdfJs();
-        };
-        document.head.appendChild(script);
-    }
-    
-    loadPdfJs();
-})();
-</script>
-
-<!-- Document Viewer Module -->
-<script src="{% static 'js/document-viewer.js' %}"></script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Wait for PDF.js to load before initializing viewer
-    function initializeViewer() {
-        if (typeof window.pdfjsLib === 'undefined') {
-            // PDF.js not loaded yet, wait and try again
-            setTimeout(initializeViewer, 100);
-            return;
-        }
-        
-        // Initialize the document viewer
-        const documentViewer = new DocumentViewer('pdf-viewer-container', {
-            minScale: 0.5,
-            maxScale: 4.0,
-            scaleStep: 0.25
-        });
-    
-    // Load the document if available
-    {% if document.file %}
-    const documentUrl = "{{ document.file.url }}";
-    
-    // Check if it's a PDF file
-    if (documentUrl.toLowerCase().endsWith('.pdf')) {
-        documentViewer.loadDocument(documentUrl)
-            .then(() => {
-                console.log('Document loaded successfully');
-            })
-            .catch(error => {
-                console.error('Failed to load document:', error);
-            });
-    } else {
-        // Handle non-PDF files
-        const container = document.getElementById('pdf-viewer-container');
-        container.innerHTML = `
-            <div class="flex items-center justify-center h-96 bg-gray-50">
-                <div class="text-center">
-                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    <h3 class="mt-2 text-sm font-medium text-gray-900">Non-PDF Document</h3>
-                    <p class="mt-1 text-sm text-gray-500">This document type cannot be previewed</p>
-                    <a href="${documentUrl}" target="_blank" class="mt-3 inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                        Download Original
-                    </a>
-                </div>
-            </div>
-        `;
-    }
-    {% else %}
-    // No document file available
-    const container = document.getElementById('pdf-viewer-container');
-    container.innerHTML = `
-        <div class="flex items-center justify-center h-96 bg-gray-50">
-            <div class="text-center">
-                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                </svg>
-                <h3 class="mt-2 text-sm font-medium text-gray-900">Document Not Available</h3>
-                <p class="mt-1 text-sm text-gray-500">No document file found for preview</p>
-            </div>
-        </div>
-    `;
-    {% endif %}
-    
-        // Store viewer instance globally for potential use by other components
-        window.currentDocumentViewer = documentViewer;
-    }
-    
-    // Start initialization
-    initializeViewer();
-});
-
-// Modal functions for rejection and change requests
+// Keep existing modal functions for document approval workflow
 function showRejectionModal() {
     const notes = prompt("Please provide a reason for rejecting this document:");
     if (notes !== null && notes.trim() !== "") {
@@ -473,5 +278,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Placeholder for snippet-based review JavaScript - will be implemented in subsequent subtasks
 </script>
 {% endblock %}

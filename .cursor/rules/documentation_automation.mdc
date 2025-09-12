@@ -1,3 +1,6 @@
+---
+alwaysApply: true
+---
 # Documentation Automation Rule
 
 ## **CRITICAL: Always Update Documentation When Tasks Complete**
@@ -216,4 +219,5 @@ git commit -m "docs: Update architecture docs for Patient model (Task 2.1)
 **This rule ensures our medical document parser documentation stays as sharp as our code!**
 
 **This rule ensures our medical document parser documentation stays as sharp as our code!**
+
 

@@ -684,138 +684,111 @@ class DocumentReviewIntegrationTests(TestCase):
    - Confirm that users can effectively review documents without the PDF viewer
 
 # Subtasks:
-## 1. Remove PDF.js Viewer Components [pending]
+## 1. Remove PDF.js Dependencies from Templates [pending]
 ### Dependencies: None
-### Description: Remove all PDF.js viewer components and dependencies from the document review interface. This includes removing the PDF viewer container, toolbar, and any related JavaScript functions.
+### Description: Remove all PDF.js related code, imports, and dependencies from the document review template and any related templates.
 ### Details:
-1. Remove the PDF viewer container div from review.html
-2. Remove any PDF.js script imports
-3. Remove PDF viewer initialization code from JavaScript
-4. Remove PDF-related event listeners and functions
-5. Update any references to PDF page numbers or coordinates in the review interface
-6. Remove PDF toolbar and navigation controls
-7. Clean up any unused CSS related to PDF viewing
+Search through all templates for PDF.js related code and remove it. This includes script imports, canvas elements, PDF viewer containers, and any related HTML structure. Focus on the review.html template and any other templates that might include PDF.js components.
 
-## 2. Update CSS for Single-Column Layout [pending]
+## 2. Update DocumentReviewView to Handle Snippet Data [pending]
+### Dependencies: None
+### Description: Modify the DocumentReviewView to fetch and organize document data with source snippets for the new snippet-based review interface.
+### Details:
+Implement the DocumentReviewView class to fetch document data, parsed data with snippets, and organize it by category. Include prefetch_related for source_snippets to optimize database queries. Structure the data in a format suitable for the template.
+
+## 3. Create Single-Column Layout Structure [pending]
 ### Dependencies: 31.1
-### Description: Modify the CSS to support a single-column layout focused on snippet-based review, replacing the previous two-column layout that included the PDF viewer.
+### Description: Implement the basic HTML structure for the single-column layout in the review.html template.
 ### Details:
-Implement the CSS styles as provided in the task description, focusing on:
-1. Creating a responsive single-column container
-2. Styling the review header and progress indicator
-3. Styling category sections and field review cards
-4. Implementing confidence indicator styles
-5. Styling source snippets with appropriate formatting
-6. Creating styles for field actions (approve, edit, flag buttons)
-7. Implementing styles for inline editing functionality
-8. Adding styles for missing data alerts
-9. Creating styles for review action buttons at the bottom
+Create the main container structure for the document review page with sections for the header, progress indicator, review content, and action buttons. Remove any multi-column layouts and ensure the page follows a single-column flow.
 
-## 3. Implement Field Review Card Component [pending]
-### Dependencies: 31.2
-### Description: Create a reusable field review card component that displays extracted data alongside its source text context, with actions for approving, editing, and flagging fields.
-### Details:
-Create the field_card.html partial template as specified in the task description:
-1. Implement the card structure with field header, content, and actions sections
-2. Add the confidence indicator with appropriate styling
-3. Include the extracted value display with approved state styling
-4. Add the source snippet display with proper formatting
-5. Implement action buttons with HTMX attributes for server interactions
-6. Add inline editing interface with save/cancel buttons
-7. Ensure all elements have proper CSS classes for styling
-
-## 4. Update DocumentReviewView for Snippet Data [pending]
-### Dependencies: None
-### Description: Modify the DocumentReviewView to handle snippet data and prepare the context for the new snippet-based review interface.
-### Details:
-Implement the DocumentReviewView as specified in the task description:
-1. Fetch the document and its parsed data with prefetched source snippets
-2. Group data by category for organized display
-3. For each parsed data item, prepare a dictionary with field information including the source snippet
-4. Calculate and include the document review progress
-5. Prepare any missing fields data if applicable
-6. Return the context with the document, categorized data, and review progress
-
-## 5. Implement Field-Level Action Endpoints [pending]
+## 4. Implement Review Header and Progress Indicator [pending]
 ### Dependencies: 31.3
-### Description: Create the server endpoints for field-level actions including approving, updating, and flagging fields during the review process.
+### Description: Create the review header section with document title and progress indicator.
 ### Details:
-Implement the three field action endpoints as specified in the task description:
-1. approve_field: Mark a field as approved with user and timestamp
-2. update_field_value: Update a field's value with user and timestamp
-3. flag_field: Mark a field as flagged with reason, user, and timestamp
+Implement the review header with document title and a progress bar that shows the percentage of reviewed fields. The progress bar should update based on the review_progress context variable.
 
-Each endpoint should:
-- Use @require_POST decorator
-- Get the field by ID or return 404
-- Update the appropriate field attributes
-- Save the changes
-- Return the updated field card HTML for HTMX to swap in the UI
+## 5. Implement Missing Data Alert Component [pending]
+### Dependencies: 31.3
+### Description: Create the missing data alert section that displays potentially missing fields in the document.
+### Details:
+Implement the missing data alert component that shows fields that might be missing from the document. Include functionality to add these fields if needed. This should be conditionally displayed only when missing fields are detected.
 
-## 6. Create Complete Review Endpoint [pending]
+## 6. Implement Category Section Component [pending]
+### Dependencies: 31.3
+### Description: Create the category section component that groups fields by category.
+### Details:
+Implement the category section component that displays a heading for each category and contains the field review cards for that category. This should iterate through the categorized_data context variable.
+
+## 7. Implement Field Review Card Component [pending]
+### Dependencies: 31.6
+### Description: Create the field review card component that displays field data and source snippet.
+### Details:
+Implement the field review card component that shows the field name, confidence indicator, extracted value, source snippet, and action buttons. This is the core component of the snippet-based review interface.
+
+## 8. Create Field Card Partial Template [pending]
+### Dependencies: 31.7
+### Description: Create a separate partial template for the field card to support HTMX updates.
+### Details:
+Extract the field review card HTML into a separate partial template (field_card.html) that can be rendered independently for HTMX updates. This should contain all the elements of the field review card.
+
+## 9. Implement Approve Field Endpoint [pending]
+### Dependencies: 31.8
+### Description: Create the endpoint for approving a field.
+### Details:
+Implement the approve_field view function that handles POST requests to approve a field. This should update the field's approval status and return the updated field card HTML.
+
+## 10. Implement Update Field Value Endpoint [pending]
+### Dependencies: 31.8
+### Description: Create the endpoint for updating a field's value.
+### Details:
+Implement the update_field_value view function that handles POST requests to update a field's value. This should save the new value and return the updated field card HTML.
+
+## 11. Implement Flag Field Endpoint [pending]
+### Dependencies: 31.8
+### Description: Create the endpoint for flagging a field for review.
+### Details:
+Implement the flag_field view function that handles POST requests to flag a field for review. This should update the field's flagged status and return the updated field card HTML.
+
+## 12. Implement Complete Review Endpoint [pending]
+### Dependencies: 31.9, 31.10, 31.11
+### Description: Create the endpoint for completing the document review.
+### Details:
+Implement the complete_review view function that handles POST requests to complete the document review. This should check if all fields are reviewed, update the document status, and redirect to the document list.
+
+## 13. Implement Add Missing Field Endpoint [pending]
 ### Dependencies: 31.5
-### Description: Implement the endpoint for completing document review, which validates that all fields are reviewed and updates the document status.
+### Description: Create the endpoint for adding a missing field.
 ### Details:
-Implement the complete_review endpoint as specified in the task description:
-1. Get the document by ID or return 404
-2. Check if any fields remain unreviewed (not approved and not flagged)
-3. If unreviewed fields exist, show a warning message and redirect back to review
-4. Update document status to reviewed with user and timestamp
-5. Trigger FHIR integration if configured to do so automatically
-6. Show appropriate success message
-7. Redirect to document list
+Implement the add_missing_field view function that handles POST requests to add a missing field. This should create a new ParsedData object and return the HTML for the new field card.
 
-## 7. Implement Confidence Indicator Template Filter [pending]
-### Dependencies: None
-### Description: Create a template filter to convert confidence scores into human-readable confidence levels (high, medium, low) for display in the UI.
+## 14. Implement Inline Editing JavaScript [pending]
+### Dependencies: 31.7
+### Description: Create the JavaScript for inline editing of field values.
 ### Details:
-Implement the confidence_level template filter as specified in the task description:
-1. Register the filter using @register.filter decorator
-2. Define the function to accept a confidence score
-3. Return "high" for scores >= 0.8
-4. Return "medium" for scores >= 0.5 but < 0.8
-5. Return "low" for scores < 0.5
-6. Ensure the filter is available in the templates where confidence is displayed
+Implement the JavaScript that handles showing/hiding the inline editor, canceling edits, and saving edits. This should include event listeners for the edit, cancel, and save buttons.
 
-## 8. Implement Missing Data Alert Component [pending]
-### Dependencies: 31.2
-### Description: Create a component to display alerts for potentially missing data fields in the document, with options to add these fields manually.
+## 15. Implement Missing Field JavaScript [pending]
+### Dependencies: 31.5, 31.13
+### Description: Create the JavaScript for adding missing fields.
 ### Details:
-Implement the missing data alert component in the review.html template:
-1. Add conditional rendering based on missing_fields context variable
-2. Create the alert container with appropriate styling
-3. Display a list of potentially missing fields
-4. Add "Add" buttons with data attributes for each missing field
-5. Implement the JavaScript event handlers for the add buttons
-6. Use HTMX to send requests to add-missing-field endpoint
-7. Ensure the component integrates well with the rest of the review interface
+Implement the JavaScript that handles adding missing fields. This should include event listeners for the add buttons in the missing data alert.
 
-## 9. Implement JavaScript for Field Interactions [pending]
-### Dependencies: 31.3, 31.5
-### Description: Add JavaScript functionality for field interactions including inline editing, approval toggling, and other dynamic behaviors in the review interface.
+## 16. Implement Base CSS Styles [pending]
+### Dependencies: 31.3
+### Description: Create the base CSS styles for the document review interface.
 ### Details:
-Implement the JavaScript functionality as specified in the task description:
-1. Add event listeners for edit buttons to show inline editors
-2. Implement cancel edit functionality to revert to display mode
-3. Add save edit functionality using HTMX to update field values
-4. Implement add missing field functionality
-5. Ensure all event handlers are properly attached on page load
-6. Add any additional interactions needed for a smooth user experience
-7. Ensure proper error handling for failed requests
+Implement the base CSS styles for the document review container, review header, progress indicator, and overall layout. This should establish the foundation for the single-column layout.
 
-## 10. Update URL Configuration and Integration Testing [pending]
-### Dependencies: 31.4, 31.5, 31.6
-### Description: Update the URL configuration to include all new endpoints and perform comprehensive integration testing of the complete snippet-based review system.
+## 17. Implement Component-Specific CSS [pending]
+### Dependencies: 31.16
+### Description: Create the CSS styles for specific components of the document review interface.
 ### Details:
-1. Update the urls.py file with all new endpoints as specified in the task description:
-   - document_review path
-   - approve_field path
-   - update_field_value path
-   - flag_field path
-   - complete_review path
-   - add_missing_field path
-2. Ensure all URL names match those used in templates
-3. Verify that all URLs use appropriate patterns and converters
-4. Perform end-to-end testing of the complete review flow
-5. Test integration between all components of the snippet-based review system
+Implement the CSS styles for specific components including the missing data alert, category sections, field review cards, source snippets, and action buttons. This should make each component visually distinct and user-friendly.
+
+## 18. Implement Confidence Indicator Template Filter [pending]
+### Dependencies: 31.7
+### Description: Create the template filter for displaying confidence levels.
+### Details:
+Implement the confidence_level template filter that converts a numeric confidence score into a text label (high, medium, low). This should be used to display the confidence indicator in the field review card.
 
