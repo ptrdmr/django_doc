@@ -215,6 +215,82 @@
         flex-shrink: 0;
     }
 
+    /* Category Section Styles */
+    .category-section {
+        margin-bottom: 32px;
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        transition: all 0.2s ease;
+    }
+
+    .category-section:hover {
+        box-shadow: 0 4px 6px rgba(0,0,0,0.07);
+    }
+
+    .category-section h3 {
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        color: #1e293b;
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0;
+        padding: 16px 20px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        position: relative;
+    }
+
+    .category-section h3::before {
+        content: '';
+        width: 4px;
+        height: 20px;
+        background: #3b82f6;
+        border-radius: 2px;
+        flex-shrink: 0;
+    }
+
+    .category-section h3::after {
+        content: attr(data-field-count);
+        background: #3b82f6;
+        color: white;
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 2px 8px;
+        border-radius: 12px;
+        margin-left: auto;
+    }
+
+    /* Category Icons */
+    .category-demographics h3::before { background: #10b981; }
+    .category-demographics h3::after { background: #10b981; }
+
+    .category-medical-history h3::before { background: #dc2626; }
+    .category-medical-history h3::after { background: #dc2626; }
+
+    .category-medications h3::before { background: #7c3aed; }
+    .category-medications h3::after { background: #7c3aed; }
+
+    .category-vital-signs h3::before { background: #059669; }
+    .category-vital-signs h3::after { background: #059669; }
+
+    .category-laboratory-results h3::before { background: #0891b2; }
+    .category-laboratory-results h3::after { background: #0891b2; }
+
+    .category-provider-information h3::before { background: #7c2d12; }
+    .category-provider-information h3::after { background: #7c2d12; }
+
+    .category-other h3::before { background: #6b7280; }
+    .category-other h3::after { background: #6b7280; }
+
+    /* Category Content Area */
+    .category-content {
+        padding: 0;
+    }
+
     /* Responsive Design */
     @media (max-width: 640px) {
         .review-header .flex {
@@ -384,22 +460,53 @@
     <div class="review-content">
         {% if parsed_data and categorized_data %}
             {% for category, items in categorized_data.items %}
-                <div class="category-section">
-                    <h3>{{ category }}</h3>
+                {% with category_slug=items.0.category_slug %}
+                <div class="category-section category-{{ category_slug }}" data-category="{{ category }}">
+                    <h3 data-field-count="{{ items|length }}">
+                        {{ category }}
+                        {% if category == "Demographics" %}
+                            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                            </svg>
+                        {% elif category == "Medical History" %}
+                            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                        {% elif category == "Medications" %}
+                            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 7.172V5L8 4z"></path>
+                            </svg>
+                        {% elif category == "Vital Signs" %}
+                            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                            </svg>
+                        {% elif category == "Laboratory Results" %}
+                            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 7.172V5L8 4z"></path>
+                            </svg>
+                        {% else %}
+                            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                            </svg>
+                        {% endif %}
+                    </h3>
                     
-                    {% for item in items %}
-                        <div class="field-review-card" data-field-id="{{ item.id }}">
-                            <!-- This will be implemented in subsequent subtasks -->
-                            <div class="field-placeholder">
-                                <strong>{{ item.field_name }}:</strong> {{ item.field_value }}
-                                <br><small>Confidence: {{ item.confidence|floatformat:1 }}</small>
-                                {% if item.snippet %}
-                                <br><small>Context: {{ item.snippet|truncatechars:100 }}</small>
-                                {% endif %}
+                    <div class="category-content">
+                        {% for item in items %}
+                            <div class="field-review-card" data-field-id="{{ item.id }}">
+                                <!-- This will be enhanced in subsequent subtasks -->
+                                <div class="field-placeholder" style="padding: 16px; border-bottom: 1px solid #f3f4f6;">
+                                    <strong>{{ item.field_name }}:</strong> {{ item.field_value }}
+                                    <br><small>Confidence: {{ item.confidence|floatformat:1 }}</small>
+                                    {% if item.snippet %}
+                                    <br><small>Context: {{ item.snippet|truncatechars:100 }}</small>
+                                    {% endif %}
+                                </div>
                             </div>
-                        </div>
-                    {% endfor %}
+                        {% endfor %}
+                    </div>
                 </div>
+                {% endwith %}
             {% endfor %}
         {% elif parsed_data %}
             <!-- Parsed data exists but extraction failed -->

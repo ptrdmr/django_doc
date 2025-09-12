@@ -772,7 +772,9 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                         'snippet': snippet_text,
                         'approved': is_approved,
                         'fhir_path': field_data.get('fhir_path', ''),
-                        'id': f"{field_name}_{hash(str(field_data))}"  # Generate unique ID
+                        'id': f"{field_name}_{hash(str(field_data))}",  # Generate unique ID
+                        'category': category,
+                        'category_slug': category.lower().replace(' ', '-').replace('_', '-')
                     })
                 
                 context['categorized_data'] = dict(categorized_data)
