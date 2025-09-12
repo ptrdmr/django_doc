@@ -1,0 +1,821 @@
+# Task ID: 31
+# Title: Update Document Review Interface for Snippet-Based Review
+# Status: pending
+# Dependencies: 13, 30
+# Priority: high
+# Description: Replace the PDF highlighting approach with a text snippet-based review system that displays extracted data alongside source text context for more efficient document review. Remove PDF.js viewer completely and implement a single-column layout focused on snippet-based review.
+# Details:
+Implement the snippet-based document review interface with the following components:
+
+1. Update DocumentReviewView to handle snippet data:
+```python
+class DocumentReviewView(LoginRequiredMixin, View):
+    def get(self, request, document_id):
+        document = get_object_or_404(Document, id=document_id)
+        parsed_data = document.parsed_data.all().prefetch_related('source_snippets')
+        
+        # Group data by category for organized display
+        categorized_data = defaultdict(list)
+        for item in parsed_data:
+            categorized_data[item.category].append({
+                'field_name': item.field_name,
+                'field_value': item.field_value,
+                'confidence': item.confidence_score,
+                'snippet': item.source_snippets.get('text', ''),
+                'approved': item.is_approved,
+                'id': item.id
+            })
+            
+        context = {
+            'document': document,
+            'categorized_data': dict(categorized_data),
+            'review_progress': document.get_review_progress()
+        }
+        return render(request, 'documents/review.html', context)
+```
+
+2. Modify the review.html template to use a single-column layout with no PDF viewer:
+```html
+{% extends "base.html" %}
+{% block content %}
+<div class="document-review-container">
+  <div class="review-header">
+    <h2>Review Document: {{ document.title }}</h2>
+    <div class="progress-indicator">
+      <div class="progress-bar" style="width: {{ review_progress }}%"></div>
+      <span>{{ review_progress }}% Reviewed</span>
+    </div>
+  </div>
+  
+  {% if missing_fields %}
+  <div class="missing-data-alert">
+    <h3>Missing Data Alert</h3>
+    <p>The following fields may be missing from this document:</p>
+    <div class="missing-fields-list">
+      {% for field in missing_fields %}
+        <div class="missing-field-item">
+          <span>{{ field.name }}</span>
+          <button class="add-missing-field" data-field="{{ field.name }}">Add</button>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  
+  <div class="review-content">
+    {% for category, items in categorized_data.items %}
+      <div class="category-section">
+        <h3>{{ category }}</h3>
+        
+        {% for item in items %}
+          <div class="field-review-card" data-field-id="{{ item.id }}">
+            <div class="field-header">
+              <span class="field-name">{{ item.field_name }}</span>
+              <span class="confidence-indicator confidence-{{ item.confidence|confidence_level }}">
+                {{ item.confidence|confidence_level|title }} Confidence
+              </span>
+            </div>
+            
+            <div class="field-content">
+              <div class="extracted-value">
+                <h4>Extracted Value:</h4>
+                <div class="value-display {% if item.approved %}approved{% endif %}">
+                  {{ item.field_value }}
+                </div>
+                <div class="inline-editor" style="display: none;">
+                  <input type="text" class="edit-field-value" value="{{ item.field_value }}">
+                  <button class="save-edit">Save</button>
+                  <button class="cancel-edit">Cancel</button>
+                </div>
+              </div>
+              
+              <div class="source-snippet">
+                <h4>Source Context:</h4>
+                <div class="snippet-text">{{ item.snippet }}</div>
+              </div>
+            </div>
+            
+            <div class="field-actions">
+              <button class="approve-btn {% if item.approved %}approved{% endif %}" 
+                      hx-post="{% url 'approve_field' item.id %}" 
+                      hx-swap="outerHTML">
+                {% if item.approved %}Approved{% else %}Approve{% endif %}
+              </button>
+              <button class="edit-btn">Edit</button>
+              <button class="flag-btn" hx-post="{% url 'flag_field' item.id %}">Flag for Review</button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+  
+  <div class="review-actions">
+    <button class="complete-review-btn" hx-post="{% url 'complete_review' document.id %}" 
+            hx-confirm="Are you sure you want to complete this review?">
+      Complete Review
+    </button>
+    <button class="request-reprocessing-btn">Request Reprocessing</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Inline editing functionality
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const card = this.closest('.field-review-card');
+        const valueDisplay = card.querySelector('.value-display');
+        const editor = card.querySelector('.inline-editor');
+        
+        valueDisplay.style.display = 'none';
+        editor.style.display = 'block';
+      });
+    });
+    
+    document.querySelectorAll('.cancel-edit').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const card = this.closest('.field-review-card');
+        const valueDisplay = card.querySelector('.value-display');
+        const editor = card.querySelector('.inline-editor');
+        
+        valueDisplay.style.display = 'block';
+        editor.style.display = 'none';
+      });
+    });
+    
+    document.querySelectorAll('.save-edit').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const card = this.closest('.field-review-card');
+        const fieldId = card.dataset.fieldId;
+        const newValue = card.querySelector('.edit-field-value').value;
+        
+        htmx.ajax('POST', `/documents/field/${fieldId}/update/`, {
+          values: { value: newValue },
+          target: card,
+          swap: 'outerHTML'
+        });
+      });
+    });
+    
+    // Add missing field functionality
+    document.querySelectorAll('.add-missing-field').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const fieldName = this.dataset.field;
+        const documentId = {{ document.id }};
+        
+        htmx.ajax('POST', `/documents/${documentId}/add-field/`, {
+          values: { field_name: fieldName },
+          target: this.closest('.category-section'),
+          swap: 'beforeend'
+        });
+      });
+    });
+  });
+</script>
+{% endblock %}
+```
+
+3. Implement field-level action endpoints:
+
+```python
+@require_POST
+def approve_field(request, field_id):
+    field = get_object_or_404(ParsedData, id=field_id)
+    field.is_approved = True
+    field.approved_by = request.user
+    field.approved_at = timezone.now()
+    field.save()
+    
+    # Return updated field card HTML
+    return render(request, 'documents/partials/field_card.html', {'item': {
+        'field_name': field.field_name,
+        'field_value': field.field_value,
+        'confidence': field.confidence_score,
+        'snippet': field.source_snippets.get('text', ''),
+        'approved': field.is_approved,
+        'id': field.id
+    }})
+
+@require_POST
+def update_field_value(request, field_id):
+    field = get_object_or_404(ParsedData, id=field_id)
+    field.field_value = request.POST.get('value')
+    field.edited_by = request.user
+    field.edited_at = timezone.now()
+    field.save()
+    
+    # Return updated field card HTML
+    return render(request, 'documents/partials/field_card.html', {'item': {
+        'field_name': field.field_name,
+        'field_value': field.field_value,
+        'confidence': field.confidence_score,
+        'snippet': field.source_snippets.get('text', ''),
+        'approved': field.is_approved,
+        'id': field.id
+    }})
+
+@require_POST
+def flag_field(request, field_id):
+    field = get_object_or_404(ParsedData, id=field_id)
+    field.is_flagged = True
+    field.flagged_by = request.user
+    field.flagged_at = timezone.now()
+    field.flag_reason = request.POST.get('reason', '')
+    field.save()
+    
+    # Return updated field card HTML
+    return render(request, 'documents/partials/field_card.html', {'item': {
+        'field_name': field.field_name,
+        'field_value': field.field_value,
+        'confidence': field.confidence_score,
+        'snippet': field.source_snippets.get('text', ''),
+        'approved': field.is_approved,
+        'flagged': field.is_flagged,
+        'id': field.id
+    }})
+```
+
+4. Add confidence indicator template filter:
+
+```python
+@register.filter
+def confidence_level(score):
+    if score >= 0.8:
+        return "high"
+    elif score >= 0.5:
+        return "medium"
+    else:
+        return "low"
+```
+
+5. Create CSS for the new single-column interface:
+
+```css
+/* Document Review Styles */
+.document-review-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.review-header {
+  margin-bottom: 30px;
+}
+
+.progress-indicator {
+  height: 20px;
+  background-color: #f0f0f0;
+  border-radius: 10px;
+  margin-top: 10px;
+  position: relative;
+}
+
+.progress-bar {
+  height: 100%;
+  background-color: #4CAF50;
+  border-radius: 10px;
+  transition: width 0.3s ease;
+}
+
+.missing-data-alert {
+  background-color: #fff3e0;
+  border-left: 4px solid #ff9800;
+  padding: 15px;
+  margin-bottom: 20px;
+  border-radius: 4px;
+}
+
+.category-section {
+  margin-bottom: 30px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.field-review-card {
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.field-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.field-name {
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.confidence-indicator {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.confidence-high {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.confidence-medium {
+  background-color: #fff8e1;
+  color: #ff8f00;
+}
+
+.confidence-low {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+.field-content {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+}
+
+.extracted-value, .source-snippet {
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.source-snippet {
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.snippet-text {
+  font-family: monospace;
+  white-space: pre-wrap;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border-left: 3px solid #007bff;
+}
+
+.field-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.approve-btn, .edit-btn, .flag-btn {
+  padding: 8px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.approve-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.approve-btn.approved {
+  background-color: #81c784;
+}
+
+.edit-btn {
+  background-color: #2196F3;
+  color: white;
+}
+
+.flag-btn {
+  background-color: #FFC107;
+  color: #212121;
+}
+
+.missing-fields-section {
+  margin-top: 20px;
+  padding: 10px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.missing-field-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.review-actions {
+  margin-top: 30px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+}
+
+.complete-review-btn, .request-reprocessing-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.complete-review-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.request-reprocessing-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+.inline-editor {
+  margin-top: 10px;
+}
+
+.edit-field-value {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.value-display.approved {
+  border-left: 4px solid #4CAF50;
+  padding-left: 8px;
+}
+```
+
+6. Update URLs configuration:
+
+```python
+urlpatterns = [
+    # Existing URLs
+    path('documents/<int:document_id>/review/', DocumentReviewView.as_view(), name='document_review'),
+    path('documents/field/<int:field_id>/approve/', approve_field, name='approve_field'),
+    path('documents/field/<int:field_id>/update/', update_field_value, name='update_field_value'),
+    path('documents/field/<int:field_id>/flag/', flag_field, name='flag_field'),
+    path('documents/<int:document_id>/complete-review/', complete_review, name='complete_review'),
+    path('documents/<int:document_id>/add-field/', add_missing_field, name='add_missing_field'),
+]
+```
+
+7. Implement the complete review endpoint:
+
+```python
+@require_POST
+def complete_review(request, document_id):
+    document = get_object_or_404(Document, id=document_id)
+    
+    # Check if all fields are reviewed
+    unreviewed_fields = document.parsed_data.filter(is_approved=False, is_flagged=False).count()
+    if unreviewed_fields > 0:
+        messages.warning(request, f"There are still {unreviewed_fields} unreviewed fields.")
+        return redirect('document_review', document_id=document_id)
+    
+    # Update document status
+    document.status = Document.STATUS_REVIEWED
+    document.reviewed_by = request.user
+    document.reviewed_at = timezone.now()
+    document.save()
+    
+    # Trigger FHIR integration if configured to do so automatically
+    if settings.AUTO_INTEGRATE_AFTER_REVIEW:
+        from documents.tasks import integrate_document_data
+        integrate_document_data.delay(document_id)
+        messages.success(request, "Document review completed. FHIR integration started.")
+    else:
+        messages.success(request, "Document review completed successfully.")
+    
+    return redirect('document_list')
+```
+
+8. Create a partial template for the field card to support HTMX updates:
+
+```html
+<!-- documents/partials/field_card.html -->
+<div class="field-review-card" data-field-id="{{ item.id }}">
+  <div class="field-header">
+    <span class="field-name">{{ item.field_name }}</span>
+    <span class="confidence-indicator confidence-{{ item.confidence|confidence_level }}">
+      {{ item.confidence|confidence_level|title }} Confidence
+    </span>
+  </div>
+  
+  <div class="field-content">
+    <div class="extracted-value">
+      <h4>Extracted Value:</h4>
+      <div class="value-display {% if item.approved %}approved{% endif %}">
+        {{ item.field_value }}
+      </div>
+      <div class="inline-editor" style="display: none;">
+        <input type="text" class="edit-field-value" value="{{ item.field_value }}">
+        <button class="save-edit">Save</button>
+        <button class="cancel-edit">Cancel</button>
+      </div>
+    </div>
+    
+    <div class="source-snippet">
+      <h4>Source Context:</h4>
+      <div class="snippet-text">{{ item.snippet }}</div>
+    </div>
+  </div>
+  
+  <div class="field-actions">
+    <button class="approve-btn {% if item.approved %}approved{% endif %}" 
+            hx-post="{% url 'approve_field' item.id %}" 
+            hx-swap="outerHTML">
+      {% if item.approved %}Approved{% else %}Approve{% endif %}
+    </button>
+    <button class="edit-btn">Edit</button>
+    <button class="flag-btn" hx-post="{% url 'flag_field' item.id %}">Flag for Review</button>
+  </div>
+</div>
+```
+
+This implementation completely removes the PDF.js viewer and replaces the two-column layout with a single-column review layout focused on snippet-based review. The interface follows a clean, simple structure with: Header → Missing Data Alert → Extracted Fields List → Action Buttons. This aligns with Phase 2 of the original plan to remove PDF.js dependencies and create a more streamlined review experience.
+
+# Test Strategy:
+To verify the correct implementation of the snippet-based document review interface:
+
+1. Unit Tests:
+```python
+class DocumentReviewViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='password')
+        self.client.login(username='testuser', password='password')
+        self.document = Document.objects.create(title="Test Document", status=Document.STATUS_PROCESSED)
+        
+        # Create parsed data with snippets
+        self.parsed_data1 = ParsedData.objects.create(
+            document=self.document,
+            field_name="Patient Name",
+            field_value="John Doe",
+            confidence_score=0.95,
+            category="Demographics",
+            source_snippets={"text": "Patient: John Doe DOB: 01/15/1980"}
+        )
+        
+        self.parsed_data2 = ParsedData.objects.create(
+            document=self.document,
+            field_name="Diagnosis",
+            field_value="Hypertension",
+            confidence_score=0.75,
+            category="Medical",
+            source_snippets={"text": "Assessment: Patient has uncontrolled hypertension"}
+        )
+    
+    def test_document_review_view_loads(self):
+        response = self.client.get(reverse('document_review', args=[self.document.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'documents/review.html')
+        self.assertContains(response, "John Doe")
+        self.assertContains(response, "Hypertension")
+        
+    def test_approve_field(self):
+        response = self.client.post(reverse('approve_field', args=[self.parsed_data1.id]))
+        self.assertEqual(response.status_code, 200)
+        self.parsed_data1.refresh_from_db()
+        self.assertTrue(self.parsed_data1.is_approved)
+        
+    def test_update_field_value(self):
+        response = self.client.post(
+            reverse('update_field_value', args=[self.parsed_data1.id]),
+            {'value': 'Jane Doe'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.parsed_data1.refresh_from_db()
+        self.assertEqual(self.parsed_data1.field_value, 'Jane Doe')
+        
+    def test_flag_field(self):
+        response = self.client.post(
+            reverse('flag_field', args=[self.parsed_data1.id]),
+            {'reason': 'Needs verification'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.parsed_data1.refresh_from_db()
+        self.assertTrue(self.parsed_data1.is_flagged)
+        
+    def test_complete_review_with_unreviewed_fields(self):
+        response = self.client.post(reverse('complete_review', args=[self.document.id]))
+        self.assertEqual(response.status_code, 302)  # Redirect
+        self.document.refresh_from_db()
+        self.assertNotEqual(self.document.status, Document.STATUS_REVIEWED)  # Should not be marked as reviewed
+        
+    def test_complete_review_success(self):
+        # Approve all fields first
+        self.client.post(reverse('approve_field', args=[self.parsed_data1.id]))
+        self.client.post(reverse('approve_field', args=[self.parsed_data2.id]))
+        
+        response = self.client.post(reverse('complete_review', args=[self.document.id]))
+        self.assertEqual(response.status_code, 302)  # Redirect
+        self.document.refresh_from_db()
+        self.assertEqual(self.document.status, Document.STATUS_REVIEWED)
+```
+
+2. Integration Tests:
+```python
+class DocumentReviewIntegrationTests(TestCase):
+    def setUp(self):
+        # Similar setup as unit tests but with more realistic data
+        pass
+        
+    def test_end_to_end_review_workflow(self):
+        # Login
+        self.client.login(username='testuser', password='password')
+        
+        # Navigate to document list
+        response = self.client.get(reverse('document_list'))
+        self.assertEqual(response.status_code, 200)
+        
+        # Click on review button for a document
+        response = self.client.get(reverse('document_review', args=[self.document.id]))
+        self.assertEqual(response.status_code, 200)
+        
+        # Approve some fields
+        response = self.client.post(reverse('approve_field', args=[self.parsed_data1.id]))
+        self.assertEqual(response.status_code, 200)
+        
+        # Edit a field
+        response = self.client.post(
+            reverse('update_field_value', args=[self.parsed_data2.id]),
+            {'value': 'Updated Value'}
+        )
+        self.assertEqual(response.status_code, 200)
+        
+        # Flag a field
+        response = self.client.post(
+            reverse('flag_field', args=[self.parsed_data3.id]),
+            {'reason': 'Needs verification'}
+        )
+        self.assertEqual(response.status_code, 200)
+        
+        # Complete the review
+        response = self.client.post(reverse('complete_review', args=[self.document.id]))
+        self.assertEqual(response.status_code, 302)  # Redirect
+```
+
+3. UI Testing:
+   - Verify that the single-column layout renders correctly without any PDF viewer components
+   - Test that the interface follows the structure: Header → Missing Data Alert → Extracted Fields List → Action Buttons
+   - Manually test the interface in different browsers (Chrome, Firefox, Safari)
+   - Verify that all UI elements render correctly
+   - Test responsive design on different screen sizes
+   - Verify that confidence indicators show correct colors
+   - Test that inline editing works properly
+   - Verify that source snippets display correctly
+
+4. Performance Testing:
+   - Test with documents containing large numbers of fields (100+)
+   - Measure page load time and optimize if necessary
+   - Test with concurrent users reviewing different documents
+   - Verify improved performance without PDF.js loading overhead
+
+5. Accessibility Testing:
+   - Verify that the interface is accessible to screen readers
+   - Test keyboard navigation
+   - Ensure color contrast meets WCAG standards
+
+6. User Acceptance Testing:
+   - Have actual users test the interface with real documents
+   - Collect feedback on usability and make adjustments as needed
+   - Verify that the workflow is intuitive and efficient
+   - Confirm that users can effectively review documents without the PDF viewer
+
+# Subtasks:
+## 1. Remove PDF.js Viewer Components [pending]
+### Dependencies: None
+### Description: Remove all PDF.js viewer components and dependencies from the document review interface. This includes removing the PDF viewer container, toolbar, and any related JavaScript functions.
+### Details:
+1. Remove the PDF viewer container div from review.html
+2. Remove any PDF.js script imports
+3. Remove PDF viewer initialization code from JavaScript
+4. Remove PDF-related event listeners and functions
+5. Update any references to PDF page numbers or coordinates in the review interface
+6. Remove PDF toolbar and navigation controls
+7. Clean up any unused CSS related to PDF viewing
+
+## 2. Update CSS for Single-Column Layout [pending]
+### Dependencies: 31.1
+### Description: Modify the CSS to support a single-column layout focused on snippet-based review, replacing the previous two-column layout that included the PDF viewer.
+### Details:
+Implement the CSS styles as provided in the task description, focusing on:
+1. Creating a responsive single-column container
+2. Styling the review header and progress indicator
+3. Styling category sections and field review cards
+4. Implementing confidence indicator styles
+5. Styling source snippets with appropriate formatting
+6. Creating styles for field actions (approve, edit, flag buttons)
+7. Implementing styles for inline editing functionality
+8. Adding styles for missing data alerts
+9. Creating styles for review action buttons at the bottom
+
+## 3. Implement Field Review Card Component [pending]
+### Dependencies: 31.2
+### Description: Create a reusable field review card component that displays extracted data alongside its source text context, with actions for approving, editing, and flagging fields.
+### Details:
+Create the field_card.html partial template as specified in the task description:
+1. Implement the card structure with field header, content, and actions sections
+2. Add the confidence indicator with appropriate styling
+3. Include the extracted value display with approved state styling
+4. Add the source snippet display with proper formatting
+5. Implement action buttons with HTMX attributes for server interactions
+6. Add inline editing interface with save/cancel buttons
+7. Ensure all elements have proper CSS classes for styling
+
+## 4. Update DocumentReviewView for Snippet Data [pending]
+### Dependencies: None
+### Description: Modify the DocumentReviewView to handle snippet data and prepare the context for the new snippet-based review interface.
+### Details:
+Implement the DocumentReviewView as specified in the task description:
+1. Fetch the document and its parsed data with prefetched source snippets
+2. Group data by category for organized display
+3. For each parsed data item, prepare a dictionary with field information including the source snippet
+4. Calculate and include the document review progress
+5. Prepare any missing fields data if applicable
+6. Return the context with the document, categorized data, and review progress
+
+## 5. Implement Field-Level Action Endpoints [pending]
+### Dependencies: 31.3
+### Description: Create the server endpoints for field-level actions including approving, updating, and flagging fields during the review process.
+### Details:
+Implement the three field action endpoints as specified in the task description:
+1. approve_field: Mark a field as approved with user and timestamp
+2. update_field_value: Update a field's value with user and timestamp
+3. flag_field: Mark a field as flagged with reason, user, and timestamp
+
+Each endpoint should:
+- Use @require_POST decorator
+- Get the field by ID or return 404
+- Update the appropriate field attributes
+- Save the changes
+- Return the updated field card HTML for HTMX to swap in the UI
+
+## 6. Create Complete Review Endpoint [pending]
+### Dependencies: 31.5
+### Description: Implement the endpoint for completing document review, which validates that all fields are reviewed and updates the document status.
+### Details:
+Implement the complete_review endpoint as specified in the task description:
+1. Get the document by ID or return 404
+2. Check if any fields remain unreviewed (not approved and not flagged)
+3. If unreviewed fields exist, show a warning message and redirect back to review
+4. Update document status to reviewed with user and timestamp
+5. Trigger FHIR integration if configured to do so automatically
+6. Show appropriate success message
+7. Redirect to document list
+
+## 7. Implement Confidence Indicator Template Filter [pending]
+### Dependencies: None
+### Description: Create a template filter to convert confidence scores into human-readable confidence levels (high, medium, low) for display in the UI.
+### Details:
+Implement the confidence_level template filter as specified in the task description:
+1. Register the filter using @register.filter decorator
+2. Define the function to accept a confidence score
+3. Return "high" for scores >= 0.8
+4. Return "medium" for scores >= 0.5 but < 0.8
+5. Return "low" for scores < 0.5
+6. Ensure the filter is available in the templates where confidence is displayed
+
+## 8. Implement Missing Data Alert Component [pending]
+### Dependencies: 31.2
+### Description: Create a component to display alerts for potentially missing data fields in the document, with options to add these fields manually.
+### Details:
+Implement the missing data alert component in the review.html template:
+1. Add conditional rendering based on missing_fields context variable
+2. Create the alert container with appropriate styling
+3. Display a list of potentially missing fields
+4. Add "Add" buttons with data attributes for each missing field
+5. Implement the JavaScript event handlers for the add buttons
+6. Use HTMX to send requests to add-missing-field endpoint
+7. Ensure the component integrates well with the rest of the review interface
+
+## 9. Implement JavaScript for Field Interactions [pending]
+### Dependencies: 31.3, 31.5
+### Description: Add JavaScript functionality for field interactions including inline editing, approval toggling, and other dynamic behaviors in the review interface.
+### Details:
+Implement the JavaScript functionality as specified in the task description:
+1. Add event listeners for edit buttons to show inline editors
+2. Implement cancel edit functionality to revert to display mode
+3. Add save edit functionality using HTMX to update field values
+4. Implement add missing field functionality
+5. Ensure all event handlers are properly attached on page load
+6. Add any additional interactions needed for a smooth user experience
+7. Ensure proper error handling for failed requests
+
+## 10. Update URL Configuration and Integration Testing [pending]
+### Dependencies: 31.4, 31.5, 31.6
+### Description: Update the URL configuration to include all new endpoints and perform comprehensive integration testing of the complete snippet-based review system.
+### Details:
+1. Update the urls.py file with all new endpoints as specified in the task description:
+   - document_review path
+   - approve_field path
+   - update_field_value path
+   - flag_field path
+   - complete_review path
+   - add_missing_field path
+2. Ensure all URL names match those used in templates
+3. Verify that all URLs use appropriate patterns and converters
+4. Perform end-to-end testing of the complete review flow
+5. Test integration between all components of the snippet-based review system
+

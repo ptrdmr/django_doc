@@ -279,6 +279,13 @@ class ParsedData(BaseModel):
         help_text="Raw extracted data from AI processing"
     )
     
+    # Source text snippets for review interface
+    source_snippets = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Source text context (200-300 chars) around extracted values for snippet-based review"
+    )
+    
     # FHIR-formatted data
     fhir_delta_json = models.JSONField(
         default=dict,

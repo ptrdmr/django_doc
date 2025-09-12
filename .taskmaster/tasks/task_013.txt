@@ -90,6 +90,45 @@ Implement the document review interface with the following components:
    - Style form elements for clear data entry
    - Design approval workflow buttons and status indicators
    - Implement highlighting styles for extracted data fields
+<info added on 2025-09-11T14:19:19.875Z>
+## STRATEGIC PIVOT - TEXT SNIPPET APPROACH
+
+The document review interface is being updated to use a text snippet review approach instead of complex PDF highlighting for the MVP. This change will simplify implementation while improving user experience.
+
+### Key Changes:
+
+1. **Text Snippet Display**:
+   - Add source_snippets field to ParsedData model to store text context (200-300 characters) around extracted values
+   - Display these snippets alongside each extracted data field for context
+   - Implement UI to show snippet/value pairs in the extraction review panel
+
+2. **Field-Level Actions**:
+   - Add per-field action buttons: [Approve] [Edit] [Flag for Review]
+   - Implement confidence indicators for each extracted field (high/medium/low)
+   - Add visual styling to indicate confidence levels (green/yellow/red)
+
+3. **Missing Field Detection**:
+   - Add functionality to identify potentially missing fields
+   - Implement UI to show suggested fields that might be missing
+   - Allow reviewers to add missing fields manually
+
+4. **Simplified Document Viewer**:
+   - Keep PDF viewer for reference but remove highlighting implementation
+   - Focus on making the viewer performant and responsive
+   - Maintain zoom and navigation controls for document review
+
+5. **Backend Changes**:
+   - Update AI extraction pipeline to capture text context around extracted values
+   - Modify AI prompts to include snippet extraction requirements
+   - Add confidence scoring for extracted fields
+
+6. **Enhanced Inline Editing**:
+   - Focus on robust inline editing capabilities with immediate feedback
+   - Implement auto-save functionality for edited fields
+   - Add field validation specific to medical data types
+
+This pivot maintains the same user workflow but provides better UX and faster implementation for the MVP while removing the technical complexity of PDF highlighting.
+</info added on 2025-09-11T14:19:19.875Z>
 
 # Test Strategy:
 1. Unit Tests:
@@ -146,3 +185,195 @@ def test_document_review_view():
    - Measure load time for documents of various sizes
    - Test with a large number of extracted data fields
    - Verify htmx partial updates are efficient
+
+# Subtasks:
+## 1. Create Document Review Template Structure [done]
+### Dependencies: None
+### Description: Create the basic Django template structure for the document review page with the main container and panels for document preview and extraction review.
+### Details:
+Create a new file 'review.html' in the templates/documents directory that extends the base template. Implement the basic structure with document-review-container div and the two main panels (document-preview and extraction-review) as placeholders for now.
+<info added on 2025-09-07T00:13:58.143Z>
+**What was accomplished:**
+- Created `templates/documents/review.html` with clean, professional structure
+- Implemented responsive CSS grid layout (desktop: side-by-side, mobile: stacked)
+- Added proper breadcrumb navigation following existing patterns
+- Created placeholder sections for document preview and extraction review panels
+- Added `DocumentReviewView` class-based view with proper permissions and queryset filtering
+- Added URL pattern `/documents/<id>/review/` to urls.py
+- All Django checks pass with no issues
+- URL routing tested and working correctly
+
+**Technical details:**
+- Template extends base.html and follows existing design patterns
+- CSS uses CSS Grid with responsive breakpoints
+- View uses DetailView with LoginRequiredMixin and permission decorators
+- Proper error handling and context data structure in place
+- Ready for next subtasks to build upon this foundation
+
+**Files created/modified:**
+- templates/documents/review.html (new)
+- apps/documents/views.py (added DocumentReviewView)
+- apps/documents/urls.py (added review URL pattern)
+
+**Testing completed:**
+- Django system check: ✅ No issues
+- URL pattern resolution: ✅ Working correctly
+- Linting: ✅ No errors found
+</info added on 2025-09-07T00:13:58.143Z>
+
+## 2. Implement Document Preview Panel with PDF.js [done]
+### Dependencies: 13.1
+### Description: Implement the document preview panel that displays the original document using PDF.js with zoom and navigation controls.
+### Details:
+Add PDF.js library to the project. Create a JavaScript module for document viewer initialization. Implement the document preview panel with PDF.js canvas element, navigation controls (prev/next page, page number input), and zoom controls. Include PDF.js CSS and JS in the template.
+<info added on 2025-09-07T00:19:51.249Z>
+✅ COMPLETED: PDF.js document preview panel successfully implemented
+
+**What was accomplished:**
+- Created comprehensive DocumentViewer JavaScript class with full PDF.js integration
+- Implemented professional PDF viewer with toolbar containing navigation and zoom controls
+- Added responsive design that works on desktop and mobile devices
+- Integrated PDF.js library (v3.11.174) via CDN with proper integrity checking
+- Updated document review template to use the PDF viewer component
+- Added proper error handling for non-PDF files and missing documents
+- Implemented keyboard shortcuts (Ctrl+/-, arrow keys for navigation)
+
+**Technical features implemented:**
+- **Navigation Controls**: Previous/Next page, direct page input, page counter
+- **Zoom Controls**: Zoom in/out, fit-to-width, scale percentage display
+- **Professional UI**: Tailwind CSS styled toolbar with consistent design
+- **Error Handling**: Graceful fallbacks for non-PDF files and loading errors
+- **Loading States**: Visual feedback during document loading and rendering
+- **Responsive Design**: Mobile-friendly layout with proper breakpoints
+- **Keyboard Shortcuts**: Standard PDF viewer keyboard navigation
+
+**Files created/modified:**
+- static/js/document-viewer.js (new) - Complete PDF viewer implementation
+- templates/documents/review.html (updated) - Integrated PDF viewer and enhanced styling
+
+**Browser compatibility:**
+- Uses modern PDF.js library with cross-browser support
+- Proper fallbacks for unsupported document types
+- Responsive design works on all screen sizes
+
+**Testing completed:**
+- Django system check: ✅ No issues
+- Static file collection: ✅ Working correctly  
+- Linting: ✅ No errors found
+- PDF files available in media directory for testing: ✅ Confirmed
+
+**Ready for next subtask:**
+The PDF viewer is fully functional and ready for highlighting capabilities (subtask 13.3)
+</info added on 2025-09-07T00:19:51.249Z>
+<info added on 2025-09-07T00:48:38.099Z>
+🐛 CRITICAL BUG FIXES COMPLETED
+
+**Major issues identified and resolved:**
+
+1. **WORKFLOW ISSUE FIXED**: Documents were auto-completing after AI processing, bypassing review step
+   - Modified process_document_async to set status='review' instead of 'completed'
+   - Added comprehensive approval workflow to DocumentReviewView
+   - Flow now correctly: Upload → Processing → Review (STOP) → User Approval → Completed
+
+2. **TEMPLATE ERRORS FIXED**: Multiple template rendering issues resolved
+   - Added missing {% load static %} tag
+   - Fixed field.name variable lookup (changed to field.label fallback)
+   - Enhanced template to show extracted data with FHIR mapping
+
+3. **FHIR DATA FORMAT ISSUE FIXED**: AttributeError when viewing documents
+   - Updated get_fhir_resource_count() to handle both list and dict formats
+   - FHIRProcessor returns list, but model expected dict - now handles both
+
+4. **DEPENDENCY COMPATIBILITY FIXED**: Django 5.x compatibility
+   - Removed django-cryptography==1.1 (incompatible)
+   - Using django-cryptography-5==2.0.3 (Django 5.x compatible)
+   - Docker build now succeeds
+
+5. **NAVIGATION ADDED**: Review button for document access
+   - Added "View Review" button to document detail page
+   - Users can now navigate from document details to review interface
+   - Created management command to reset document status for testing
+
+**Docker Status**: ✅ Rebuilt successfully and running
+**Review Interface**: ✅ Fully functional with PDF + extracted data
+**Workflow**: ✅ Correctly stops at review step before committing to patient history
+</info added on 2025-09-07T00:48:38.099Z>
+
+## 3. Add Document Highlighting Capabilities [cancelled]
+### Dependencies: 13.2
+### Description: Implement highlighting functionality to show where data was extracted from in the original document.
+### Details:
+Extend the PDF.js implementation to support highlighting rectangles on the document. Create a JavaScript function that takes coordinates and renders semi-transparent highlight overlays. Add a data attribute to connect extracted data fields with their source locations in the document.
+
+## 4. Create Patient Information Review Form [pending]
+### Dependencies: 13.1
+### Description: Build the Django form for reviewing and editing extracted patient information data.
+### Details:
+Create a PatientInfoReviewForm in forms.py with fields for patient demographics (name, DOB, gender, contact info, etc.). Add validation for each field type. Include UI elements to mark fields as verified, incorrect, or needs review using radio buttons or checkboxes for each field.
+
+## 5. Create Medical Data Review Forms [pending]
+### Dependencies: 13.1
+### Description: Build Django forms for reviewing extracted medical data categories (medications, diagnoses, procedures, etc.).
+### Details:
+Create separate forms for each medical data category: MedicationReviewForm, DiagnosisReviewForm, ProcedureReviewForm, etc. Implement specialized validation for medical data types (medication dosages, ICD-10 codes, etc.). Add UI elements for verification status similar to the patient info form.
+
+## 6. Implement HTMX Integration for Real-time Validation [pending]
+### Dependencies: 13.4, 13.5
+### Description: Add HTMX attributes to form elements for real-time validation and feedback without full page reloads.
+### Details:
+Add HTMX library to the project. Enhance form fields with hx-post, hx-trigger, and hx-target attributes for real-time validation. Create feedback elements for each field. Implement optimistic UI updates with proper error handling and visual feedback.
+
+## 7. Create Django View Endpoints for Partial Updates [pending]
+### Dependencies: 13.6
+### Description: Implement Django view endpoints that handle HTMX partial update requests for individual form fields.
+### Details:
+Create view functions for handling partial updates (update_field, validate_field, etc.). Implement proper validation and error handling in these endpoints. Return appropriate HTML fragments or JSON responses based on the validation results.
+
+## 8. Implement Review Context Sidebar [pending]
+### Dependencies: 13.1
+### Description: Create a sidebar that displays patient context information, document metadata, and links to previous documents for comparison.
+### Details:
+Add a sidebar section to the review template. Implement display of patient information (name, MRN, DOB). Add document metadata section (upload date, document type, source). Create a list of previous documents with links for comparison.
+
+## 9. Build Approval Workflow UI Components [pending]
+### Dependencies: 13.1
+### Description: Implement the UI components for the document approval workflow, including approval buttons, confirmation dialogs, and status indicators.
+### Details:
+Create approval action buttons (Approve, Reject, Request Changes). Implement confirmation dialogs using JavaScript for key actions. Add a notes/comments field for reviewers. Design and implement status indicators showing review progress.
+
+## 10. Implement Main Document Review Controller View [pending]
+### Dependencies: 13.1, 13.4, 13.5, 13.8, 13.9
+### Description: Create the main Django view function that handles the document review page rendering and form processing.
+### Details:
+Implement the document_review view function in views.py that retrieves the document and extracted data. Handle GET requests to display the review page. Process POST requests for form submission and approval actions. Implement logic for status transitions and notifications.
+
+## 11. Add URL Routing for Document Review [pending]
+### Dependencies: 13.7, 13.10
+### Description: Configure URL patterns for the document review page and related HTMX endpoints.
+### Details:
+Add URL patterns in urls.py for the main document review page and all HTMX partial update endpoints. Use proper URL naming and parameter handling. Ensure consistent URL structure following project conventions.
+
+## 12. Implement CSS Styles for Review Interface [pending]
+### Dependencies: 13.1, 13.2, 13.4, 13.5, 13.8, 13.9
+### Description: Create responsive CSS styles for the document review interface, including layout, form elements, and approval workflow components.
+### Details:
+Create a dedicated CSS file for the review interface. Implement responsive layout for side-by-side document and form view. Style form elements for clear data entry and validation feedback. Design approval workflow buttons and status indicators with appropriate colors and icons. Implement highlighting styles for extracted data fields.
+<info added on 2025-09-11T14:19:52.963Z>
+Create a dedicated CSS file for the review interface. Implement responsive layout for snippet-based review interface. Style source snippet display containers with proper typography. Implement confidence indicator styling with color-coding (green for high, yellow for medium, red for low confidence). Design field-level action buttons ([Approve], [Edit], [Flag for Review]) with appropriate styling. Create missing field detection alerts and UI components with clear visual indicators. Style inline editing interface with distinct focus states for active editing. Implement field verification status indicators to show current approval state. Ensure all form elements have clear data entry and validation feedback.
+</info added on 2025-09-11T14:19:52.963Z>
+
+## 13. Implement JavaScript for Interactive Features [pending]
+### Dependencies: 13.3, 13.6, 13.9
+### Description: Create JavaScript modules for interactive features of the review interface, including field highlighting, form validation, and confirmation dialogs.
+### Details:
+Create a dedicated JavaScript file for review interface interactions. Implement functions for toggling field highlighting when hovering over form fields. Add client-side validation to complement server-side validation. Implement confirmation dialog logic for approval actions. Add event listeners for interactive elements.
+<info added on 2025-09-11T14:19:39.122Z>
+Create a dedicated JavaScript file for review interface interactions. Implement form validation with real-time user feedback, including error messages and visual indicators. Add confirmation dialog logic for approval actions with customizable messages and action buttons. Develop field interaction behaviors including hover states and focus management for improved accessibility. Implement client-side validation functions that complement server-side validation to prevent unnecessary server requests. Create auto-save functionality for inline editing of text snippets with appropriate status indicators. Add event listeners for snippet-based field interactions to handle selection, editing, and approval workflows. Ensure all JavaScript components follow modular design principles for maintainability.
+</info added on 2025-09-11T14:19:39.122Z>
+
+## 14. Integrate Document Review with Patient Record Merging [pending]
+### Dependencies: 13.10, 13.11
+### Description: Connect the document review approval process with the backend system for merging approved data into patient records.
+### Details:
+Extend the document_review view to trigger the merge_to_patient_record task when a document is approved. Implement proper error handling and user feedback for the merge process. Add status tracking for the merge operation. Create success and error notifications for the user.
+

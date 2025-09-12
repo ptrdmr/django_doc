@@ -39,6 +39,7 @@ THIRD_PARTY_APPS = [
     'allauth.account',
     'django_otp',
     'axes',  # Failed login monitoring
+    'django_cryptography',  # Field-level encryption for PHI
     # Development & monitoring
     'debug_toolbar',  # Development only
 ]

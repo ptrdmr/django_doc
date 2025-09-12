@@ -1,0 +1,99 @@
+# Backup-enhanced Docker Compose configuration
+# This version includes additional safeguards for data persistence
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database with enhanced persistence
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: meddocparser
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
+      POSTGRES_HOST_AUTH_METHOD: trust
+      # Additional PostgreSQL settings for data safety
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      # Primary data volume
+      - postgres_data:/var/lib/postgresql/data
+      # Backup mount point
+      - ./backups:/backups
+      # Initialization scripts
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # PostgreSQL configuration for better durability
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - meddocparser_network
+    # Prevent accidental data loss
+    stop_grace_period: 30s
+
+  # Backup service for automated backups
+  db_backup:
+    image: postgres:15-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: meddocparser
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      - db
+    networks:
+      - meddocparser_network
+    # This can be run manually: docker-compose run db_backup
+    command: >
+      sh -c "
+        echo 'Creating database backup...' &&
+        pg_dump -h db -U postgres -d meddocparser > /backups/backup_$$(date +%Y%m%d_%H%M%S).sql &&
+        echo 'Backup completed!'
+      "
+
+  # Rest of your services remain the same...
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - meddocparser_network
+
+volumes:
+  postgres_data:
+    # Add external flag to prevent accidental deletion
+    external: false
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/docker_volumes/postgres_data
+  redis_data:
+    external: false
+    driver: local
+    driver_opts:
+      type: none  
+      o: bind
+      device: ${PWD}/docker_volumes/redis_data
+  media_volume:
+  logs_volume:
+
+networks:
+  meddocparser_network:
+    driver: bridge

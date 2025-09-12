@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}FHIR Data Migration{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto p-6">
+    <div class="bg-white rounded-lg shadow-lg p-6">
+        <h1 class="text-2xl font-bold text-gray-900 mb-6">FHIR Data Migration</h1>
+        
+        {% if messages %}
+            {% for message in messages %}
+                <div class="mb-4 p-4 rounded-md {% if message.tags == 'success' %}bg-green-50 text-green-800{% elif message.tags == 'error' %}bg-red-50 text-red-800{% else %}bg-blue-50 text-blue-800{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+        
+        <div class="mb-6">
+            <p class="text-gray-600">
+                This tool helps migrate FHIR data from completed documents that haven't been merged to patient records yet.
+            </p>
+        </div>
+        
+        {% if migration_candidates %}
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-4">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-3">
+                        Documents needing migration ({{ total_candidates }})
+                    </h2>
+                    
+                    <div class="space-y-3">
+                        {% for candidate in migration_candidates %}
+                            <div class="border border-gray-200 rounded-lg p-4">
+                                <label class="flex items-start space-x-3">
+                                    <input type="checkbox" name="document_ids" value="{{ candidate.doc.id }}" 
+                                           class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                                    <div class="flex-1">
+                                        <div class="font-medium text-gray-900">{{ candidate.doc.filename }}</div>
+                                        <div class="text-sm text-gray-600">
+                                            Patient: {{ candidate.doc.patient.first_name }} {{ candidate.doc.patient.last_name }} ({{ candidate.doc.patient.mrn }})
+                                        </div>
+                                        <div class="text-sm text-gray-500">
+                                            Uploaded: {{ candidate.doc.uploaded_at|date:"M j, Y g:i A" }}
+                                        </div>
+                                        <div class="text-sm text-green-600">
+                                            FHIR Resources: {{ candidate.fhir_count }}
+                                        </div>
+                                        <div class="text-xs text-gray-400">
+                                            Status: Approved {% if not candidate.parsed_data.is_merged %}but not merged{% else %}and merged{% endif %}
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <div class="flex space-x-4">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium">
+                        Migrate Selected Documents
+                    </button>
+                    <a href="{% url 'documents:list' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-2 rounded-md font-medium">
+                        Back to Documents
+                    </a>
+                </div>
+            </form>
+        {% else %}
+            <div class="text-center py-8">
+                <div class="text-gray-500 mb-4">
+                    <svg class="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">All documents are up to date</h3>
+                <p class="text-gray-600 mb-4">No documents found that need FHIR data migration.</p>
+                <a href="{% url 'documents:list' %}" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium">
+                    Back to Documents
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

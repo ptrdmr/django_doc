@@ -1,0 +1,385 @@
+# Task ID: 30
+# Title: Implement Backend Support for Text Snippet Review System
+# Status: pending
+# Dependencies: 6, 14
+# Priority: high
+# Description: Implement backend changes to capture and store source text context around extracted data values, enabling the new snippet-based review interface.
+# Details:
+Implement the backend support for the text snippet review system with the following components:
+
+1. Add source_snippets JSONField to ParsedData model:
+```python
+class ParsedData(models.Model):
+    # Existing fields
+    document = models.ForeignKey('Document', on_delete=models.CASCADE, related_name='parsed_data')
+    field_name = models.CharField(max_length=100)
+    field_value = models.TextField()
+    confidence_score = models.FloatField(default=0.0)
+    
+    # New field for storing text snippets
+    source_snippets = models.JSONField(default=dict, help_text="Stores text context around extracted values")
+    
+    class Meta:
+        unique_together = ('document', 'field_name')
+```
+
+2. Update DocumentAnalyzer.extract_with_ai() method to capture surrounding context:
+```python
+def extract_with_ai(self, document, prompt_template):
+    # Existing code to get document text
+    document_text = self.get_document_text(document)
+    
+    # Modify AI prompt to request source context
+    prompt = prompt_template.format(document_text=document_text)
+    
+    # Call AI service (Claude/GPT)
+    ai_response = self.ai_service.process_document(prompt)
+    
+    # Parse AI response to extract both values and their context
+    extracted_data = {}
+    for field_id, field_data in self.parse_ai_response(ai_response).items():
+        # Store both the value and its context
+        extracted_data[field_id] = {
+            "value": field_data["value"],
+            "source_text": field_data["source_text"],
+            "char_position": field_data.get("char_position", 0),
+            "confidence": field_data.get("confidence", 0.9)
+        }
+    
+    return extracted_data
+```
+
+3. Modify the parse_ai_response method to handle the new format:
+```python
+def parse_ai_response(self, ai_response):
+    """Parse AI response to extract values and their context."""
+    parsed_data = {}
+    
+    # Implementation will depend on the AI response format
+    # Example assuming JSON response:
+    try:
+        response_data = json.loads(ai_response)
+        for field_id, field_info in response_data.items():
+            if isinstance(field_info, dict) and "value" in field_info:
+                parsed_data[field_id] = {
+                    "value": field_info["value"],
+                    "source_text": field_info.get("source_text", ""),
+                    "char_position": field_info.get("char_position", 0),
+                    "confidence": field_info.get("confidence", 0.9)
+                }
+            else:
+                # Handle legacy format for backward compatibility
+                parsed_data[field_id] = {
+                    "value": field_info,
+                    "source_text": "",
+                    "char_position": 0,
+                    "confidence": 0.9
+                }
+    except json.JSONDecodeError:
+        # Fallback parsing logic for non-JSON responses
+        pass
+        
+    return parsed_data
+```
+
+4. Update MedicalExtractionPrompts to request source context:
+```python
+class MedicalExtractionPrompts:
+    GENERAL_EXTRACTION = """
+    Extract the following information from the medical document below. 
+    For each extracted field, provide:
+    1. The extracted value
+    2. The source text (200-300 characters) surrounding the extracted value
+    3. The character position of the value in the document
+    4. Your confidence score (0.0-1.0)
+    
+    Format your response as a JSON object with this structure:
+    {
+        "field_name": {
+            "value": "extracted value",
+            "source_text": "...text before [extracted value] text after...",
+            "char_position": 1234,
+            "confidence": 0.95
+        }
+    }
+    
+    Document text:
+    {document_text}
+    """
+    
+    # Update other prompt templates similarly
+```
+
+5. Modify the document processing pipeline to store snippet data:
+```python
+def process_document(document_id):
+    """Process document and store extracted data with source snippets."""
+    document = Document.objects.get(id=document_id)
+    analyzer = DocumentAnalyzer()
+    
+    # Get appropriate prompt template based on document type
+    prompt_template = MedicalExtractionPrompts.get_prompt_for_document(document.doc_type)
+    
+    # Extract data with context
+    extracted_data = analyzer.extract_with_ai(document, prompt_template)
+    
+    # Store extracted data with snippets
+    for field_id, field_data in extracted_data.items():
+        ParsedData.objects.update_or_create(
+            document=document,
+            field_name=field_id,
+            defaults={
+                'field_value': field_data["value"],
+                'confidence_score': field_data["confidence"],
+                'source_snippets': {
+                    'source_text': field_data["source_text"],
+                    'char_position': field_data["char_position"]
+                }
+            }
+        )
+    
+    # Update document status
+    document.status = Document.STATUS_PROCESSED
+    document.save()
+    
+    return document
+```
+
+6. Create a migration for the model changes:
+```bash
+python manage.py makemigrations documents
+python manage.py migrate
+```
+
+7. Update any API endpoints that return parsed data to include the source snippets:
+```python
+class ParsedDataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParsedData
+        fields = ['id', 'document', 'field_name', 'field_value', 'confidence_score', 'source_snippets']
+```
+
+# Test Strategy:
+To verify the correct implementation of the text snippet review system backend:
+
+1. Unit test the updated ParsedData model:
+```python
+def test_parsed_data_model_with_snippets():
+    document = Document.objects.create(title="Test Doc", file_path="test.pdf")
+    parsed_data = ParsedData.objects.create(
+        document=document,
+        field_name="diagnosis",
+        field_value="Hypertension",
+        confidence_score=0.95,
+        source_snippets={
+            "source_text": "Patient has a history of Hypertension diagnosed in 2018.",
+            "char_position": 24
+        }
+    )
+    
+    # Verify data was saved correctly
+    retrieved = ParsedData.objects.get(id=parsed_data.id)
+    assert retrieved.field_value == "Hypertension"
+    assert retrieved.source_snippets["source_text"] == "Patient has a history of Hypertension diagnosed in 2018."
+    assert retrieved.source_snippets["char_position"] == 24
+```
+
+2. Test the updated DocumentAnalyzer.extract_with_ai() method:
+```python
+@patch('documents.services.AIService.process_document')
+def test_extract_with_ai_includes_snippets(mock_ai_service):
+    # Mock AI response with snippets
+    mock_ai_service.return_value = json.dumps({
+        "diagnosis": {
+            "value": "Hypertension",
+            "source_text": "Patient has a history of Hypertension diagnosed in 2018.",
+            "char_position": 24,
+            "confidence": 0.95
+        }
+    })
+    
+    document = Document.objects.create(title="Test Doc", file_path="test.pdf")
+    analyzer = DocumentAnalyzer()
+    
+    # Call the method
+    result = analyzer.extract_with_ai(document, "test_prompt")
+    
+    # Verify result includes snippets
+    assert "diagnosis" in result
+    assert result["diagnosis"]["value"] == "Hypertension"
+    assert result["diagnosis"]["source_text"] == "Patient has a history of Hypertension diagnosed in 2018."
+    assert result["diagnosis"]["char_position"] == 24
+    assert result["diagnosis"]["confidence"] == 0.95
+```
+
+3. Test the updated document processing pipeline:
+```python
+@patch('documents.services.DocumentAnalyzer.extract_with_ai')
+def test_process_document_stores_snippets(mock_extract):
+    # Mock extraction result
+    mock_extract.return_value = {
+        "diagnosis": {
+            "value": "Hypertension",
+            "source_text": "Patient has a history of Hypertension diagnosed in 2018.",
+            "char_position": 24,
+            "confidence": 0.95
+        }
+    }
+    
+    document = Document.objects.create(title="Test Doc", file_path="test.pdf")
+    
+    # Process document
+    process_document(document.id)
+    
+    # Verify data was stored correctly
+    parsed_data = ParsedData.objects.get(document=document, field_name="diagnosis")
+    assert parsed_data.field_value == "Hypertension"
+    assert parsed_data.confidence_score == 0.95
+    assert parsed_data.source_snippets["source_text"] == "Patient has a history of Hypertension diagnosed in 2018."
+    assert parsed_data.source_snippets["char_position"] == 24
+```
+
+4. Test the updated API endpoints:
+```python
+def test_parsed_data_api_includes_snippets():
+    document = Document.objects.create(title="Test Doc", file_path="test.pdf")
+    ParsedData.objects.create(
+        document=document,
+        field_name="diagnosis",
+        field_value="Hypertension",
+        confidence_score=0.95,
+        source_snippets={
+            "source_text": "Patient has a history of Hypertension diagnosed in 2018.",
+            "char_position": 24
+        }
+    )
+    
+    # Make API request
+    client = APIClient()
+    response = client.get(f'/api/documents/{document.id}/parsed-data/')
+    
+    # Verify response includes snippets
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["field_name"] == "diagnosis"
+    assert data[0]["field_value"] == "Hypertension"
+    assert data[0]["source_snippets"]["source_text"] == "Patient has a history of Hypertension diagnosed in 2018."
+    assert data[0]["source_snippets"]["char_position"] == 24
+```
+
+5. Integration test with AI service:
+```python
+def test_end_to_end_extraction_with_snippets():
+    # Create test document with known content
+    document = create_test_document_with_content(
+        "Patient has a history of Hypertension diagnosed in 2018."
+    )
+    
+    # Process document (using real AI service in integration test)
+    process_document(document.id)
+    
+    # Verify extracted data includes snippets
+    parsed_data = ParsedData.objects.filter(document=document)
+    assert parsed_data.exists()
+    
+    # Check at least one field has proper snippet data
+    has_snippet = any(
+        pd.source_snippets and "source_text" in pd.source_snippets
+        for pd in parsed_data
+    )
+    assert has_snippet
+```
+
+6. Manual testing:
+   - Upload a test document through the UI
+   - Verify in the database that ParsedData records include source_snippets
+   - Check the document review interface to ensure it can access and display the snippets
+
+# Subtasks:
+## 1. Add source_snippets JSONField to ParsedData model [pending]
+### Dependencies: None
+### Description: Update the ParsedData model to include a JSONField for storing text snippets that provide context around extracted values. Create and apply the necessary database migration.
+### Details:
+1. Add the source_snippets JSONField to the ParsedData model with a default empty dictionary
+2. Add appropriate help_text to document the field's purpose
+3. Create a migration file using Django's makemigrations command
+4. Apply the migration using the migrate command
+5. Update any relevant model documentation
+
+## 2. Update MedicalExtractionPrompts to request context snippets [pending]
+### Dependencies: 30.1
+### Description: Modify all prompt templates in the MedicalExtractionPrompts class to explicitly request source context (200-300 characters) around extracted values.
+### Details:
+1. Update the GENERAL_EXTRACTION prompt template to request source context
+2. Modify the prompt to specify the exact JSON response format including source_text, char_position, and confidence fields
+3. Update all other specialized prompt templates (e.g., for specific document types) to follow the same pattern
+4. Ensure prompts clearly specify the 200-300 character context requirement
+5. Add examples in the prompts to guide the AI response format
+
+## 3. Modify DocumentAnalyzer.extract_with_ai() method [pending]
+### Dependencies: 30.2
+### Description: Update the extract_with_ai() method to handle the extraction of surrounding text context along with field values.
+### Details:
+1. Modify the AI prompt construction to include requests for source context
+2. Update the method to process and store the expanded AI response format
+3. Ensure the method handles both the value and its context in the returned data structure
+4. Add error handling for cases where context extraction fails
+5. Maintain backward compatibility with existing code that expects only values
+
+## 4. Update parse_ai_response method for snippet handling [pending]
+### Dependencies: 30.3
+### Description: Modify the parse_ai_response method to properly extract and structure the source text snippets from AI responses.
+### Details:
+1. Update the method to parse the expanded JSON response format
+2. Add handling for the source_text, char_position, and confidence fields
+3. Implement fallback logic for backward compatibility with older response formats
+4. Add validation for the extracted snippet data
+5. Implement error handling for malformed or unexpected response structures
+6. Return a consistent data structure regardless of input format
+
+## 5. Implement snippet extraction utility functions [pending]
+### Dependencies: 30.1
+### Description: Create utility functions to handle text snippet extraction, formatting, and validation to ensure consistent snippet handling throughout the application.
+### Details:
+1. Create a function to extract a snippet of specified length around a target value in text
+2. Implement a function to validate snippet data structure
+3. Create a utility to format snippets for display (e.g., highlighting the extracted value)
+4. Add a function to calculate character positions in document text
+5. Implement helpers for snippet length normalization
+6. Create documentation for the utility functions
+
+## 6. Update document processing pipeline for snippet storage [pending]
+### Dependencies: 30.1, 30.3, 30.4
+### Description: Modify the document processing pipeline to store the extracted snippet data in the ParsedData model.
+### Details:
+1. Update the process_document function to handle the expanded extracted_data format
+2. Modify the ParsedData creation/update logic to store snippet information
+3. Ensure proper JSON formatting of the source_snippets field
+4. Add error handling for missing snippet data
+5. Update any related background tasks or async processing code
+6. Maintain backward compatibility with existing document processing code
+
+## 7. Update API endpoints to include snippet data [pending]
+### Dependencies: 30.1, 30.6
+### Description: Modify API serializers and endpoints to include source snippet data in responses, enabling frontend access to the context information.
+### Details:
+1. Update the ParsedDataSerializer to include the source_snippets field
+2. Modify any relevant ViewSets or API views to handle snippet data
+3. Add filtering options for snippet data if needed
+4. Update API documentation to reflect the new response format
+5. Ensure backward compatibility for existing API consumers
+6. Add appropriate permissions for accessing snippet data
+
+## 8. Implement comprehensive tests for snippet functionality [pending]
+### Dependencies: 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7
+### Description: Create a comprehensive test suite for the snippet extraction and storage functionality to ensure reliability and correctness.
+### Details:
+1. Create unit tests for all modified models and methods
+2. Implement integration tests for the end-to-end snippet extraction process
+3. Add tests for edge cases and error handling
+4. Create tests for API endpoints returning snippet data
+5. Implement performance tests to measure impact of snippet storage
+6. Add regression tests to ensure backward compatibility
+7. Create documentation for the test suite
+

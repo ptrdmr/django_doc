@@ -10,6 +10,7 @@ from .diagnostic_report_service import DiagnosticReportService
 from .service_request_service import ServiceRequestService
 from .encounter_service import EncounterService
 from .fhir_processor import FHIRProcessor
+from .metrics_service import FHIRMetricsService
 
 __all__ = [
     'MedicationService',
@@ -17,4 +18,5 @@ __all__ = [
     'ServiceRequestService',
     'EncounterService',
     'FHIRProcessor',
+    'FHIRMetricsService',
 ]
