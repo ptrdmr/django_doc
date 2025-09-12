@@ -3132,35 +3132,47 @@ class ResponseParser:
     
     def _convert_json_to_fields(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Convert parsed JSON data to standardized field format.
+        Convert parsed JSON data to standardized field format with snippet support.
         
         Like organizing the parts after you take apart an engine - 
-        everything needs its proper place and label.
+        everything needs its proper place and label, plus the manual page reference.
         
         Args:
-            data: Parsed JSON data
+            data: Parsed JSON data (may include snippet data)
             
         Returns:
-            List of field dictionaries
+            List of field dictionaries with snippet support
         """
         fields = []
         
         for i, (key, value) in enumerate(data.items()):
-            # Handle nested value/confidence structure
-            if isinstance(value, dict) and 'value' in value and 'confidence' in value:
-                fields.append({
+            # Handle new snippet-enhanced structure with value, confidence, source_text, char_position
+            if isinstance(value, dict) and 'value' in value:
+                field_dict = {
                     "id": str(i + 1),
                     "label": key,
                     "value": value['value'],
-                    "confidence": float(value['confidence'])
-                })
-            # Handle simple key-value pairs
+                    "confidence": float(value.get('confidence', 0.9))
+                }
+                
+                # Add snippet data if available
+                if 'source_text' in value:
+                    field_dict["source_text"] = value['source_text']
+                
+                if 'char_position' in value:
+                    field_dict["char_position"] = value['char_position']
+                
+                fields.append(field_dict)
+                
+            # Handle simple key-value pairs (legacy format)
             else:
                 fields.append({
                     "id": str(i + 1),
                     "label": key,
                     "value": str(value) if value is not None else "",
-                    "confidence": 0.9  # Default confidence for simple values
+                    "confidence": 0.9,  # Default confidence for simple values
+                    "source_text": "",  # Empty snippet for legacy data
+                    "char_position": 0   # Default position for legacy data
                 })
         
         return fields

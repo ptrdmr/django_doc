@@ -231,14 +231,27 @@ def process_document_async(self, document_id: int):
                     if hasattr(document, 'ai_model_used'):
                         document.ai_model_used = ai_result.get('model_used', 'unknown')
                     
-                    # CRITICAL FIX: Create ParsedData record
+                    # CRITICAL FIX: Create ParsedData record with snippet support
                     try:
                         from .models import ParsedData
+                        
+                        # Extract snippet data from fields for the new source_snippets field
+                        fields_data = ai_result.get('fields', [])
+                        snippets_data = {}
+                        
+                        for field in fields_data:
+                            field_label = field.get('label', '')
+                            if field_label and ('source_text' in field or 'char_position' in field):
+                                snippets_data[field_label] = {
+                                    'source_text': field.get('source_text', ''),
+                                    'char_position': field.get('char_position', 0)
+                                }
                         
                         parsed_data = ParsedData.objects.create(
                             document=document,
                             patient=document.patient,
-                            extraction_json=ai_result.get('fields', []),
+                            extraction_json=fields_data,
+                            source_snippets=snippets_data,  # Store snippet data in new field
                             fhir_delta_json=fhir_resources if fhir_resources else {},
                             extraction_confidence=ai_result.get('confidence', 0.0),
                             ai_model_used=ai_result.get('model_used', 'unknown'),
