@@ -972,6 +972,169 @@ function addMissingField(fieldName, category, value, buttonElement) {
     }, 3000);
 }
 
-// Placeholder for additional snippet-based review JavaScript - will be implemented in subsequent subtasks
+// Inline Editing JavaScript (Subtask 31.14)
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle edit button clicks
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const card = this.closest('.field-review-card');
+            const valueDisplay = card.querySelector('.value-display');
+            const editor = card.querySelector('.inline-editor');
+            
+            // Show editor, hide display
+            valueDisplay.style.display = 'none';
+            editor.style.display = 'flex';
+            
+            // Focus the input field
+            const input = editor.querySelector('.edit-field-value');
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        });
+    });
+    
+    // Handle cancel edit button clicks
+    document.querySelectorAll('.cancel-edit').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const card = this.closest('.field-review-card');
+            const valueDisplay = card.querySelector('.value-display');
+            const editor = card.querySelector('.inline-editor');
+            const input = editor.querySelector('.edit-field-value');
+            
+            // Reset input to original value
+            const originalValue = valueDisplay.textContent.trim();
+            if (input) {
+                input.value = originalValue;
+            }
+            
+            // Hide editor, show display
+            editor.style.display = 'none';
+            valueDisplay.style.display = 'block';
+        });
+    });
+    
+    // Handle save edit button clicks
+    document.querySelectorAll('.save-edit').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const card = this.closest('.field-review-card');
+            const fieldId = card.dataset.fieldId;
+            const input = card.querySelector('.edit-field-value');
+            const newValue = input.value.trim();
+            
+            if (!newValue) {
+                alert('Value cannot be empty');
+                return;
+            }
+            
+            // Prepare form data for the endpoint
+            const formData = new FormData();
+            formData.append('value', newValue);
+            formData.append('document_id', '{{ document.id }}');
+            formData.append('field_name', card.querySelector('.field-name').textContent);
+            formData.append('confidence', card.querySelector('.confidence-indicator').dataset.confidence || '0.5');
+            formData.append('snippet', card.querySelector('.snippet-text')?.textContent || '');
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            // Make AJAX request to update field
+            fetch(`/documents/field/${fieldId}/update/`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                // Replace the entire card with updated HTML
+                card.outerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error updating field:', error);
+                alert('Error updating field. Please try again.');
+            });
+        });
+    });
+    
+    // Handle approve button clicks with HTMX-style functionality
+    document.querySelectorAll('.approve-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (this.classList.contains('approved')) {
+                return; // Already approved
+            }
+            
+            const card = this.closest('.field-review-card');
+            const fieldId = card.dataset.fieldId;
+            
+            // Prepare form data
+            const formData = new FormData();
+            formData.append('document_id', '{{ document.id }}');
+            formData.append('field_name', card.querySelector('.field-name').textContent);
+            formData.append('field_value', card.querySelector('.value-display').textContent.trim());
+            formData.append('confidence', card.querySelector('.confidence-indicator').dataset.confidence || '0.5');
+            formData.append('snippet', card.querySelector('.snippet-text')?.textContent || '');
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            // Make AJAX request to approve field
+            fetch(`/documents/field/${fieldId}/approve/`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                // Replace the entire card with updated HTML
+                card.outerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error approving field:', error);
+                alert('Error approving field. Please try again.');
+            });
+        });
+    });
+    
+    // Handle flag button clicks
+    document.querySelectorAll('.flag-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const card = this.closest('.field-review-card');
+            const fieldId = card.dataset.fieldId;
+            
+            const reason = prompt('Please provide a reason for flagging this field:');
+            if (!reason || !reason.trim()) {
+                return;
+            }
+            
+            // Prepare form data
+            const formData = new FormData();
+            formData.append('document_id', '{{ document.id }}');
+            formData.append('field_name', card.querySelector('.field-name').textContent);
+            formData.append('field_value', card.querySelector('.value-display').textContent.trim());
+            formData.append('confidence', card.querySelector('.confidence-indicator').dataset.confidence || '0.5');
+            formData.append('snippet', card.querySelector('.snippet-text')?.textContent || '');
+            formData.append('reason', reason.trim());
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            // Make AJAX request to flag field
+            fetch(`/documents/field/${fieldId}/flag/`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                // Replace the entire card with updated HTML
+                card.outerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error flagging field:', error);
+                alert('Error flagging field. Please try again.');
+            });
+        });
+    });
+});
 </script>
 {% endblock %}
