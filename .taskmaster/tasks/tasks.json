@@ -1717,7 +1717,7 @@
               "31.1"
             ],
             "details": "Create the main container structure for the document review page with sections for the header, progress indicator, review content, and action buttons. Remove any multi-column layouts and ensure the page follows a single-column flow.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Verify the basic structure renders correctly without styling and that all required sections are present."
           },
           {
@@ -1979,7 +1979,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-09-12T14:52:57.631Z",
+      "updated": "2025-09-12T14:55:59.563Z",
       "description": "Tasks for master context"
     }
   }
