@@ -5,11 +5,144 @@
 
 {% block extra_css %}
 <style>
-    /* Placeholder for snippet-based review styles - will be implemented in subsequent subtasks */
+    /* Document Review Container */
     .document-review-container {
         max-width: 900px;
         margin: 0 auto;
         padding: 20px;
+    }
+
+    /* Review Header Styles */
+    .review-header {
+        margin-bottom: 30px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        padding: 20px;
+    }
+
+    .review-header .flex {
+        align-items: center;
+    }
+
+    .review-header h2 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #1f2937;
+        margin: 0;
+    }
+
+    .review-header p {
+        color: #6b7280;
+        margin: 4px 0 0 0;
+        font-size: 0.875rem;
+    }
+
+    .review-header .w-10 {
+        flex-shrink: 0;
+    }
+
+    /* Progress Indicator Styles */
+    .progress-indicator {
+        margin-top: 20px;
+        background: #f9fafb;
+        border-radius: 6px;
+        padding: 12px;
+        border: 1px solid #e5e7eb;
+    }
+
+    .progress-bar {
+        height: 8px;
+        background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+        border-radius: 4px;
+        transition: width 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .progress-bar::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(255,255,255,0.2) 50%,
+            transparent 100%
+        );
+        animation: progress-shine 2s infinite;
+    }
+
+    @keyframes progress-shine {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+    }
+
+    .progress-bar-container {
+        background: #e5e7eb;
+        border-radius: 4px;
+        height: 8px;
+        overflow: hidden;
+        position: relative;
+        margin-bottom: 8px;
+    }
+
+    .progress-text {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #374151;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .progress-details {
+        font-size: 0.75rem;
+        color: #6b7280;
+    }
+
+    /* Status Badge Enhancements */
+    .status-badge {
+        font-weight: 500;
+        letter-spacing: 0.025em;
+    }
+
+    /* Icon Enhancements */
+    .review-header svg {
+        flex-shrink: 0;
+    }
+
+    /* Breadcrumb Enhancements */
+    .review-header nav {
+        margin-bottom: 16px;
+    }
+
+    .review-header nav a {
+        transition: color 0.2s ease;
+    }
+
+    .review-header nav a:hover {
+        color: #1d4ed8;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 640px) {
+        .review-header .flex {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .review-header h2 {
+            font-size: 1.25rem;
+        }
+        
+        .document-review-container {
+            padding: 12px;
+        }
     }
 </style>
 {% endblock %}
@@ -61,19 +194,19 @@
             
             <!-- Status Badge -->
             {% if document.status == 'review' %}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+            <span class="status-badge inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
                 Pending Review
             </span>
             {% elif document.status == 'completed' %}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+            <span class="status-badge inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
                 Approved
             </span>
             {% elif document.status == 'processing' %}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+            <span class="status-badge inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
                 Processing
             </span>
             {% else %}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+            <span class="status-badge inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
                 {{ document.get_status_display }}
             </span>
             {% endif %}
@@ -81,8 +214,30 @@
         
         <!-- Progress Indicator Section -->
         <div class="progress-indicator">
-            <div class="progress-bar" style="width: {{ review_progress }}%"></div>
-            <span class="progress-text">{{ review_progress }}% Reviewed</span>
+            <div class="progress-text">
+                <span>Review Progress</span>
+                <span class="progress-details">
+                    {% if review_stats %}
+                        {{ review_progress }}% Complete
+                    {% else %}
+                        Ready for Review
+                    {% endif %}
+                </span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" style="width: {{ review_progress }}%"></div>
+            </div>
+            {% if review_stats %}
+                <div class="mt-2 text-xs text-gray-600">
+                    {{ review_stats.approved_fields }} of {{ review_stats.total_fields }} fields reviewed
+                    {% if review_stats.total_categories > 0 %}
+                        • {{ review_stats.total_categories }} categories found
+                    {% endif %}
+                    {% if review_stats.pending_fields > 0 %}
+                        • {{ review_stats.pending_fields }} pending review
+                    {% endif %}
+                </div>
+            {% endif %}
         </div>
     </div>
     
