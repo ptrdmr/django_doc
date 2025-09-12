@@ -12,6 +12,9 @@ from django.http import JsonResponse, HttpResponse
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.template.loader import render_to_string
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from .models import Document, ParsedData
 from .forms import DocumentUploadForm
@@ -1171,3 +1174,272 @@ class MigrateFHIRDataView(LoginRequiredMixin, View):
             messages.error(request, f"Failed to migrate {error_count} documents.")
         
         return redirect('documents:migrate-fhir')
+
+
+# ============================================================================
+# FIELD-LEVEL REVIEW ENDPOINTS (Subtasks 31.9-31.13)
+# ============================================================================
+
+@require_POST
+def approve_field(request, field_id):
+    """
+    Approve a specific field in the document review interface.
+    
+    Args:
+        request: HTTP POST request
+        field_id: Unique identifier for the field to approve
+        
+    Returns:
+        HttpResponse: Updated field card HTML for HTMX
+    """
+    try:
+        # Get field data from request (since we're working with dynamic data)
+        document_id = request.POST.get('document_id')
+        if not document_id:
+            return HttpResponse('<div class="text-red-600">Document ID required</div>', status=400)
+        
+        document = get_object_or_404(Document, id=document_id)
+        
+        # Verify user has permission to approve this document
+        if not request.user.has_perm('documents.change_document'):
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        
+        # Create approved field data for template rendering
+        mock_item = {
+            'id': field_id,
+            'field_name': request.POST.get('field_name', 'Unknown Field'),
+            'field_value': request.POST.get('field_value', ''),
+            'confidence': float(request.POST.get('confidence', 0.5)),
+            'snippet': request.POST.get('snippet', ''),
+            'approved': True,  # This is the key change
+            'flagged': False
+        }
+        
+        # Render the updated field card
+        html = render_to_string('documents/partials/field_card.html', {
+            'item': mock_item
+        }, request=request)
+        
+        logger.info(f"Field {field_id} approved by user {request.user.id}")
+        
+        return HttpResponse(html)
+        
+    except Exception as e:
+        logger.error(f"Error approving field {field_id}: {e}")
+        return HttpResponse('<div class="text-red-600">Error approving field</div>', status=500)
+
+
+@require_POST  
+def update_field_value(request, field_id):
+    """
+    Update the value of a specific field in the document review interface.
+    
+    Args:
+        request: HTTP POST request with 'value' parameter
+        field_id: Unique identifier for the field to update
+        
+    Returns:
+        HttpResponse: Updated field card HTML for HTMX
+    """
+    try:
+        # Get the new value from the request
+        new_value = request.POST.get('value', '').strip()
+        
+        if not new_value:
+            return HttpResponse('<div class="text-red-600">Value cannot be empty</div>', status=400)
+        
+        # Get document ID for permission checking
+        document_id = request.POST.get('document_id')
+        if not document_id:
+            return HttpResponse('<div class="text-red-600">Document ID required</div>', status=400)
+            
+        document = get_object_or_404(Document, id=document_id)
+        
+        # Verify user has permission
+        if not request.user.has_perm('documents.change_document'):
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        
+        # Create updated field data for template rendering
+        mock_item = {
+            'id': field_id,
+            'field_name': request.POST.get('field_name', 'Unknown Field'),
+            'field_value': new_value,
+            'confidence': float(request.POST.get('confidence', 0.5)),
+            'snippet': request.POST.get('snippet', ''),
+            'approved': False,  # Reset approval when value changes
+            'flagged': False,
+            'edited': True  # Mark as edited
+        }
+        
+        # Render the updated field card
+        html = render_to_string('documents/partials/field_card.html', {
+            'item': mock_item
+        }, request=request)
+        
+        logger.info(f"Field {field_id} value updated by user {request.user.id}: {new_value}")
+        
+        return HttpResponse(html)
+        
+    except Exception as e:
+        logger.error(f"Error updating field {field_id}: {e}")
+        return HttpResponse('<div class="text-red-600">Error updating field</div>', status=500)
+
+
+@require_POST
+def flag_field(request, field_id):
+    """
+    Flag a specific field for additional review.
+    
+    Args:
+        request: HTTP POST request with optional 'reason' parameter
+        field_id: Unique identifier for the field to flag
+        
+    Returns:
+        HttpResponse: Updated field card HTML for HTMX
+    """
+    try:
+        # Get the flag reason from the request
+        flag_reason = request.POST.get('reason', 'Needs review').strip()
+        
+        # Get document ID for permission checking
+        document_id = request.POST.get('document_id')
+        if not document_id:
+            return HttpResponse('<div class="text-red-600">Document ID required</div>', status=400)
+            
+        document = get_object_or_404(Document, id=document_id)
+        
+        # Verify user has permission
+        if not request.user.has_perm('documents.change_document'):
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        
+        # Create flagged field data for template rendering
+        mock_item = {
+            'id': field_id,
+            'field_name': request.POST.get('field_name', 'Unknown Field'),
+            'field_value': request.POST.get('field_value', ''),
+            'confidence': float(request.POST.get('confidence', 0.5)),
+            'snippet': request.POST.get('snippet', ''),
+            'approved': False,  # Reset approval when flagged
+            'flagged': True,
+            'flag_reason': flag_reason
+        }
+        
+        # Render the updated field card
+        html = render_to_string('documents/partials/field_card.html', {
+            'item': mock_item
+        }, request=request)
+        
+        logger.info(f"Field {field_id} flagged by user {request.user.id}: {flag_reason}")
+        
+        return HttpResponse(html)
+        
+    except Exception as e:
+        logger.error(f"Error flagging field {field_id}: {e}")
+        return HttpResponse('<div class="text-red-600">Error flagging field</div>', status=500)
+
+
+@require_POST
+def complete_review(request, document_id):
+    """
+    Complete the review process for a document.
+    
+    Args:
+        request: HTTP POST request
+        document_id: ID of the document to complete review for
+        
+    Returns:
+        HttpResponse: Redirect to document list or error message
+    """
+    try:
+        document = get_object_or_404(Document, id=document_id)
+        
+        # Verify user has permission
+        if not request.user.has_perm('documents.change_document'):
+            messages.error(request, 'Permission denied')
+            return redirect('documents:review', document_id=document_id)
+        
+        # Check if document is in reviewable state
+        if document.status != 'review':
+            messages.error(request, 'This document is not available for review completion.')
+            return redirect('documents:detail', pk=document_id)
+        
+        # Update document status
+        document.status = 'completed'
+        
+        # Update parsed data
+        try:
+            parsed_data = document.parsed_data
+            parsed_data.is_approved = True
+            parsed_data.reviewed_by = request.user
+            parsed_data.reviewed_at = timezone.now()
+            parsed_data.save()
+        except ParsedData.DoesNotExist:
+            logger.warning(f"No parsed data found for document {document_id}")
+        
+        document.save()
+        
+        messages.success(request, f"Document '{document.filename}' review completed successfully.")
+        logger.info(f"Document {document_id} review completed by user {request.user.id}")
+        
+        return redirect('documents:list')
+        
+    except Exception as e:
+        logger.error(f"Error completing review for document {document_id}: {e}")
+        messages.error(request, 'An error occurred while completing the review.')
+        return redirect('documents:review', document_id=document_id)
+
+
+@require_POST
+def add_missing_field(request, document_id):
+    """
+    Add a missing field to the document review.
+    
+    Args:
+        request: HTTP POST request with 'field_name' and 'field_value' parameters
+        document_id: ID of the document to add the field to
+        
+    Returns:
+        HttpResponse: New field card HTML for HTMX
+    """
+    try:
+        # Get the document for permission checking
+        document = get_object_or_404(Document, id=document_id)
+        
+        # Verify user has permission
+        if not request.user.has_perm('documents.add_document'):
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        
+        # Get field information from request
+        field_name = request.POST.get('field_name', '').strip()
+        field_value = request.POST.get('field_value', '').strip()
+        
+        if not field_name:
+            return HttpResponse('<div class="text-red-600">Field name is required</div>', status=400)
+        
+        if not field_value:
+            return HttpResponse('<div class="text-red-600">Field value is required</div>', status=400)
+        
+        # Create new field data for template rendering
+        new_field = {
+            'id': f"manual_{field_name}_{timezone.now().timestamp()}",
+            'field_name': field_name,
+            'field_value': field_value,
+            'confidence': 0.5,  # Manual entries get default confidence
+            'snippet': f'Manually added by {request.user.get_full_name()}',
+            'approved': False,
+            'flagged': False,
+            'manual_entry': True
+        }
+        
+        # Render the new field card
+        html = render_to_string('documents/partials/field_card.html', {
+            'item': new_field
+        }, request=request)
+        
+        logger.info(f"Missing field '{field_name}' added to document {document_id} by user {request.user.id}")
+        
+        return HttpResponse(html)
+        
+    except Exception as e:
+        logger.error(f"Error adding missing field to document {document_id}: {e}")
+        return HttpResponse('<div class="text-red-600">Error adding field</div>', status=500)

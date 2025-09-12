@@ -1772,7 +1772,7 @@
               "31.7"
             ],
             "details": "Extract the field review card HTML into a separate partial template (field_card.html) that can be rendered independently for HTMX updates. This should contain all the elements of the field review card.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Verify the partial template renders correctly when included in the main template and when rendered independently."
           },
           {
@@ -1783,7 +1783,7 @@
               "31.8"
             ],
             "details": "Implement the approve_field view function that handles POST requests to approve a field. This should update the field's approval status and return the updated field card HTML.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test approving fields with different initial states and verify the database is updated correctly and the correct HTML is returned."
           },
           {
@@ -1794,7 +1794,7 @@
               "31.8"
             ],
             "details": "Implement the update_field_value view function that handles POST requests to update a field's value. This should save the new value and return the updated field card HTML.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test updating fields with different values and verify the database is updated correctly and the correct HTML is returned."
           },
           {
@@ -1805,7 +1805,7 @@
               "31.8"
             ],
             "details": "Implement the flag_field view function that handles POST requests to flag a field for review. This should update the field's flagged status and return the updated field card HTML.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test flagging fields with different initial states and verify the database is updated correctly and the correct HTML is returned."
           },
           {
@@ -1818,7 +1818,7 @@
               "31.11"
             ],
             "details": "Implement the complete_review view function that handles POST requests to complete the document review. This should check if all fields are reviewed, update the document status, and redirect to the document list.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test completing reviews with fully reviewed and partially reviewed documents to ensure proper validation and status updates."
           },
           {
@@ -1829,7 +1829,7 @@
               "31.5"
             ],
             "details": "Implement the add_missing_field view function that handles POST requests to add a missing field. This should create a new ParsedData object and return the HTML for the new field card.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test adding missing fields with different field names and verify the database is updated correctly and the correct HTML is returned."
           },
           {
@@ -1979,7 +1979,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-09-12T15:44:57.759Z",
+      "updated": "2025-09-12T15:48:17.993Z",
       "description": "Tasks for master context"
     }
   }
