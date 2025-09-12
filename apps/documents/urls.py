@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/processing-status/', views.ProcessingStatusAPIView.as_view(), name='api-processing-status'),
     path('api/recent-uploads/', views.RecentUploadsAPIView.as_view(), name='api-recent-uploads'),
     path('api/<int:pk>/preview/', views.DocumentPreviewAPIView.as_view(), name='api-document-preview'),
+    path('api/<int:document_id>/parsed-data/', views.ParsedDataAPIView.as_view(), name='api-parsed-data'),
     
     # Admin tools
     path('migrate-fhir/', views.MigrateFHIRDataView.as_view(), name='migrate-fhir'),

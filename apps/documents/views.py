@@ -13,7 +13,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.template.loader import render_to_string
 
-from .models import Document
+from .models import Document, ParsedData
 from .forms import DocumentUploadForm
 from apps.patients.models import Patient
 from apps.providers.models import Provider
@@ -524,6 +524,82 @@ class RecentUploadsAPIView(LoginRequiredMixin, View):
             return HttpResponse(
                 '<div class="text-center py-4 text-red-600">Error loading uploads</div>'
             )
+
+
+@method_decorator(has_permission('documents.view_document'), name='dispatch')
+class ParsedDataAPIView(LoginRequiredMixin, View):
+    """
+    API endpoint for getting parsed data with snippet context.
+    """
+    
+    def get(self, request, document_id):
+        """
+        Get parsed data with snippet context for a document.
+        
+        Returns:
+            JsonResponse: Parsed data with snippet information
+        """
+        try:
+            document = get_object_or_404(Document, id=document_id)
+            
+            # Check permissions - user must have access to this document
+            if not request.user.has_perm('documents.view_document'):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Permission denied'
+                }, status=403)
+            
+            # Get parsed data with snippet information
+            try:
+                parsed_data = document.parsed_data
+                
+                # Format response with snippet data
+                response_data = {
+                    'id': parsed_data.id,
+                    'document_id': document.id,
+                    'extraction_json': parsed_data.extraction_json,
+                    'source_snippets': parsed_data.source_snippets,
+                    'fhir_delta_json': parsed_data.fhir_delta_json,
+                    'extraction_confidence': parsed_data.extraction_confidence,
+                    'ai_model_used': parsed_data.ai_model_used,
+                    'processing_time_seconds': parsed_data.processing_time_seconds,
+                    'is_approved': parsed_data.is_approved,
+                    'is_merged': parsed_data.is_merged,
+                    'reviewed_at': parsed_data.reviewed_at.isoformat() if parsed_data.reviewed_at else None,
+                    'merged_at': parsed_data.merged_at.isoformat() if parsed_data.merged_at else None
+                }
+                
+                return JsonResponse({
+                    'success': True,
+                    'data': response_data,
+                    'snippet_stats': self._get_snippet_stats(parsed_data.source_snippets)
+                })
+                
+            except ParsedData.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No parsed data available for this document'
+                }, status=404)
+                
+        except Exception as api_error:
+            logger.error(f"Error getting parsed data for document {document_id}: {api_error}")
+            return JsonResponse({
+                'success': False,
+                'error': 'Unable to fetch parsed data'
+            }, status=500)
+    
+    def _get_snippet_stats(self, snippets_data: dict) -> dict:
+        """
+        Generate statistics about snippet data quality.
+        
+        Args:
+            snippets_data: Source snippets data
+            
+        Returns:
+            Statistics dictionary
+        """
+        from .snippet_utils import SnippetHelper
+        return SnippetHelper.get_snippet_stats(snippets_data)
 
 
 @method_decorator(has_permission('documents.view_document'), name='dispatch')
