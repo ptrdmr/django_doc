@@ -247,22 +247,29 @@ def process_document_async(self, document_id: int):
                                     'char_position': field.get('char_position', 0)
                                 }
                         
-                        parsed_data = ParsedData.objects.create(
+                        parsed_data, created = ParsedData.objects.update_or_create(
                             document=document,
-                            patient=document.patient,
-                            extraction_json=fields_data,
-                            source_snippets=snippets_data,  # Store snippet data in new field
-                            fhir_delta_json=fhir_resources if fhir_resources else {},
-                            extraction_confidence=ai_result.get('confidence', 0.0),
-                            ai_model_used=ai_result.get('model_used', 'unknown'),
-                            processing_time_seconds=ai_result.get('processing_time', 0.0),  # Model has processing_time_seconds, not processing_duration_ms
-                            capture_metrics=ai_result.get('capture_metrics', {})
+                            defaults={
+                                'patient': document.patient,
+                                'extraction_json': fields_data,
+                                'source_snippets': snippets_data,  # Store snippet data in new field
+                                'fhir_delta_json': fhir_resources if fhir_resources else {},
+                                'extraction_confidence': ai_result.get('confidence', 0.0),
+                                'ai_model_used': ai_result.get('model_used', 'unknown'),
+                                'processing_time_seconds': ai_result.get('processing_time', 0.0),
+                                'capture_metrics': ai_result.get('capture_metrics', {}),
+                                'is_approved': False,  # Reset approval status for reprocessed documents
+                                'is_merged': False,    # Reset merge status for reprocessed documents
+                                'reviewed_at': None,   # Clear review timestamp for reprocessed documents
+                                'reviewed_by': None,   # Clear reviewer for reprocessed documents
+                            }
                         )
                         
-                        logger.info(f"Created ParsedData record {parsed_data.id} for document {document_id}")
+                        action = "Created" if created else "Updated"
+                        logger.info(f"{action} ParsedData record {parsed_data.id} for document {document_id}")
                         
                     except Exception as pd_exc:
-                        logger.error(f"Failed to create ParsedData for document {document_id}: {pd_exc}")
+                        logger.error(f"Failed to save ParsedData for document {document_id}: {pd_exc}")
                         # Don't fail the task, but log the error
                     
                 else:
