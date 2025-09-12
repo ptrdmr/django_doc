@@ -1629,7 +1629,7 @@
               "30.1"
             ],
             "details": "1. Create a function to extract a snippet of specified length around a target value in text\n2. Implement a function to validate snippet data structure\n3. Create a utility to format snippets for display (e.g., highlighting the extracted value)\n4. Add a function to calculate character positions in document text\n5. Implement helpers for snippet length normalization\n6. Create documentation for the utility functions",
-            "status": "in-progress",
+            "status": "done",
             "testStrategy": "1. Test snippet extraction with various text inputs and target values\n2. Verify correct character counting and positioning\n3. Test edge cases (value at beginning/end of text, multi-line values)\n4. Test with Unicode and special characters\n5. Verify snippet length normalization works correctly"
           },
           {
@@ -1642,7 +1642,7 @@
               "30.4"
             ],
             "details": "1. Update the process_document function to handle the expanded extracted_data format\n2. Modify the ParsedData creation/update logic to store snippet information\n3. Ensure proper JSON formatting of the source_snippets field\n4. Add error handling for missing snippet data\n5. Update any related background tasks or async processing code\n6. Maintain backward compatibility with existing document processing code",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "1. Test end-to-end document processing with snippet extraction\n2. Verify snippets are correctly stored in the database\n3. Test with various document types and formats\n4. Verify error handling with malformed or missing snippet data\n5. Test performance impact of storing additional snippet data"
           },
           {
@@ -1654,7 +1654,7 @@
               "30.6"
             ],
             "details": "1. Update the ParsedDataSerializer to include the source_snippets field\n2. Modify any relevant ViewSets or API views to handle snippet data\n3. Add filtering options for snippet data if needed\n4. Update API documentation to reflect the new response format\n5. Ensure backward compatibility for existing API consumers\n6. Add appropriate permissions for accessing snippet data",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "1. Test API endpoints return the correct snippet data\n2. Verify serialization/deserialization of snippet JSON\n3. Test API performance with the additional data\n4. Verify permissions and access controls work correctly\n5. Test backward compatibility with existing API clients"
           },
           {
@@ -1887,7 +1887,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-09-12T03:07:19.340Z",
+      "updated": "2025-09-12T03:13:33.109Z",
       "description": "Tasks for master context"
     }
   }
