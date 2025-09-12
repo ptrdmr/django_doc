@@ -114,8 +114,8 @@ if db_engine == 'postgresql':
 # ============================================================================
 # AI PROCESSING CONFIGURATION (Development Overrides)
 # ============================================================================
-# Use smaller models for faster, cheaper development cycles
-AI_MODEL_PRIMARY = 'claude-3-haiku-20240307'
+# Use Claude Sonnet 4 for robust medical document processing
+AI_MODEL_PRIMARY = 'claude-sonnet-4-20250514'
 AI_MODEL_FALLBACK = 'gpt-4o-mini'
 AI_MAX_TOKENS = 4096
 AI_CHUNK_THRESHOLD = 1000000 # NUCLEAR: 1M tokens to force no chunking
