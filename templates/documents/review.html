@@ -128,6 +128,93 @@
         color: #1d4ed8;
     }
 
+    /* Missing Data Alert Styles */
+    .missing-data-alert {
+        background: linear-gradient(135deg, #fef3e2 0%, #fde68a 100%);
+        border: 1px solid #f59e0b;
+        border-left: 4px solid #f59e0b;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 24px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .missing-data-alert h3 {
+        color: #92400e;
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0 0 8px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .missing-data-alert p {
+        color: #a16207;
+        font-size: 0.875rem;
+        margin: 0 0 12px 0;
+    }
+
+    .missing-fields-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 12px;
+        margin-top: 12px;
+    }
+
+    .missing-field-item {
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid #fbbf24;
+        border-radius: 6px;
+        padding: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.2s ease;
+    }
+
+    .missing-field-item:hover {
+        background: rgba(255, 255, 255, 0.95);
+        border-color: #f59e0b;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .missing-field-item span {
+        font-weight: 500;
+        color: #92400e;
+        font-size: 0.875rem;
+    }
+
+    .add-missing-field {
+        background: #f59e0b;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 6px 12px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+
+    .add-missing-field:hover {
+        background: #d97706;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .add-missing-field:active {
+        transform: translateY(0);
+    }
+
+    .missing-data-icon {
+        color: #f59e0b;
+        flex-shrink: 0;
+    }
+
     /* Responsive Design */
     @media (max-width: 640px) {
         .review-header .flex {
@@ -142,6 +229,16 @@
         
         .document-review-container {
             padding: 12px;
+        }
+
+        .missing-fields-list {
+            grid-template-columns: 1fr;
+        }
+
+        .missing-field-item {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
         }
     }
 </style>
@@ -244,15 +341,41 @@
     <!-- Missing Data Alert Section -->
     {% if missing_fields %}
     <div class="missing-data-alert">
-        <h3>Missing Data Alert</h3>
-        <p>The following fields may be missing from this document:</p>
+        <h3>
+            <svg class="missing-data-icon w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+            </svg>
+            Missing Data Alert
+        </h3>
+        <p>The following important medical fields may be missing from this document and could be added for completeness:</p>
         <div class="missing-fields-list">
             {% for field in missing_fields %}
                 <div class="missing-field-item">
-                    <span>{{ field.name }}</span>
-                    <button class="add-missing-field" data-field="{{ field.name }}">Add</button>
+                    <div>
+                        <span>{{ field.name }}</span>
+                        <div class="text-xs text-amber-700 mt-1">{{ field.category }}</div>
+                    </div>
+                    <button class="add-missing-field" data-field="{{ field.name }}" data-category="{{ field.category }}">
+                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        Add
+                    </button>
                 </div>
             {% endfor %}
+        </div>
+        
+        <!-- Alert Actions -->
+        <div class="mt-4 flex items-center justify-between text-xs">
+            <span class="text-amber-700">
+                <svg class="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                </svg>
+                These suggestions are based on common medical document requirements
+            </span>
+            <button type="button" class="text-amber-600 hover:text-amber-800 font-medium" onclick="dismissMissingAlert()">
+                Dismiss Alert
+            </button>
         </div>
     </div>
     {% endif %}
@@ -395,6 +518,123 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Placeholder for snippet-based review JavaScript - will be implemented in subsequent subtasks
+// Missing Data Alert JavaScript
+function dismissMissingAlert() {
+    const alert = document.querySelector('.missing-data-alert');
+    if (alert) {
+        alert.style.opacity = '0';
+        alert.style.transform = 'translateY(-10px)';
+        setTimeout(() => {
+            alert.style.display = 'none';
+        }, 300);
+    }
+}
+
+// Add Missing Field Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle add missing field buttons
+    document.querySelectorAll('.add-missing-field').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const fieldName = this.dataset.field;
+            const fieldCategory = this.dataset.category;
+            
+            // Show input modal for the missing field
+            const value = prompt(`Enter value for ${fieldName}:`);
+            if (value && value.trim()) {
+                addMissingField(fieldName, fieldCategory, value.trim(), this);
+            }
+        });
+    });
+});
+
+function addMissingField(fieldName, category, value, buttonElement) {
+    // Create temporary field data
+    const tempFieldData = {
+        field_name: fieldName,
+        field_value: value,
+        confidence: 0.5, // Manual entry gets default confidence
+        snippet: `Manually added by reviewer`,
+        approved: false,
+        id: `manual_${fieldName}_${Date.now()}`
+    };
+    
+    // Find or create the category section
+    let categorySection = document.querySelector(`[data-category="${category}"]`);
+    
+    if (!categorySection) {
+        // Create new category section in review content
+        const reviewContent = document.querySelector('.review-content');
+        const categoryDiv = document.createElement('div');
+        categoryDiv.className = 'category-section';
+        categoryDiv.setAttribute('data-category', category);
+        categoryDiv.innerHTML = `
+            <h3>${category}</h3>
+            <div class="field-review-card" data-field-id="${tempFieldData.id}">
+                <div class="field-placeholder">
+                    <strong>${tempFieldData.field_name}:</strong> ${tempFieldData.field_value}
+                    <br><small>Confidence: ${tempFieldData.confidence}</small>
+                    <br><small>Context: ${tempFieldData.snippet}</small>
+                    <span class="manual-entry-badge" style="display: inline-block; background: #059669; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; margin-left: 8px;">MANUAL</span>
+                </div>
+            </div>
+        `;
+        
+        // Insert before the existing content or at the beginning
+        const firstCategory = reviewContent.querySelector('.category-section');
+        if (firstCategory) {
+            reviewContent.insertBefore(categoryDiv, firstCategory);
+        } else {
+            // Replace no-data message if it exists
+            const noDataMessage = reviewContent.querySelector('.no-data-message, .extraction-failed-message');
+            if (noDataMessage) {
+                noDataMessage.style.display = 'none';
+            }
+            reviewContent.appendChild(categoryDiv);
+        }
+    } else {
+        // Add to existing category
+        const fieldCard = document.createElement('div');
+        fieldCard.className = 'field-review-card';
+        fieldCard.setAttribute('data-field-id', tempFieldData.id);
+        fieldCard.innerHTML = `
+            <div class="field-placeholder">
+                <strong>${tempFieldData.field_name}:</strong> ${tempFieldData.field_value}
+                <br><small>Confidence: ${tempFieldData.confidence}</small>
+                <br><small>Context: ${tempFieldData.snippet}</small>
+                <span class="manual-entry-badge" style="display: inline-block; background: #059669; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; margin-left: 8px;">MANUAL</span>
+            </div>
+        `;
+        categorySection.appendChild(fieldCard);
+    }
+    
+    // Remove the field from missing list
+    const missingItem = buttonElement.closest('.missing-field-item');
+    if (missingItem) {
+        missingItem.style.opacity = '0';
+        missingItem.style.transform = 'translateX(10px)';
+        setTimeout(() => {
+            missingItem.remove();
+            
+            // Hide entire alert if no more missing fields
+            const remainingFields = document.querySelectorAll('.missing-field-item');
+            if (remainingFields.length === 0) {
+                dismissMissingAlert();
+            }
+        }, 300);
+    }
+    
+    // Show success message
+    const successMsg = document.createElement('div');
+    successMsg.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+    successMsg.textContent = `Added ${fieldName} to ${category}`;
+    document.body.appendChild(successMsg);
+    
+    setTimeout(() => {
+        successMsg.style.opacity = '0';
+        setTimeout(() => successMsg.remove(), 300);
+    }, 3000);
+}
+
+// Placeholder for additional snippet-based review JavaScript - will be implemented in subsequent subtasks
 </script>
 {% endblock %}
