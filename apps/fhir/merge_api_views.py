@@ -22,7 +22,7 @@ from datetime import timedelta
 
 from .models import FHIRMergeConfiguration, FHIRMergeConfigurationAudit, FHIRMergeOperation
 from .configuration import MergeConfigurationService
-from .services import FHIRMergeService
+import apps.fhir.services as fhir_services
 from apps.patients.models import Patient
 from apps.documents.models import Document
 
@@ -438,7 +438,7 @@ def _execute_merge_operation_sync(operation, document_ids=None):
         operation.mark_started()
         
         # Initialize merge service
-        merge_service = FHIRMergeService(
+        merge_service = fhir_services.FHIRMergeService(
             patient=operation.patient,
             config_profile=operation.configuration.name
         )

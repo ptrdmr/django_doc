@@ -1,0 +1,187 @@
+# Task ID: 32
+# Title: Remove PDF Highlighting Components and Clean Up
+# Status: pending
+# Dependencies: 31, 30
+# Priority: medium
+# Description: Remove the old PDF highlighting components and clean up unused code after the new snippet-based review system is fully implemented and tested.
+# Details:
+Implement a comprehensive cleanup of the old PDF highlighting components:
+
+1. Remove PDF.js highlighting functionality from document-viewer.js:
+   - Identify and remove all highlighting-related functions and event listeners
+   - Remove code that handles highlight creation, modification, and deletion
+   - Remove any PDF.js-specific highlighting extensions or plugins
+
+2. Clean up unused JavaScript for PDF highlighting interactions:
+   - Remove JavaScript functions for highlight selection and manipulation
+   - Remove event handlers for highlight interaction (click, hover, etc.)
+   - Remove any utility functions only used for PDF highlighting
+   - Update any remaining JavaScript that might reference the removed components
+
+3. Remove PDF-specific CSS classes and styles:
+   - Delete CSS classes for highlight colors, borders, and effects
+   - Remove styles for highlight selection indicators
+   - Remove any animation or transition effects for highlights
+   - Update the main stylesheet to remove unused selectors
+
+4. Update template comments and remove old references:
+   - Remove commented code related to PDF highlighting
+   - Update documentation comments to reflect the new snippet-based approach
+   - Remove any template variables only used for PDF highlighting
+   - Update any remaining template logic that might reference highlights
+
+5. Clean up unused imports and dependencies:
+   - Remove any JavaScript libraries only used for PDF highlighting
+   - Update package.json to remove unused dependencies
+   - Remove any Python imports related to PDF highlighting
+   - Update requirements.txt if any Python packages are no longer needed
+
+6. Update documentation:
+   - Update developer documentation to reflect the new snippet-based approach
+   - Remove any outdated documentation about PDF highlighting
+   - Add notes about the architectural change for future reference
+   - Update user documentation to reflect the new review interface
+
+7. Verify all functionality works without removed components:
+   - Ensure document viewing still works correctly
+   - Verify that the new snippet-based review system functions properly
+   - Check that no JavaScript errors occur due to missing components
+   - Validate that the UI remains consistent and functional
+
+# Test Strategy:
+To verify the successful removal of PDF highlighting components:
+
+1. Code Review:
+   - Perform a thorough code review to ensure all PDF highlighting components are removed
+   - Use grep or similar tools to search for any remaining references to PDF highlighting
+   - Verify that no dead code or unused functions remain
+   - Check that all imports and dependencies are properly updated
+
+2. Static Analysis:
+   - Run JavaScript linters to identify any unused variables or functions
+   - Use CSS analyzers to find unused styles
+   - Check for broken references or undefined variables
+   - Verify bundle size has decreased appropriately
+
+3. Functional Testing:
+   - Test document viewing functionality to ensure it works without the highlighting components
+   - Verify that the snippet-based review system functions correctly
+   - Test all document interaction features to ensure they weren't affected
+   - Verify that document navigation and zooming still work properly
+
+4. Regression Testing:
+   - Run the existing test suite to ensure no regressions were introduced
+   - Test all user workflows that previously involved document highlighting
+   - Verify that document upload and processing still work correctly
+   - Test integration with other system components
+
+5. Performance Testing:
+   - Measure page load times before and after the cleanup
+   - Compare memory usage with the old and new implementations
+   - Verify that document rendering performance has improved or remained the same
+   - Test with large documents to ensure performance at scale
+
+6. Browser Compatibility:
+   - Test in all supported browsers to ensure consistent behavior
+   - Verify that no browser-specific issues were introduced
+   - Check mobile responsiveness if applicable
+
+7. Documentation Verification:
+   - Verify all documentation has been updated to reflect the new approach
+   - Ensure no references to PDF highlighting remain in user documentation
+
+# Subtasks:
+## 1. Remove PDF.js highlighting functionality from document-viewer.js [pending]
+### Dependencies: None
+### Description: Identify and remove all highlighting-related functions, event listeners, and code that handles highlight creation, modification, and deletion from document-viewer.js. This includes removing any PDF.js-specific highlighting extensions or plugins.
+### Details:
+1. Create a backup of document-viewer.js before making changes
+2. Identify all functions related to highlighting (search for keywords like 'highlight', 'annotation', 'select')
+3. Remove the following components:
+   - Highlight creation functions
+   - Highlight modification functions
+   - Highlight deletion functions
+   - Event listeners for highlight interactions
+   - Any PDF.js plugins or extensions specifically for highlighting
+4. Update any function calls or references that might break due to removed code
+5. Test document viewing functionality after removal to ensure it still works
+
+## 2. Clean up unused JavaScript for PDF highlighting interactions [pending]
+### Dependencies: 32.1
+### Description: Remove all JavaScript functions, event handlers, and utility functions specifically used for PDF highlight selection, manipulation, and interaction throughout the codebase.
+### Details:
+1. Identify all JavaScript files that contain highlight-related code (beyond document-viewer.js)
+2. Remove the following from identified files:
+   - Functions for highlight selection
+   - Functions for highlight manipulation
+   - Event handlers for highlight interaction (click, hover, etc.)
+   - Utility functions only used for PDF highlighting
+3. Update any remaining JavaScript that references removed components
+4. Check for and remove any highlight-related code in:
+   - UI interaction handlers
+   - AJAX calls related to saving/loading highlights
+   - Any state management related to highlights
+
+## 3. Remove PDF-specific CSS classes and styles [pending]
+### Dependencies: 32.1, 32.2
+### Description: Delete all CSS classes, styles, animations, and transitions related to PDF highlighting from stylesheets. Update the main stylesheet to remove unused selectors.
+### Details:
+1. Identify all CSS/SCSS files containing highlight-related styles
+2. Remove the following style elements:
+   - CSS classes for highlight colors, borders, and effects
+   - Styles for highlight selection indicators
+   - Animation or transition effects for highlights
+   - Any PDF-specific highlight containers or wrappers
+3. Update the main stylesheet to remove unused selectors
+4. Check for inline styles in HTML templates that might reference highlights
+5. Ensure the UI remains consistent after style removal
+6. Verify that the new snippet-based review system's styles are not affected
+
+## 4. Clean up unused imports and dependencies [pending]
+### Dependencies: 32.2, 32.3
+### Description: Remove any JavaScript libraries, Python imports, and package dependencies that were only used for PDF highlighting. Update package.json and requirements.txt accordingly.
+### Details:
+1. Identify JavaScript libraries only used for PDF highlighting
+2. Update package.json to remove unused dependencies
+3. Run npm prune to remove unused packages
+4. Identify Python imports related to PDF highlighting
+5. Remove unused Python imports from all relevant files
+6. Update requirements.txt if any Python packages are no longer needed
+7. Check for any build configurations or webpack settings that might reference removed packages
+8. Update any import statements in JavaScript files that reference removed libraries
+
+## 5. Update template comments and documentation [pending]
+### Dependencies: 32.3, 32.4
+### Description: Remove commented code related to PDF highlighting, update documentation comments to reflect the new snippet-based approach, and update both developer and user documentation.
+### Details:
+1. Remove commented code related to PDF highlighting in all files
+2. Update documentation comments to reflect the new snippet-based approach
+3. Remove any template variables only used for PDF highlighting
+4. Update any remaining template logic that might reference highlights
+5. Update developer documentation:
+   - Remove outdated information about PDF highlighting
+   - Add notes about the architectural change to snippet-based reviews
+   - Update any API documentation that referenced highlighting
+6. Update user documentation:
+   - Update user guides to reflect the new review interface
+   - Remove any screenshots or instructions for the old highlighting system
+   - Add new instructions for the snippet-based review system
+
+## 6. Perform final integration testing and verification [pending]
+### Dependencies: 32.1, 32.2, 32.3, 32.4, 32.5
+### Description: Conduct comprehensive testing to ensure all functionality works correctly without the removed components, verify no regressions, and validate that the UI remains consistent and functional.
+### Details:
+1. Create a test plan covering all document viewing and review functionality
+2. Test document viewing to ensure it works correctly without highlighting:
+   - Test loading different document types
+   - Test document navigation
+   - Test zoom and page controls
+3. Verify that the new snippet-based review system functions properly:
+   - Test snippet selection
+   - Test snippet annotation
+   - Test saving and loading reviews
+4. Check for JavaScript errors in the browser console
+5. Validate that the UI remains consistent and functional
+6. Test performance to ensure removal of highlighting code doesn't negatively impact performance
+7. Verify that all user workflows still function as expected
+
