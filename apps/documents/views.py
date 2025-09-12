@@ -664,10 +664,10 @@ class DocumentPreviewAPIView(LoginRequiredMixin, View):
 @method_decorator(has_permission('documents.view_document'), name='dispatch')
 class DocumentReviewView(LoginRequiredMixin, DetailView):
     """
-    Document review interface for reviewing extracted data before merging.
+    Snippet-based document review interface for reviewing extracted data.
     
-    This view displays the document preview alongside extracted data forms
-    for user review and approval.
+    This view displays extracted data organized by category with source context
+    snippets for efficient field-by-field review and approval.
     """
     model = Document
     template_name = 'documents/review.html'
@@ -678,7 +678,7 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
         Filter documents to only those the user has access to.
         
         Returns:
-            QuerySet: Filtered documents
+            QuerySet: Filtered documents with optimized queries
         """
         return Document.objects.filter(
             created_by=self.request.user
@@ -686,26 +686,188 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
     
     def get_context_data(self, **kwargs):
         """
-        Add additional context for the review template.
+        Add organized snippet-based context for the review template.
         
         Returns:
-            dict: Enhanced context data
+            dict: Enhanced context data with categorized fields
         """
+        from collections import defaultdict
+        
         context = super().get_context_data(**kwargs)
+        
+        # Initialize empty context
+        context.update({
+            'categorized_data': {},
+            'review_progress': 0,
+            'missing_fields': [],
+            'parsed_data': None
+        })
         
         # Add parsed data for review if available
         try:
             parsed_data = self.object.parsed_data
             context['parsed_data'] = parsed_data
-            context['fhir_data'] = parsed_data.fhir_delta_json
-            context['extracted_fields'] = parsed_data.extraction_json
-        except Exception:
-            # No parsed data available yet
+            
+            if parsed_data and parsed_data.extraction_json:
+                # Group data by category for organized display
+                categorized_data = defaultdict(list)
+                extraction_data = parsed_data.extraction_json
+                source_snippets = parsed_data.source_snippets or {}
+                
+                # Handle different extraction_json formats
+                if isinstance(extraction_data, dict):
+                    # Convert dict format to list of fields
+                    field_list = []
+                    for key, value in extraction_data.items():
+                        if isinstance(value, dict) and 'value' in value:
+                            # Structured format with metadata
+                            field_list.append({
+                                'field_name': key,
+                                'field_value': value.get('value', ''),
+                                'confidence': value.get('confidence', 0.5),
+                                'category': value.get('category', self._categorize_field(key)),
+                                'fhir_path': value.get('fhir_path', ''),
+                            })
+                        else:
+                            # Simple key-value format
+                            field_list.append({
+                                'field_name': key,
+                                'field_value': str(value) if value is not None else '',
+                                'confidence': 0.5,  # Default confidence
+                                'category': self._categorize_field(key),
+                                'fhir_path': '',
+                            })
+                elif isinstance(extraction_data, list):
+                    # Already in list format
+                    field_list = extraction_data
+                else:
+                    field_list = []
+                
+                # Process each field and organize by category
+                total_fields = len(field_list)
+                approved_fields = 0
+                
+                for field_data in field_list:
+                    field_name = field_data.get('field_name', 'Unknown Field')
+                    category = field_data.get('category', 'Other')
+                    
+                    # Get snippet for this field
+                    snippet_text = source_snippets.get(field_name, '')
+                    if not snippet_text and source_snippets:
+                        # Try to find snippet by partial match
+                        for snippet_key, snippet_value in source_snippets.items():
+                            if field_name.lower() in snippet_key.lower() or snippet_key.lower() in field_name.lower():
+                                snippet_text = snippet_value
+                                break
+                    
+                    # Check if field is approved (for now, assume not approved)
+                    is_approved = False  # TODO: Implement field-level approval tracking
+                    if is_approved:
+                        approved_fields += 1
+                    
+                    categorized_data[category].append({
+                        'field_name': field_name,
+                        'field_value': field_data.get('field_value', ''),
+                        'confidence': field_data.get('confidence', 0.5),
+                        'snippet': snippet_text,
+                        'approved': is_approved,
+                        'fhir_path': field_data.get('fhir_path', ''),
+                        'id': f"{field_name}_{hash(str(field_data))}"  # Generate unique ID
+                    })
+                
+                context['categorized_data'] = dict(categorized_data)
+                context['review_progress'] = round((approved_fields / total_fields * 100) if total_fields > 0 else 0)
+                
+                # Identify potentially missing fields
+                context['missing_fields'] = self._identify_missing_fields(categorized_data)
+            
+        except Exception as e:
+            logger.error(f"Error building review context for document {self.object.id}: {e}")
+            # No parsed data available or error occurred
             context['parsed_data'] = None
-            context['fhir_data'] = {}
-            context['extracted_fields'] = []
         
         return context
+    
+    def _categorize_field(self, field_name):
+        """
+        Categorize a field based on its name.
+        
+        Args:
+            field_name: Name of the field to categorize
+            
+        Returns:
+            str: Category name
+        """
+        field_lower = field_name.lower()
+        
+        # Demographics
+        if any(term in field_lower for term in ['name', 'age', 'birth', 'dob', 'gender', 'sex', 'address', 'phone', 'mrn']):
+            return 'Demographics'
+        
+        # Medical History
+        elif any(term in field_lower for term in ['diagnosis', 'condition', 'history', 'medical', 'procedure', 'surgery']):
+            return 'Medical History'
+        
+        # Medications
+        elif any(term in field_lower for term in ['medication', 'drug', 'prescription', 'dosage', 'dose']):
+            return 'Medications'
+        
+        # Vitals
+        elif any(term in field_lower for term in ['vital', 'blood pressure', 'bp', 'heart rate', 'temperature', 'weight', 'height']):
+            return 'Vital Signs'
+        
+        # Laboratory
+        elif any(term in field_lower for term in ['lab', 'test', 'result', 'level', 'count']):
+            return 'Laboratory Results'
+        
+        # Provider Information
+        elif any(term in field_lower for term in ['provider', 'doctor', 'physician', 'nurse']):
+            return 'Provider Information'
+        
+        # Default category
+        else:
+            return 'Other'
+    
+    def _identify_missing_fields(self, categorized_data):
+        """
+        Identify potentially missing fields based on common medical document requirements.
+        
+        Args:
+            categorized_data: Dictionary of categorized field data
+            
+        Returns:
+            list: List of potentially missing field specifications
+        """
+        # Common required fields for medical documents
+        required_fields = [
+            {'name': 'Patient Name', 'category': 'Demographics'},
+            {'name': 'Date of Birth', 'category': 'Demographics'},
+            {'name': 'Medical Record Number', 'category': 'Demographics'},
+            {'name': 'Primary Diagnosis', 'category': 'Medical History'},
+            {'name': 'Current Medications', 'category': 'Medications'},
+        ]
+        
+        missing_fields = []
+        all_field_names = []
+        
+        # Collect all extracted field names
+        for category_items in categorized_data.values():
+            for item in category_items:
+                all_field_names.append(item['field_name'].lower())
+        
+        # Check for missing required fields
+        for required in required_fields:
+            found = False
+            for extracted_name in all_field_names:
+                # Simple matching - could be enhanced with fuzzy matching
+                if any(word in extracted_name for word in required['name'].lower().split()):
+                    found = True
+                    break
+            
+            if not found:
+                missing_fields.append(required)
+        
+        return missing_fields
     
     def post(self, request, *args, **kwargs):
         """
