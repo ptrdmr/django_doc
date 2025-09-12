@@ -28,6 +28,7 @@ class CostCalculator:
             'claude-3-opus-20240229': {'input': 0.015, 'output': 0.075},
             'claude-3-sonnet-20240229': {'input': 0.003, 'output': 0.015},
             'claude-3-haiku-20240307': {'input': 0.00025, 'output': 0.00125},
+            'claude-sonnet-4-20250514': {'input': 0.006, 'output': 0.030},  # Claude Sonnet 4 pricing
             # Legacy model names
             'claude-3-opus': {'input': 0.015, 'output': 0.075},
             'claude-3-sonnet': {'input': 0.003, 'output': 0.015},
