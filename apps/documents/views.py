@@ -770,6 +770,14 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                                     snippet_text = snippet_value
                                     break
                     
+                    # FALLBACK: Generate snippet from char_position if available and no snippet found
+                    if not snippet_text and field_data.get('char_position') and self.object.original_text:
+                        snippet_text = self._generate_fallback_snippet(
+                            self.object.original_text,
+                            field_value,
+                            field_data.get('char_position', 0)
+                        )
+                    
                     # Check if field is approved (for now, assume not approved)
                     is_approved = False  # TODO: Implement field-level approval tracking
                     if is_approved:
@@ -887,6 +895,49 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 missing_fields.append(required)
         
         return missing_fields
+    
+    def _generate_fallback_snippet(self, original_text, field_value, char_position):
+        """
+        Generate a text snippet around the extracted value when AI doesn't provide source_text.
+        
+        Args:
+            original_text: Full document text
+            field_value: The extracted value to find context for
+            char_position: Approximate position in the text
+            
+        Returns:
+            str: Generated snippet with context around the value
+        """
+        try:
+            if not original_text or not field_value:
+                return ""
+            
+            # Try to find the exact value in the document
+            value_index = original_text.lower().find(field_value.lower())
+            
+            if value_index != -1:
+                # Found exact match - use this position
+                start_pos = max(0, value_index - 150)
+                end_pos = min(len(original_text), value_index + len(field_value) + 150)
+            else:
+                # Use char_position as fallback
+                start_pos = max(0, char_position - 150)  
+                end_pos = min(len(original_text), char_position + 300)
+            
+            # Extract the snippet
+            snippet = original_text[start_pos:end_pos].strip()
+            
+            # Clean up the snippet
+            if start_pos > 0:
+                snippet = "..." + snippet
+            if end_pos < len(original_text):
+                snippet = snippet + "..."
+                
+            return snippet
+            
+        except Exception as e:
+            logger.error(f"Error generating fallback snippet: {e}")
+            return f"Context unavailable (extracted from position {char_position})"
     
     def post(self, request, *args, **kwargs):
         """

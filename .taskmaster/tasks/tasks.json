@@ -1682,7 +1682,7 @@
         "id": 31,
         "title": "Update Document Review Interface for Snippet-Based Review",
         "description": "Replace the PDF highlighting approach with a text snippet-based review system that displays extracted data alongside source text context for more efficient document review. Remove PDF.js viewer completely and implement a single-column layout focused on snippet-based review.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           13,
           30
@@ -1979,7 +1979,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-09-12T15:49:35.997Z",
+      "updated": "2025-09-12T15:50:02.091Z",
       "description": "Tasks for master context"
     }
   }
