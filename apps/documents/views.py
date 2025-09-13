@@ -741,7 +741,7 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                                 'fhir_path': '',
                             })
                 elif isinstance(extraction_data, list):
-                    # Already in list format
+                    # Already in list format from ResponseParser
                     field_list = extraction_data
                 else:
                     field_list = []
@@ -751,17 +751,24 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 approved_fields = 0
                 
                 for field_data in field_list:
-                    field_name = field_data.get('field_name', 'Unknown Field')
-                    category = field_data.get('category', 'Other')
+                    # Handle ResponseParser format: uses 'label' and 'value' instead of 'field_name' and 'field_value'
+                    field_name = field_data.get('label', field_data.get('field_name', 'Unknown Field'))
+                    field_value = field_data.get('value', field_data.get('field_value', ''))
+                    confidence = field_data.get('confidence', 0.5)
                     
-                    # Get snippet for this field
+                    # Categorize the field
+                    category = field_data.get('category', self._categorize_field(field_name))
+                    
+                    # Get snippet for this field - try multiple possible keys
                     snippet_text = source_snippets.get(field_name, '')
                     if not snippet_text and source_snippets:
-                        # Try to find snippet by partial match
-                        for snippet_key, snippet_value in source_snippets.items():
-                            if field_name.lower() in snippet_key.lower() or snippet_key.lower() in field_name.lower():
-                                snippet_text = snippet_value
-                                break
+                        # Try to find snippet by partial match or source_text field
+                        snippet_text = field_data.get('source_text', '')
+                        if not snippet_text:
+                            for snippet_key, snippet_value in source_snippets.items():
+                                if field_name.lower() in snippet_key.lower() or snippet_key.lower() in field_name.lower():
+                                    snippet_text = snippet_value
+                                    break
                     
                     # Check if field is approved (for now, assume not approved)
                     is_approved = False  # TODO: Implement field-level approval tracking
@@ -770,11 +777,11 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     
                     categorized_data[category].append({
                         'field_name': field_name,
-                        'field_value': field_data.get('field_value', ''),
-                        'confidence': field_data.get('confidence', 0.5),
+                        'field_value': field_value,
+                        'confidence': confidence,
                         'snippet': snippet_text,
                         'approved': is_approved,
-                        'fhir_path': field_data.get('fhir_path', ''),
+                        'fhir_path': field_data.get('fhir_path', field_data.get('fhir_field', '')),
                         'id': f"{field_name}_{hash(str(field_data))}",  # Generate unique ID
                         'category': category,
                         'category_slug': category.lower().replace(' ', '-').replace('_', '-')
