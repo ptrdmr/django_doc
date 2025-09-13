@@ -770,12 +770,12 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                                     snippet_text = snippet_value
                                     break
                     
-                    # FALLBACK: Generate snippet from char_position if available and no snippet found
-                    if not snippet_text and field_data.get('char_position') and self.object.original_text:
+                    # FALLBACK: Generate snippet if no snippet found and we have original text
+                    if not snippet_text and field_value and self.object.original_text:
                         snippet_text = self._generate_fallback_snippet(
                             self.object.original_text,
                             field_value,
-                            field_data.get('char_position', 0)
+                            field_data.get('char_position', 0)  # Use 0 as default if no char_position
                         )
                     
                     # Check if field is approved (for now, assume not approved)
