@@ -761,12 +761,17 @@ class PatientDeleteView(LoginRequiredMixin, View):
                 history_count = patient.history_records.count()
                 
                 logger.warning(
-                    f"DEVELOPMENT DELETE: User {request.user.id} deleting patient {patient.mrn} "
+                    f"DEVELOPMENT DELETE: User {request.user.id} hard deleting patient {patient.mrn} "
                     f"with {doc_count} documents and {history_count} history records"
                 )
                 
-                # Delete the patient (CASCADE will handle related items)
-                patient.delete()
+                # HARD DELETE: Use Django's Model.delete() to bypass soft delete
+                # This actually removes the record from the database
+                super(Patient, patient).delete()
+                
+                # Also clean up any other soft-deleted patients with the same MRN
+                # (in case there were previous soft deletes)
+                Patient.all_objects.filter(mrn=patient_mrn, deleted_at__isnull=False).delete()
                 
                 messages.success(
                     request,
@@ -780,6 +785,80 @@ class PatientDeleteView(LoginRequiredMixin, View):
             logger.error(f"Error deleting patient {pk}: {delete_error}")
             messages.error(request, "Error deleting patient. Please try again.")
             return redirect('patients:detail', pk=pk)
+
+
+@method_decorator([admin_required], name='dispatch')
+class CleanupSoftDeletedView(LoginRequiredMixin, View):
+    """
+    Development utility to permanently remove soft-deleted patients.
+    
+    This helps clean up patients that were soft-deleted and might be
+    blocking MRN reuse in development.
+    """
+    http_method_names = ['get', 'post']
+    
+    def dispatch(self, request, *args, **kwargs):
+        """Check if we're in development mode."""
+        from django.conf import settings
+        
+        if not settings.DEBUG:
+            messages.error(request, "Cleanup functionality is only available in development mode.")
+            return redirect('patients:list')
+        
+        return super().dispatch(request, *args, **kwargs)
+    
+    def get(self, request):
+        """Show soft-deleted patients that can be cleaned up."""
+        try:
+            # Get soft-deleted patients
+            soft_deleted = Patient.all_objects.filter(deleted_at__isnull=False)
+            
+            return render(request, 'patients/cleanup_soft_deleted.html', {
+                'soft_deleted_patients': soft_deleted,
+                'count': soft_deleted.count()
+            })
+            
+        except Exception as cleanup_error:
+            logger.error(f"Error loading cleanup page: {cleanup_error}")
+            messages.error(request, "Error loading soft-deleted patients.")
+            return redirect('patients:list')
+    
+    def post(self, request):
+        """Permanently delete all soft-deleted patients."""
+        try:
+            with transaction.atomic():
+                # Get soft-deleted patients
+                soft_deleted = Patient.all_objects.filter(deleted_at__isnull=False)
+                count = soft_deleted.count()
+                
+                if count == 0:
+                    messages.info(request, "No soft-deleted patients found to clean up.")
+                    return redirect('patients:list')
+                
+                # Get MRNs for logging
+                mrns = list(soft_deleted.values_list('mrn', flat=True))
+                
+                logger.warning(
+                    f"DEVELOPMENT CLEANUP: User {request.user.id} permanently deleting "
+                    f"{count} soft-deleted patients: {mrns}"
+                )
+                
+                # Hard delete all soft-deleted patients
+                for patient in soft_deleted:
+                    super(Patient, patient).delete()
+                
+                messages.success(
+                    request,
+                    f"Successfully cleaned up {count} soft-deleted patient record(s). "
+                    f"MRNs are now available for reuse."
+                )
+                
+                return redirect('patients:list')
+                
+        except Exception as cleanup_error:
+            logger.error(f"Error during soft-delete cleanup: {cleanup_error}")
+            messages.error(request, "Error cleaning up soft-deleted patients. Please try again.")
+            return redirect('patients:list')
 
 
 # ============================================================================

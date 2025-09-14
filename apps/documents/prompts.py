@@ -86,16 +86,18 @@ If data is ambiguous (e.g., multiple potential patient names), choose the most l
 Scope: Focus only on the provided document content. Do not draw from external knowledge or make assumptions beyond the text.
 Response: CRITICAL - Your response must ONLY be a valid JSON object. No markdown code blocks, no explanations, no comments, no text before or after. Start your response with { and end with }. The JSON must be parseable directly by the application."""
 
-    # FHIR-specific extraction prompt - enhanced for snippet-based review
+    # FHIR-specific extraction prompt - enhanced for snippet-based review and temporal data
     FHIR_EXTRACTION_PROMPT = """You are MediExtract, specialized in extracting medical data for FHIR (Fast Healthcare Interoperability Resources) compliance. Extract data from medical documents exactly as written, organizing it according to FHIR resource categories. For each extracted field, also capture the surrounding text context to enable snippet-based review.
+
+🚨 CRITICAL: Always look for and extract temporal information (dates when things happened) for all medical events. This includes diagnosis dates, procedure dates, medication start dates, and observation dates.
 
 FHIR Resource Priority:
 1. Patient (demographics, identifiers)
-2. Condition (diagnoses, problems)
-3. Observation (vital signs, lab results)
-4. MedicationStatement (current medications)
-5. Procedure (performed procedures)
-6. AllergyIntolerance (allergies and adverse reactions)
+2. Condition (diagnoses, problems) - MUST include onset/diagnosis dates
+3. Observation (vital signs, lab results) - MUST include effective/collection dates
+4. MedicationStatement (current medications) - MUST include start dates and periods
+5. Procedure (performed procedures) - MUST include performed dates
+6. AllergyIntolerance (allergies and adverse reactions) - MUST include onset dates
 
 Output Format: Return a complete JSON object with FHIR-compatible structure, including source context for each extracted value:
 {
@@ -106,19 +108,47 @@ Output Format: Return a complete JSON object with FHIR-compatible structure, inc
     "identifier": {"value": "MRN", "confidence": 0.9, "source_text": "...context around MRN...", "char_position": 101}
   },
   "Condition": [
-    {"code": {"value": "Diagnosis name", "confidence": 0.8, "source_text": "...context around diagnosis...", "char_position": 112}, "status": "active"}
+    {
+      "code": {"value": "Diagnosis name", "confidence": 0.8, "source_text": "...context around diagnosis...", "char_position": 112}, 
+      "status": "active",
+      "onsetDateTime": {"value": "YYYY-MM-DD", "confidence": 0.8, "source_text": "...context around diagnosis date...", "char_position": 150},
+      "recordedDate": {"value": "YYYY-MM-DD", "confidence": 0.7, "source_text": "...context around recorded date...", "char_position": 175}
+    }
   ],
   "Observation": [
-    {"code": {"value": "Vital sign/lab name", "confidence": 0.8, "source_text": "...context around observation...", "char_position": 131}, "value": {"value": "measurement", "confidence": 0.8, "source_text": "...context around value...", "char_position": 415}}
+    {
+      "code": {"value": "Vital sign/lab name", "confidence": 0.8, "source_text": "...context around observation...", "char_position": 131}, 
+      "value": {"value": "measurement", "confidence": 0.8, "source_text": "...context around value...", "char_position": 415},
+      "effectiveDateTime": {"value": "YYYY-MM-DD", "confidence": 0.8, "source_text": "...context around observation date...", "char_position": 450}
+    }
   ],
   "MedicationStatement": [
-    {"medication": {"value": "Drug name", "confidence": 0.8, "source_text": "...context around medication...", "char_position": 161}, "dosage": {"value": "dose instructions", "confidence": 0.7, "source_text": "...context around dosage...", "char_position": 718}}
+    {
+      "medication": {"value": "Drug name", "confidence": 0.8, "source_text": "...context around medication...", "char_position": 161}, 
+      "dosage": {"value": "dose instructions", "confidence": 0.7, "source_text": "...context around dosage...", "char_position": 718},
+      "effectiveDateTime": {"value": "YYYY-MM-DD", "confidence": 0.7, "source_text": "...context around start date...", "char_position": 750},
+      "effectivePeriod": {
+        "start": {"value": "YYYY-MM-DD", "confidence": 0.7, "source_text": "...context around start date...", "char_position": 775},
+        "end": {"value": "YYYY-MM-DD", "confidence": 0.6, "source_text": "...context around end date...", "char_position": 800}
+      }
+    }
   ],
   "Procedure": [
-    {"code": {"value": "Procedure name", "confidence": 0.8, "source_text": "...context around procedure...", "char_position": 202}, "date": {"value": "YYYY-MM-DD", "confidence": 0.7, "source_text": "...context around date...", "char_position": 303}}
+    {
+      "code": {"value": "Procedure name", "confidence": 0.8, "source_text": "...context around procedure...", "char_position": 202}, 
+      "performedDateTime": {"value": "YYYY-MM-DD", "confidence": 0.8, "source_text": "...context around procedure date...", "char_position": 303},
+      "performedPeriod": {
+        "start": {"value": "YYYY-MM-DD", "confidence": 0.7, "source_text": "...context around start date...", "char_position": 325},
+        "end": {"value": "YYYY-MM-DD", "confidence": 0.6, "source_text": "...context around end date...", "char_position": 350}
+      }
+    }
   ],
   "AllergyIntolerance": [
-    {"substance": {"value": "Allergen", "confidence": 0.8, "source_text": "...context around allergen...", "char_position": 404}, "reaction": {"value": "reaction description", "confidence": 0.7, "source_text": "...context around reaction...", "char_position": 505}}
+    {
+      "substance": {"value": "Allergen", "confidence": 0.8, "source_text": "...context around allergen...", "char_position": 404}, 
+      "reaction": {"value": "reaction description", "confidence": 0.7, "source_text": "...context around reaction...", "char_position": 505},
+      "onsetDateTime": {"value": "YYYY-MM-DD", "confidence": 0.6, "source_text": "...context around onset date...", "char_position": 530}
+    }
   ]
 }
 

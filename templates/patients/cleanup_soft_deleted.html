@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Cleanup Soft-Deleted Patients{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center space-x-3 mb-4">
+            <div class="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Cleanup Soft-Deleted Patients</h1>
+                <p class="text-gray-600">🧹 Development Mode - Remove soft-deleted records</p>
+            </div>
+        </div>
+    </div>
+
+    {% if count > 0 %}
+    <!-- Warning Card -->
+    <div class="bg-orange-50 border border-orange-200 rounded-lg p-6 mb-6">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 15.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                </svg>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-orange-800">
+                    Found {{ count }} soft-deleted patient{{ count|pluralize }}
+                </h3>
+                <div class="mt-2 text-sm text-orange-700">
+                    <p>These patients were previously soft-deleted but still exist in the database, which may prevent MRN reuse.</p>
+                    <p class="mt-1">Clicking "Cleanup All" will permanently remove them from the database.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Soft-Deleted Patients List -->
+    <div class="bg-white rounded-lg shadow border mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Soft-Deleted Patients</h2>
+        </div>
+        <div class="overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Patient
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            MRN
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Deleted At
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for patient in soft_deleted_patients %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                                    <span class="text-gray-600 font-medium">
+                                        {{ patient.first_name|first }}{{ patient.last_name|first }}
+                                    </span>
+                                </div>
+                                <div class="ml-4">
+                                    <div class="text-sm font-medium text-gray-900">
+                                        {{ patient.first_name }} {{ patient.last_name }}
+                                    </div>
+                                    <div class="text-sm text-gray-500">
+                                        DOB: {{ patient.date_of_birth|default:"Not provided" }}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {{ patient.mrn }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ patient.deleted_at|date:"M j, Y g:i A" }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Cleanup Form -->
+    <div class="bg-white rounded-lg shadow border">
+        <div class="px-6 py-4">
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="mb-6">
+                    <label class="flex items-center">
+                        <input type="checkbox" id="confirm-cleanup" class="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded" required>
+                        <span class="ml-2 text-sm text-gray-900">
+                            I understand this will permanently remove {{ count }} soft-deleted patient{{ count|pluralize }} from the database
+                        </span>
+                    </label>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <a 
+                        href="{% url 'patients:list' %}" 
+                        class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                        Cancel
+                    </a>
+                    <button 
+                        type="submit" 
+                        id="cleanup-button"
+                        class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled
+                    >
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7"></path>
+                        </svg>
+                        Cleanup All ({{ count }})
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- No Soft-Deleted Patients -->
+    <div class="bg-white rounded-lg shadow border">
+        <div class="px-6 py-12 text-center">
+            <svg class="mx-auto h-12 w-12 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No Cleanup Needed</h3>
+            <p class="mt-1 text-sm text-gray-500">
+                No soft-deleted patients found. All MRNs should be available for reuse.
+            </p>
+            <div class="mt-6">
+                <a href="{% url 'patients:list' %}" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
+                    Back to Patients
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const checkbox = document.getElementById('confirm-cleanup');
+    const cleanupButton = document.getElementById('cleanup-button');
+    
+    if (checkbox && cleanupButton) {
+        checkbox.addEventListener('change', function() {
+            cleanupButton.disabled = !this.checked;
+        });
+    }
+});
+</script>
+{% endblock %}
