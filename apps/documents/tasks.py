@@ -247,6 +247,16 @@ def process_document_async(self, document_id: int):
                                     'char_position': field.get('char_position', 0)
                                 }
                         
+                        # CRITICAL FIX: Calculate confidence and processing time from fields and usage data
+                        avg_confidence = 0.0
+                        if fields_data:
+                            confidences = [field.get('confidence', 0.0) for field in fields_data if isinstance(field, dict)]
+                            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+                        
+                        # Get processing time from usage data
+                        usage_data = ai_result.get('usage', {})
+                        processing_time = ai_result.get('processing_duration_ms', 0) / 1000.0 if 'processing_duration_ms' in ai_result else 0.0
+                        
                         parsed_data, created = ParsedData.objects.update_or_create(
                             document=document,
                             defaults={
@@ -254,9 +264,9 @@ def process_document_async(self, document_id: int):
                                 'extraction_json': fields_data,
                                 'source_snippets': snippets_data,  # Store snippet data in new field
                                 'fhir_delta_json': fhir_resources if fhir_resources else {},
-                                'extraction_confidence': ai_result.get('confidence', 0.0),
+                                'extraction_confidence': avg_confidence,
                                 'ai_model_used': ai_result.get('model_used', 'unknown'),
-                                'processing_time_seconds': ai_result.get('processing_time', 0.0),
+                                'processing_time_seconds': processing_time,
                                 'capture_metrics': ai_result.get('capture_metrics', {}),
                                 'is_approved': False,  # Reset approval status for reprocessed documents
                                 'is_merged': False,    # Reset merge status for reprocessed documents
