@@ -2,7 +2,8 @@
 <div class="field-review-card" data-field-id="{{ item.id }}">
     <div class="field-header">
         <span class="field-name">{{ item.field_name|clean_field_name }}</span>
-        <span class="confidence-indicator confidence-{{ item.confidence|confidence_level }}">
+        <span class="confidence-indicator confidence-{{ item.confidence|confidence_level }}" 
+              data-confidence="{{ item.confidence }}">
             {{ item.confidence|confidence_level|title }} Confidence
         </span>
     </div>

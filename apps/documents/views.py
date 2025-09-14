@@ -676,6 +676,58 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
     template_name = 'documents/review.html'
     context_object_name = 'document'
     
+    def post(self, request, *args, **kwargs):
+        """Handle review completion actions."""
+        from django.utils import timezone
+        from django.contrib import messages
+        from django.shortcuts import redirect
+        
+        document = self.get_object()
+        action = request.POST.get('action')
+        notes = request.POST.get('notes', '')
+        
+        if action == 'approve':
+            # Complete the review and approve the document
+            document.status = 'completed'
+            document.reviewed_by = request.user
+            document.reviewed_at = timezone.now()
+            document.save()
+            
+            # Clear session approval data since review is complete
+            session_keys_to_remove = [key for key in request.session.keys() 
+                                    if key.startswith(f'approved_field_{document.id}_')]
+            for key in session_keys_to_remove:
+                del request.session[key]
+            request.session.modified = True
+            
+            messages.success(request, 'Document review completed and approved successfully.')
+            return redirect('documents:detail', pk=document.pk)
+            
+        elif action == 'request_changes':
+            # Request changes to the document
+            document.status = 'processing'  # Send back for reprocessing
+            document.save()
+            
+            # Log the change request
+            logger.info(f"Changes requested for document {document.id} by user {request.user.id}: {notes}")
+            
+            messages.info(request, f'Changes requested for document. Notes: {notes}')
+            return redirect('documents:list')
+            
+        elif action == 'reject':
+            # Reject the document
+            document.status = 'failed'
+            document.save()
+            
+            # Log the rejection
+            logger.info(f"Document {document.id} rejected by user {request.user.id}: {notes}")
+            
+            messages.warning(request, f'Document rejected. Reason: {notes}')
+            return redirect('documents:list')
+        
+        # If no valid action, fall back to GET behavior
+        return self.get(request, *args, **kwargs)
+    
     def get_queryset(self):
         """
         Filter documents to only those the user has access to.
@@ -710,12 +762,22 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
         try:
             parsed_data = self.object.parsed_data
             context['parsed_data'] = parsed_data
+            force_review = self.request.GET.get('force_review') == '1'
             
-            if parsed_data and parsed_data.extraction_json:
+            if (parsed_data and parsed_data.extraction_json) or force_review:
                 # Group data by category for organized display
                 categorized_data = defaultdict(list)
-                extraction_data = parsed_data.extraction_json
-                source_snippets = parsed_data.source_snippets or {}
+                extraction_data = parsed_data.extraction_json if parsed_data else {}
+                source_snippets = parsed_data.source_snippets if parsed_data else {}
+                
+                # If force_review is enabled but no parsed_data, create dummy data for debugging
+                if force_review and not parsed_data:
+                    context['parsed_data'] = True  # Set to True so template conditions pass
+                    extraction_data = {
+                        'debug_message': 'Force review mode enabled - no parsed data available',
+                        'document_status': self.object.status,
+                        'processed_at': str(self.object.processed_at) if self.object.processed_at else 'Not processed'
+                    }
                 
                 # Handle different extraction_json formats
                 if isinstance(extraction_data, dict):
@@ -779,7 +841,11 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                         )
                     
                     # Check if field is approved (for now, assume not approved)
-                    is_approved = False  # TODO: Implement field-level approval tracking
+                    # Check if this field has been approved in the session
+                    # Use the same field ID generation as in the template
+                    field_id = f"{field_name}_{hash(str(field_data))}"
+                    field_key = f"approved_field_{self.object.id}_{field_name}_{field_id}"
+                    is_approved = self.request.session.get(field_key, False)
                     if is_approved:
                         approved_fields += 1
                     
@@ -1263,11 +1329,18 @@ def approve_field(request, field_id):
             return JsonResponse({'error': 'Permission denied'}, status=403)
         
         # Create approved field data for template rendering
+        # Preserve original confidence score - don't default to 0.5
+        original_confidence = request.POST.get('confidence', '0.5')
+        try:
+            confidence_score = float(original_confidence)
+        except (ValueError, TypeError):
+            confidence_score = 0.5
+            
         mock_item = {
             'id': field_id,
             'field_name': request.POST.get('field_name', 'Unknown Field'),
             'field_value': request.POST.get('field_value', ''),
-            'confidence': float(request.POST.get('confidence', 0.5)),
+            'confidence': confidence_score,
             'snippet': request.POST.get('snippet', ''),
             'approved': True,  # This is the key change
             'flagged': False
@@ -1277,6 +1350,12 @@ def approve_field(request, field_id):
         html = render_to_string('documents/partials/field_card.html', {
             'item': mock_item
         }, request=request)
+        
+        # Store approval in session for progress tracking
+        field_name = request.POST.get('field_name', 'Unknown Field')
+        field_key = f"approved_field_{document_id}_{field_name}_{field_id}"
+        request.session[field_key] = True
+        request.session.modified = True
         
         logger.info(f"Field {field_id} approved by user {request.user.id}")
         

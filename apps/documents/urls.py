@@ -25,4 +25,9 @@ urlpatterns = [
     
     # Admin tools
     path('migrate-fhir/', views.MigrateFHIRDataView.as_view(), name='migrate-fhir'),
+    
+    # Field-level review endpoints
+    path('field/<str:field_id>/approve/', views.approve_field, name='approve-field'),
+    path('field/<str:field_id>/update/', views.update_field_value, name='update-field'),
+    path('field/<str:field_id>/flag/', views.flag_field, name='flag-field'),
 ] 
