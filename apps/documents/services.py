@@ -978,8 +978,10 @@ class DocumentAnalyzer:
             if 'fields' in parsed_json:
                 fields = parsed_json.get('fields', [])
             else:
-                # Convert FHIR structure to fields format
-                fields = self._convert_fhir_to_fields(parsed_json)
+                # CRITICAL FIX: Use ResponseParser for flat field structure conversion
+                parser = ResponseParser()
+                fields = parser._convert_json_to_fields(parsed_json)
+                self.logger.info(f"ResponseParser converted {len(fields)} fields from flat structure")
             
             # Record success for circuit breaker
             error_recovery_service.record_success('anthropic')
@@ -1194,8 +1196,10 @@ class DocumentAnalyzer:
             if 'fields' in parsed_json:
                 fields = parsed_json.get('fields', [])
             else:
-                # Convert FHIR structure to fields format
-                fields = self._convert_fhir_to_fields(parsed_json)
+                # CRITICAL FIX: Use ResponseParser for flat field structure conversion
+                parser = ResponseParser()
+                fields = parser._convert_json_to_fields(parsed_json)
+                self.logger.info(f"ResponseParser converted {len(fields)} fields from flat structure")
             
             # Record success for circuit breaker
             error_recovery_service.record_success('openai')
@@ -2588,17 +2592,35 @@ Processing Note: This is part of a larger medical document. Context may span mul
 
     def _convert_fhir_to_fields(self, fhir_data: Dict) -> List[Dict]:
         """
-        Convert FHIR-structured data to the legacy fields format.
+        Convert FHIR-structured data OR flat field data to the legacy fields format.
         
         Args:
-            fhir_data: FHIR-structured response from AI
+            fhir_data: FHIR-structured response from AI OR flat field structure
             
         Returns:
             List of field dictionaries compatible with existing processing pipeline
         """
         fields = []
         
-        # Convert Patient data
+        # CRITICAL FIX: Handle flat field structure (new format from prompts)
+        # Check if this is a flat structure (patient_name, date_of_birth, etc.)
+        flat_field_indicators = ['patient_name', 'date_of_birth', 'medical_record_number', 'diagnoses', 'medications', 'allergies']
+        if any(field in fhir_data for field in flat_field_indicators):
+            self.logger.info("Converting flat field structure to legacy format")
+            for field_name, field_data in fhir_data.items():
+                if isinstance(field_data, dict) and 'value' in field_data:
+                    fields.append({
+                        'label': field_name,
+                        'value': field_data['value'],
+                        'confidence': field_data.get('confidence', 0.8),
+                        'source_text': field_data.get('source_text', ''),
+                        'char_position': field_data.get('char_position', 0),
+                        'fhir_resource': self._map_field_to_fhir_resource(field_name),
+                        'fhir_field': self._map_field_to_fhir_field(field_name)
+                    })
+            return fields
+        
+        # Convert Patient data (FHIR structure)
         if 'Patient' in fhir_data:
             patient = fhir_data['Patient']
             for key, value_obj in patient.items():
@@ -2607,6 +2629,8 @@ Processing Note: This is part of a larger medical document. Context may span mul
                         'label': f'patient_{key}',
                         'value': value_obj['value'],
                         'confidence': value_obj.get('confidence', 0.8),
+                        'source_text': value_obj.get('source_text', ''),
+                        'char_position': value_obj.get('char_position', 0),
                         'fhir_resource': 'Patient',
                         'fhir_field': key
                     })
@@ -2708,6 +2732,36 @@ Processing Note: This is part of a larger medical document. Context may span mul
         
         self.logger.info(f"Converted FHIR structure to {len(fields)} fields")
         return fields
+    
+    def _map_field_to_fhir_resource(self, field_name: str) -> str:
+        """Map field name to appropriate FHIR resource type."""
+        field_mapping = {
+            'patient_name': 'Patient',
+            'date_of_birth': 'Patient', 
+            'medical_record_number': 'Patient',
+            'sex': 'Patient',
+            'age': 'Patient',
+            'diagnoses': 'Condition',
+            'procedures': 'Procedure',
+            'medications': 'MedicationStatement',
+            'allergies': 'AllergyIntolerance'
+        }
+        return field_mapping.get(field_name, 'Unknown')
+    
+    def _map_field_to_fhir_field(self, field_name: str) -> str:
+        """Map field name to appropriate FHIR field name."""
+        field_mapping = {
+            'patient_name': 'name',
+            'date_of_birth': 'birthDate',
+            'medical_record_number': 'identifier',
+            'sex': 'gender',
+            'age': 'extension',
+            'diagnoses': 'code',
+            'procedures': 'code',
+            'medications': 'medicationCodeableConcept',
+            'allergies': 'substance'
+        }
+        return field_mapping.get(field_name, field_name)
 
 
 # ============================================================================
