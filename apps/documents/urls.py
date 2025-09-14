@@ -16,6 +16,7 @@ urlpatterns = [
     path('<int:pk>/', views.DocumentDetailView.as_view(), name='detail'),
     path('<int:pk>/review/', views.DocumentReviewView.as_view(), name='review'),
     path('<int:pk>/retry/', views.DocumentRetryView.as_view(), name='retry'),
+    path('<int:pk>/delete/', views.DocumentDeleteView.as_view(), name='delete'),
     
     # API endpoints for enhanced UX
     path('api/processing-status/', views.ProcessingStatusAPIView.as_view(), name='api-processing-status'),

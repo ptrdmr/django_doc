@@ -12,6 +12,7 @@ urlpatterns = [
     path('add/', views.PatientCreateView.as_view(), name='add'),
     path('<uuid:pk>/', views.PatientDetailView.as_view(), name='detail'),
     path('<uuid:pk>/edit/', views.PatientUpdateView.as_view(), name='edit'),
+    path('<uuid:pk>/delete/', views.PatientDeleteView.as_view(), name='delete'),
     
     # FHIR functionality
     path('<uuid:pk>/export-fhir/', views.PatientFHIRExportView.as_view(), name='export-fhir'),

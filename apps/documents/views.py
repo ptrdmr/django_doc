@@ -6,7 +6,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import CreateView, ListView, DetailView, View
 from django.urls import reverse_lazy
 from django.contrib import messages
-from django.db import IntegrityError, DatabaseError, OperationalError
+from django.db import IntegrityError, DatabaseError, OperationalError, transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse, HttpResponse
 from django.core.exceptions import ValidationError
@@ -347,6 +347,10 @@ class DocumentDetailView(LoginRequiredMixin, DetailView):
             # Add parsed data if available
             if hasattr(self.object, 'parsed_data'):
                 context['parsed_data'] = self.object.parsed_data
+            
+            # Add debug flag for development-only features
+            from django.conf import settings
+            context['debug'] = settings.DEBUG
             
         except Exception as context_error:
             logger.error(f"Error building document detail context: {context_error}")
@@ -1185,6 +1189,113 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             messages.error(request, "Failed to submit change request. Please try again.")
         
         return redirect('documents:review', pk=self.object.pk)
+
+
+# ============================================================================
+# Development-Only Deletion Views  
+# ============================================================================
+
+@method_decorator([admin_required, has_permission('documents.delete_document')], name='dispatch')
+class DocumentDeleteView(LoginRequiredMixin, View):
+    """
+    Development-only view for deleting documents.
+    
+    WARNING: This view is only available in development mode.
+    In production, documents should be archived or marked as deleted.
+    """
+    http_method_names = ['get', 'post']
+    
+    def dispatch(self, request, *args, **kwargs):
+        """Check if we're in development mode."""
+        from django.conf import settings
+        
+        if not settings.DEBUG:
+            messages.error(request, "Document deletion is only available in development mode.")
+            return redirect('documents:list')
+        
+        return super().dispatch(request, *args, **kwargs)
+    
+    def get(self, request, pk):
+        """Show confirmation page for document deletion."""
+        try:
+            document = get_object_or_404(Document, pk=pk)
+            
+            # Get related data for confirmation
+            related_data = {
+                'has_parsed_data': hasattr(document, 'parsed_data'),
+                'file_size_mb': round(document.file_size / (1024 * 1024), 1) if document.file_size else 0,
+                'status': document.get_status_display(),
+            }
+            
+            # Check if parsed data exists and is merged
+            if related_data['has_parsed_data']:
+                try:
+                    parsed_data = document.parsed_data
+                    related_data.update({
+                        'is_merged': parsed_data.is_merged,
+                        'fhir_resource_count': parsed_data.get_fhir_resource_count(),
+                    })
+                except Exception:
+                    related_data['has_parsed_data'] = False
+            
+            return render(request, 'documents/document_confirm_delete.html', {
+                'document': document,
+                'related_data': related_data,
+            })
+            
+        except Exception as delete_error:
+            logger.error(f"Error loading document deletion page: {delete_error}")
+            messages.error(request, "Error loading document data.")
+            return redirect('documents:list')
+    
+    def post(self, request, pk):
+        """Handle document deletion with file cleanup."""
+        try:
+            with transaction.atomic():
+                document = get_object_or_404(Document, pk=pk)
+                filename = document.filename
+                patient_name = f"{document.patient.first_name} {document.patient.last_name}"
+                
+                # Check if document has merged FHIR data
+                has_merged_data = False
+                try:
+                    parsed_data = document.parsed_data
+                    has_merged_data = parsed_data.is_merged
+                except:
+                    pass
+                
+                logger.warning(
+                    f"DEVELOPMENT DELETE: User {request.user.id} deleting document {document.id} "
+                    f"({filename}) for patient {document.patient.mrn}. "
+                    f"Has merged FHIR data: {has_merged_data}"
+                )
+                
+                # Delete the physical file if it exists
+                file_deleted = False
+                if document.file:
+                    try:
+                        if default_storage.exists(document.file.name):
+                            default_storage.delete(document.file.name)
+                            file_deleted = True
+                    except Exception as file_error:
+                        logger.error(f"Error deleting file {document.file.name}: {file_error}")
+                
+                # Delete the document record (CASCADE will handle ParsedData)
+                document.delete()
+                
+                success_message = f"Document '{filename}' for patient {patient_name} has been permanently deleted."
+                if file_deleted:
+                    success_message += " The physical file has also been removed."
+                if has_merged_data:
+                    success_message += " WARNING: This document had merged FHIR data in the patient record."
+                
+                messages.success(request, success_message)
+                return redirect('documents:list')
+                
+        except Exception as delete_error:
+            logger.error(f"Error deleting document {pk}: {delete_error}")
+            messages.error(request, "Error deleting document. Please try again.")
+            return redirect('documents:detail', pk=pk)
 
 
 @method_decorator([admin_required], name='dispatch')  

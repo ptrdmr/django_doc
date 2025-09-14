@@ -346,6 +346,10 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
                 {'name': f'{self.object.first_name} {self.object.last_name}', 'url': None}
             ]
             
+            # Add debug flag for development-only features
+            from django.conf import settings
+            context['debug'] = settings.DEBUG
+            
             return context
             
         except (DatabaseError, OperationalError) as context_error:
@@ -695,6 +699,87 @@ class PatientHistoryItemView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context['patient'] = self.object.patient
         return context
+
+
+# ============================================================================
+# Development-Only Deletion Views
+# ============================================================================
+
+@method_decorator([admin_required, has_permission('patients.delete_patient')], name='dispatch')
+class PatientDeleteView(LoginRequiredMixin, View):
+    """
+    Development-only view for deleting patients.
+    
+    WARNING: This view is only available in development mode.
+    In production, patients should be soft-deleted or archived.
+    """
+    http_method_names = ['get', 'post']
+    
+    def dispatch(self, request, *args, **kwargs):
+        """Check if we're in development mode."""
+        from django.conf import settings
+        
+        if not settings.DEBUG:
+            messages.error(request, "Patient deletion is only available in development mode.")
+            return redirect('patients:list')
+        
+        return super().dispatch(request, *args, **kwargs)
+    
+    def get(self, request, pk):
+        """Show confirmation page for patient deletion."""
+        try:
+            patient = get_object_or_404(Patient, pk=pk)
+            
+            # Get related data counts for confirmation
+            related_data = {
+                'documents': patient.documents.count(),
+                'history_records': patient.history_records.count(),
+                'parsed_data': patient.parsed_data.count() if hasattr(patient, 'parsed_data') else 0,
+            }
+            
+            return render(request, 'patients/patient_confirm_delete.html', {
+                'patient': patient,
+                'related_data': related_data,
+                'total_related_items': sum(related_data.values())
+            })
+            
+        except Exception as delete_error:
+            logger.error(f"Error loading patient deletion page: {delete_error}")
+            messages.error(request, "Error loading patient data.")
+            return redirect('patients:list')
+    
+    def post(self, request, pk):
+        """Handle patient deletion with cascade cleanup."""
+        try:
+            with transaction.atomic():
+                patient = get_object_or_404(Patient, pk=pk)
+                patient_name = f"{patient.first_name} {patient.last_name}"
+                patient_mrn = patient.mrn
+                
+                # Count related items before deletion
+                doc_count = patient.documents.count()
+                history_count = patient.history_records.count()
+                
+                logger.warning(
+                    f"DEVELOPMENT DELETE: User {request.user.id} deleting patient {patient.mrn} "
+                    f"with {doc_count} documents and {history_count} history records"
+                )
+                
+                # Delete the patient (CASCADE will handle related items)
+                patient.delete()
+                
+                messages.success(
+                    request,
+                    f"Patient {patient_name} (MRN: {patient_mrn}) and all related data "
+                    f"({doc_count} documents, {history_count} history records) have been permanently deleted."
+                )
+                
+                return redirect('patients:list')
+                
+        except Exception as delete_error:
+            logger.error(f"Error deleting patient {pk}: {delete_error}")
+            messages.error(request, "Error deleting patient. Please try again.")
+            return redirect('patients:detail', pk=pk)
 
 
 # ============================================================================
