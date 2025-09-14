@@ -1399,7 +1399,7 @@ class DocumentAnalyzer:
         prompt = MedicalPrompts.get_extraction_prompt(
             document_type=document_type,
             chunk_info=chunk_obj,
-            fhir_focused=True,  # Back to FHIR-focused extraction for richer data
+            fhir_focused=False,  # Use clean extraction format for UI display
             context_tags=context_tags
         )
         
