@@ -387,11 +387,31 @@ class Patient(MedicalRecord):
                         if "coding" in verification_status and verification_status["coding"]:
                             code_data["verificationStatus"] = verification_status["coding"][0].get("code")
                     
+                    # 🚨 ENHANCED: Extract temporal information (diagnosis dates)
                     # Add onset date if available (medical timeline, not PHI)
                     if "onsetDateTime" in condition_resource:
-                        code_data["onsetDate"] = condition_resource["onsetDateTime"][:10]  # YYYY-MM-DD only
+                        onset_date = condition_resource["onsetDateTime"][:10]  # YYYY-MM-DD only
+                        code_data["onsetDate"] = onset_date
+                        # Add to encounter dates for timeline searching
+                        if onset_date not in self.encounter_dates:
+                            self.encounter_dates.append(onset_date)
+                            summary["encounter_dates_extracted"] += 1
                     elif "onsetPeriod" in condition_resource and "start" in condition_resource["onsetPeriod"]:
-                        code_data["onsetDate"] = condition_resource["onsetPeriod"]["start"][:10]
+                        onset_date = condition_resource["onsetPeriod"]["start"][:10]
+                        code_data["onsetDate"] = onset_date
+                        # Add to encounter dates for timeline searching
+                        if onset_date not in self.encounter_dates:
+                            self.encounter_dates.append(onset_date)
+                            summary["encounter_dates_extracted"] += 1
+                    
+                    # Add recorded date if available (when condition was documented)
+                    if "recordedDate" in condition_resource:
+                        recorded_date = condition_resource["recordedDate"][:10]  # YYYY-MM-DD only
+                        code_data["recordedDate"] = recorded_date
+                        # Add to encounter dates for timeline searching
+                        if recorded_date not in self.encounter_dates:
+                            self.encounter_dates.append(recorded_date)
+                            summary["encounter_dates_extracted"] += 1
                     
                     # Add severity if available (clinical data, not PHI)
                     if "severity" in condition_resource and "coding" in condition_resource["severity"]:
@@ -432,11 +452,32 @@ class Patient(MedicalRecord):
                     if "status" in procedure_resource:
                         code_data["status"] = procedure_resource["status"]
                     
+                    # 🚨 ENHANCED: Extract temporal information (procedure dates)
                     # Add performed date if available (medical timeline, not PHI)
                     if "performedDateTime" in procedure_resource:
-                        code_data["performedDate"] = procedure_resource["performedDateTime"][:10]  # YYYY-MM-DD only
-                    elif "performedPeriod" in procedure_resource and "start" in procedure_resource["performedPeriod"]:
-                        code_data["performedDate"] = procedure_resource["performedPeriod"]["start"][:10]
+                        performed_date = procedure_resource["performedDateTime"][:10]  # YYYY-MM-DD only
+                        code_data["performedDate"] = performed_date
+                        # Add to encounter dates for timeline searching
+                        if performed_date not in self.encounter_dates:
+                            self.encounter_dates.append(performed_date)
+                            summary["encounter_dates_extracted"] += 1
+                    elif "performedPeriod" in procedure_resource:
+                        # Handle period-based procedures
+                        period = procedure_resource["performedPeriod"]
+                        if "start" in period:
+                            start_date = period["start"][:10]
+                            code_data["performedDate"] = start_date
+                            # Add to encounter dates for timeline searching
+                            if start_date not in self.encounter_dates:
+                                self.encounter_dates.append(start_date)
+                                summary["encounter_dates_extracted"] += 1
+                        if "end" in period:
+                            end_date = period["end"][:10]
+                            code_data["performedEndDate"] = end_date
+                            # Add end date to encounter dates too
+                            if end_date not in self.encounter_dates and end_date != start_date:
+                                self.encounter_dates.append(end_date)
+                                summary["encounter_dates_extracted"] += 1
                     
                     # Add category if available (procedure classification, not PHI)
                     if "category" in procedure_resource and "coding" in procedure_resource["category"]:
@@ -645,15 +686,31 @@ class Patient(MedicalRecord):
                         if dosage_instructions:
                             med_data["dosageInstructions"] = dosage_instructions
                     
+                    # 🚨 ENHANCED: Extract temporal information (medication dates)
                     # Add effective period if available (treatment timeline, not PHI)
                     if "effectivePeriod" in medication_resource:
                         period = medication_resource["effectivePeriod"]
                         if "start" in period:
-                            med_data["effectiveStart"] = period["start"][:10]  # YYYY-MM-DD only
+                            start_date = period["start"][:10]  # YYYY-MM-DD only
+                            med_data["effectiveStart"] = start_date
+                            # Add to encounter dates for timeline searching
+                            if start_date not in self.encounter_dates:
+                                self.encounter_dates.append(start_date)
+                                summary["encounter_dates_extracted"] += 1
                         if "end" in period:
-                            med_data["effectiveEnd"] = period["end"][:10]  # YYYY-MM-DD only
+                            end_date = period["end"][:10]  # YYYY-MM-DD only
+                            med_data["effectiveEnd"] = end_date
+                            # Add end date to encounter dates too
+                            if end_date not in self.encounter_dates:
+                                self.encounter_dates.append(end_date)
+                                summary["encounter_dates_extracted"] += 1
                     elif "effectiveDateTime" in medication_resource:
-                        med_data["effectiveDate"] = medication_resource["effectiveDateTime"][:10]
+                        effective_date = medication_resource["effectiveDateTime"][:10]
+                        med_data["effectiveDate"] = effective_date
+                        # Add to encounter dates for timeline searching
+                        if effective_date not in self.encounter_dates:
+                            self.encounter_dates.append(effective_date)
+                            summary["encounter_dates_extracted"] += 1
                     
                     # Add category if available (medication classification)
                     if "category" in medication_resource and "coding" in medication_resource["category"]:
@@ -732,11 +789,32 @@ class Patient(MedicalRecord):
                         if len(value_str) < 50 and not any(char.isdigit() for char in value_str):
                             obs_data["valueString"] = value_str
                     
+                    # 🚨 ENHANCED: Extract temporal information (observation/lab dates)
                     # Add effective date if available (clinical timeline, not PHI)
                     if "effectiveDateTime" in observation_resource:
-                        obs_data["effectiveDate"] = observation_resource["effectiveDateTime"][:10]  # YYYY-MM-DD only
-                    elif "effectivePeriod" in observation_resource and "start" in observation_resource["effectivePeriod"]:
-                        obs_data["effectiveDate"] = observation_resource["effectivePeriod"]["start"][:10]
+                        effective_date = observation_resource["effectiveDateTime"][:10]  # YYYY-MM-DD only
+                        obs_data["effectiveDate"] = effective_date
+                        # Add to encounter dates for timeline searching
+                        if effective_date not in self.encounter_dates:
+                            self.encounter_dates.append(effective_date)
+                            summary["encounter_dates_extracted"] += 1
+                    elif "effectivePeriod" in observation_resource:
+                        # Handle period-based observations
+                        period = observation_resource["effectivePeriod"]
+                        if "start" in period:
+                            start_date = period["start"][:10]
+                            obs_data["effectiveDate"] = start_date
+                            # Add to encounter dates for timeline searching
+                            if start_date not in self.encounter_dates:
+                                self.encounter_dates.append(start_date)
+                                summary["encounter_dates_extracted"] += 1
+                        if "end" in period:
+                            end_date = period["end"][:10]
+                            obs_data["effectiveEndDate"] = end_date
+                            # Add end date to encounter dates too
+                            if end_date not in self.encounter_dates and end_date != start_date:
+                                self.encounter_dates.append(end_date)
+                                summary["encounter_dates_extracted"] += 1
                     
                     # Add reference ranges if available (clinical standards, not PHI)
                     if "referenceRange" in observation_resource:
