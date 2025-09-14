@@ -1399,7 +1399,7 @@ class DocumentAnalyzer:
         prompt = MedicalPrompts.get_extraction_prompt(
             document_type=document_type,
             chunk_info=chunk_obj,
-            fhir_focused=False,  # Use clean extraction format for UI display
+            fhir_focused=True,  # Enable FHIR-focused extraction for proper resource arrays and temporal data
             context_tags=context_tags
         )
         
@@ -2263,13 +2263,117 @@ Processing Note: This is part of a larger medical document. Context may span mul
     def convert_to_fhir(self, extracted_fields: List[Dict], patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Convert extracted medical fields to FHIR resources.
+        Supports both legacy format (flat field list) and new FHIR-structured format.
+        
+        Args:
+            extracted_fields: List of extracted field dictionaries OR FHIR-structured dict
+            patient_id: Optional patient ID for resource references
+            
+        Returns:
+            List of FHIR resource dictionaries ready for accumulation
+        """
+        fhir_resources = []
+        
+        try:
+            # Detect data format and route to appropriate converter
+            if self._is_fhir_structured_format(extracted_fields):
+                self.logger.info("Processing FHIR-structured extraction format")
+                return self._convert_fhir_structured_to_resources(extracted_fields, patient_id)
+            else:
+                self.logger.info("Processing legacy flat field format")
+                return self._convert_legacy_fields_to_fhir(extracted_fields, patient_id)
+                
+        except Exception as e:
+            self.logger.error(f"Error converting to FHIR: {e}", exc_info=True)
+            # Fallback: create basic DocumentReference with raw data
+            return [self._create_document_reference_resource(extracted_fields, patient_id)]
+    
+    def _is_fhir_structured_format(self, data) -> bool:
+        """
+        Detect if the extracted data is in FHIR-structured format.
+        
+        FHIR-structured format: dict with keys like "Patient", "Condition", "Observation"
+        Legacy format: list of field dictionaries with "label", "value", "confidence"
+        """
+        if isinstance(data, dict):
+            # Check if it has FHIR resource type keys
+            fhir_resource_types = {'Patient', 'Condition', 'Observation', 'MedicationStatement', 
+                                 'Procedure', 'AllergyIntolerance', 'Practitioner', 'Organization'}
+            return any(key in fhir_resource_types for key in data.keys())
+        return False
+    
+    def _convert_fhir_structured_to_resources(self, fhir_data: Dict, patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Convert FHIR-structured extraction data to FHIR resources.
+        
+        Args:
+            fhir_data: Dictionary with FHIR resource types as keys
+            patient_id: Optional patient ID for resource references
+            
+        Returns:
+            List of FHIR resource dictionaries
+        """
+        fhir_resources = []
+        
+        # Process Patient data
+        if 'Patient' in fhir_data:
+            patient_resource = self._create_patient_resource_from_structured(fhir_data['Patient'], patient_id)
+            if patient_resource:
+                fhir_resources.append(patient_resource)
+        
+        # Process Condition resources (individual conditions with dates)
+        if 'Condition' in fhir_data and isinstance(fhir_data['Condition'], list):
+            for condition_data in fhir_data['Condition']:
+                condition_resource = self._create_condition_resource_from_structured(condition_data, patient_id)
+                if condition_resource:
+                    fhir_resources.append(condition_resource)
+        
+        # Process MedicationStatement resources (individual medications with dates)
+        if 'MedicationStatement' in fhir_data and isinstance(fhir_data['MedicationStatement'], list):
+            for med_data in fhir_data['MedicationStatement']:
+                medication_resource = self._create_medication_resource_from_structured(med_data, patient_id)
+                if medication_resource:
+                    fhir_resources.append(medication_resource)
+        
+        # Process Observation resources (individual observations with dates)
+        if 'Observation' in fhir_data and isinstance(fhir_data['Observation'], list):
+            for obs_data in fhir_data['Observation']:
+                observation_resource = self._create_observation_resource_from_structured(obs_data, patient_id)
+                if observation_resource:
+                    fhir_resources.append(observation_resource)
+        
+        # Process Procedure resources (individual procedures with dates)
+        if 'Procedure' in fhir_data and isinstance(fhir_data['Procedure'], list):
+            for proc_data in fhir_data['Procedure']:
+                procedure_resource = self._create_procedure_resource_from_structured(proc_data, patient_id)
+                if procedure_resource:
+                    fhir_resources.append(procedure_resource)
+        
+        # Process AllergyIntolerance resources
+        if 'AllergyIntolerance' in fhir_data and isinstance(fhir_data['AllergyIntolerance'], list):
+            for allergy_data in fhir_data['AllergyIntolerance']:
+                allergy_resource = self._create_allergy_resource_from_structured(allergy_data, patient_id)
+                if allergy_resource:
+                    fhir_resources.append(allergy_resource)
+        
+        # Create DocumentReference for source tracking
+        doc_ref_resource = self._create_document_reference_resource(fhir_data, patient_id)
+        if doc_ref_resource:
+            fhir_resources.append(doc_ref_resource)
+        
+        self.logger.info(f"Converted FHIR-structured data to {len(fhir_resources)} FHIR resources")
+        return fhir_resources
+    
+    def _convert_legacy_fields_to_fhir(self, extracted_fields: List[Dict], patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Convert legacy flat field format to FHIR resources (original logic).
         
         Args:
             extracted_fields: List of extracted field dictionaries
             patient_id: Optional patient ID for resource references
             
         Returns:
-            List of FHIR resource dictionaries ready for accumulation
+            List of FHIR resource dictionaries
         """
         fhir_resources = []
         
@@ -2292,7 +2396,7 @@ Processing Note: This is part of a larger medical document. Context may span mul
                 # Categorize field by medical domain
                 if any(term in label for term in ['patient', 'name', 'mrn', 'dob', 'date of birth', 'gender', 'age']):
                     patient_data[label] = field
-                elif any(term in label for term in ['diagnosis', 'condition', 'problem', 'chief complaint']):
+                elif any(term in label for term in ['diagnosis', 'diagnoses', 'condition', 'conditions', 'problem', 'problems', 'chief complaint']):
                     conditions.append(field)
                 elif any(term in label for term in ['medication', 'drug', 'prescription', 'rx']):
                     medications.append(field)
@@ -2550,6 +2654,577 @@ Processing Note: This is part of a larger medical document. Context may span mul
                 "status": "current",
                 "content": [{"attachment": {"data": extracted_fields}}]
             }
+    
+    # ========================================================================
+    # FHIR-Structured Resource Creation Methods
+    # ========================================================================
+    
+    def _create_patient_resource_from_structured(self, patient_data: Dict, patient_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create a FHIR Patient resource from structured extraction data."""
+        try:
+            # Extract patient information from structured format
+            name_data = patient_data.get('name', {})
+            birth_date_data = patient_data.get('birthDate', {})
+            gender_data = patient_data.get('gender', {})
+            identifier_data = patient_data.get('identifier', {})
+            
+            # Create patient resource
+            patient_resource = {
+                "resourceType": "Patient",
+                "id": patient_id or str(uuid4()),
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                }
+            }
+            
+            # Add name if available
+            if name_data.get('value'):
+                name_value = name_data['value']
+                if ',' in name_value:
+                    # "Last, First" format
+                    last, first = name_value.split(',', 1)
+                    patient_resource['name'] = [{
+                        "family": last.strip(),
+                        "given": [first.strip()]
+                    }]
+                else:
+                    patient_resource['name'] = [{"text": name_value}]
+            
+            # Add birth date if available
+            if birth_date_data.get('value'):
+                patient_resource['birthDate'] = birth_date_data['value']
+            
+            # Add gender if available
+            if gender_data.get('value'):
+                gender = gender_data['value'].lower()
+                if gender in ['male', 'female', 'other', 'unknown']:
+                    patient_resource['gender'] = gender
+            
+            # Add identifier (MRN) if available
+            if identifier_data.get('value'):
+                patient_resource['identifier'] = [{
+                    "type": {"text": "MR"},
+                    "value": identifier_data['value']
+                }]
+            
+            return patient_resource
+            
+        except Exception as e:
+            self.logger.error(f"Error creating Patient resource from structured data: {e}")
+            return None
+    
+    def _create_condition_resource_from_structured(self, condition_data: Dict, patient_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create a FHIR Condition resource from structured extraction data."""
+        try:
+            code_data = condition_data.get('code', {})
+            onset_date_data = condition_data.get('onsetDateTime', {})
+            recorded_date_data = condition_data.get('recordedDate', {})
+            status = condition_data.get('status', 'active')
+            
+            if not code_data.get('value'):
+                return None
+            
+            condition_resource = {
+                "resourceType": "Condition",
+                "id": str(uuid4()),
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "code": {
+                    "text": code_data['value']
+                },
+                "clinicalStatus": {
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                        "code": status
+                    }]
+                }
+            }
+            
+            # Add patient reference
+            if patient_id:
+                condition_resource["subject"] = {"reference": f"Patient/{patient_id}"}
+            
+            # Add onset date if available
+            if onset_date_data.get('value'):
+                condition_resource["onsetDateTime"] = onset_date_data['value']
+            
+            # Add recorded date if available
+            if recorded_date_data.get('value'):
+                condition_resource["recordedDate"] = recorded_date_data['value']
+            
+            # Add confidence as extension
+            if code_data.get('confidence'):
+                condition_resource["extension"] = [{
+                    "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                    "valueDecimal": code_data['confidence']
+                }]
+            
+            return condition_resource
+            
+        except Exception as e:
+            self.logger.error(f"Error creating Condition resource from structured data: {e}")
+            return None
+    
+    def _create_medication_resource_from_structured(self, med_data: Dict, patient_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create a FHIR MedicationStatement resource from structured extraction data."""
+        try:
+            medication_data = med_data.get('medication', {})
+            dosage_data = med_data.get('dosage', {})
+            effective_date_data = med_data.get('effectiveDateTime', {})
+            effective_period_data = med_data.get('effectivePeriod', {})
+            
+            if not medication_data.get('value'):
+                return None
+            
+            medication_resource = {
+                "resourceType": "MedicationStatement",
+                "id": str(uuid4()),
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "status": "active",
+                "medicationCodeableConcept": {
+                    "text": medication_data['value']
+                }
+            }
+            
+            # Add patient reference
+            if patient_id:
+                medication_resource["subject"] = {"reference": f"Patient/{patient_id}"}
+            
+            # Add dosage information if available
+            if dosage_data.get('value'):
+                medication_resource["dosage"] = [{
+                    "text": dosage_data['value']
+                }]
+            
+            # Add effective date/period if available
+            if effective_date_data.get('value'):
+                medication_resource["effectiveDateTime"] = effective_date_data['value']
+            elif effective_period_data:
+                period = {}
+                if effective_period_data.get('start', {}).get('value'):
+                    period['start'] = effective_period_data['start']['value']
+                if effective_period_data.get('end', {}).get('value'):
+                    period['end'] = effective_period_data['end']['value']
+                if period:
+                    medication_resource["effectivePeriod"] = period
+            
+            # Add confidence as extension
+            if medication_data.get('confidence'):
+                medication_resource["extension"] = [{
+                    "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                    "valueDecimal": medication_data['confidence']
+                }]
+            
+            return medication_resource
+            
+        except Exception as e:
+            self.logger.error(f"Error creating MedicationStatement resource from structured data: {e}")
+            return None
+    
+    def _create_observation_resource_from_structured(self, obs_data: Dict, patient_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create a FHIR Observation resource from structured extraction data."""
+        try:
+            code_data = obs_data.get('code', {})
+            value_data = obs_data.get('value', {})
+            effective_date_data = obs_data.get('effectiveDateTime', {})
+            
+            if not code_data.get('value'):
+                return None
+            
+            observation_resource = {
+                "resourceType": "Observation",
+                "id": str(uuid4()),
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "status": "final",
+                "code": {
+                    "text": code_data['value']
+                }
+            }
+            
+            # Add patient reference
+            if patient_id:
+                observation_resource["subject"] = {"reference": f"Patient/{patient_id}"}
+            
+            # Add value if available
+            if value_data.get('value'):
+                observation_resource["valueString"] = value_data['value']
+            
+            # Add effective date if available
+            if effective_date_data.get('value'):
+                observation_resource["effectiveDateTime"] = effective_date_data['value']
+            
+            # Add confidence as extension
+            if code_data.get('confidence'):
+                observation_resource["extension"] = [{
+                    "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                    "valueDecimal": code_data['confidence']
+                }]
+            
+            return observation_resource
+            
+        except Exception as e:
+            self.logger.error(f"Error creating Observation resource from structured data: {e}")
+            return None
+    
+    def _create_procedure_resource_from_structured(self, proc_data: Dict, patient_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create a FHIR Procedure resource from structured extraction data."""
+        try:
+            code_data = proc_data.get('code', {})
+            performed_date_data = proc_data.get('performedDateTime', {})
+            performed_period_data = proc_data.get('performedPeriod', {})
+            
+            if not code_data.get('value'):
+                return None
+            
+            procedure_resource = {
+                "resourceType": "Procedure",
+                "id": str(uuid4()),
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "status": "completed",
+                "code": {
+                    "text": code_data['value']
+                }
+            }
+            
+            # Add patient reference
+            if patient_id:
+                procedure_resource["subject"] = {"reference": f"Patient/{patient_id}"}
+            
+            # Add performed date/period if available
+            if performed_date_data.get('value'):
+                procedure_resource["performedDateTime"] = performed_date_data['value']
+            elif performed_period_data:
+                period = {}
+                if performed_period_data.get('start', {}).get('value'):
+                    period['start'] = performed_period_data['start']['value']
+                if performed_period_data.get('end', {}).get('value'):
+                    period['end'] = performed_period_data['end']['value']
+                if period:
+                    procedure_resource["performedPeriod"] = period
+            
+            # Add confidence as extension
+            if code_data.get('confidence'):
+                procedure_resource["extension"] = [{
+                    "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                    "valueDecimal": code_data['confidence']
+                }]
+            
+            return procedure_resource
+            
+        except Exception as e:
+            self.logger.error(f"Error creating Procedure resource from structured data: {e}")
+            return None
+    
+    def _create_allergy_resource_from_structured(self, allergy_data: Dict, patient_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create a FHIR AllergyIntolerance resource from structured extraction data."""
+        try:
+            substance_data = allergy_data.get('substance', {})
+            reaction_data = allergy_data.get('reaction', {})
+            onset_date_data = allergy_data.get('onsetDateTime', {})
+            
+            if not substance_data.get('value'):
+                return None
+            
+            allergy_resource = {
+                "resourceType": "AllergyIntolerance",
+                "id": str(uuid4()),
+                "meta": {
+                    "versionId": "1",
+                    "lastUpdated": timezone.now().isoformat()
+                },
+                "patient": {"reference": f"Patient/{patient_id}"} if patient_id else {},
+                "verificationStatus": {
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+                        "code": "confirmed"
+                    }]
+                },
+                "type": "allergy",
+                "category": ["medication"],
+                "code": {
+                    "text": substance_data['value']
+                }
+            }
+            
+            # Add reaction if available
+            if reaction_data.get('value'):
+                allergy_resource["reaction"] = [{
+                    "manifestation": [{
+                        "text": reaction_data['value']
+                    }]
+                }]
+            
+            # Add onset date if available
+            if onset_date_data.get('value'):
+                allergy_resource["onsetDateTime"] = onset_date_data['value']
+            
+            # Add confidence as extension
+            if substance_data.get('confidence'):
+                allergy_resource["extension"] = [{
+                    "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                    "valueDecimal": substance_data['confidence']
+                }]
+            
+            return allergy_resource
+            
+        except Exception as e:
+            self.logger.error(f"Error creating AllergyIntolerance resource from structured data: {e}")
+            return None
+    
+    # ========================================================================
+    # End FHIR-Structured Resource Creation Methods
+    # ========================================================================
+    
+    # ========================================================================
+    # Temporal Data Processing Utilities
+    # ========================================================================
+    
+    def process_temporal_data(self, fhir_resource: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process and standardize temporal data in FHIR resources.
+        
+        This function takes a FHIR resource and standardizes all date/time fields
+        to ensure they conform to FHIR specifications (ISO 8601 format).
+        
+        Args:
+            fhir_resource: FHIR resource dictionary
+            
+        Returns:
+            FHIR resource with standardized temporal data
+        """
+        if not isinstance(fhir_resource, dict):
+            return fhir_resource
+        
+        # Make a copy to avoid modifying the original
+        processed_resource = fhir_resource.copy()
+        
+        try:
+            # Define temporal fields by resource type
+            temporal_fields_by_type = {
+                'Condition': ['onsetDateTime', 'recordedDate', 'abatementDateTime'],
+                'Observation': ['effectiveDateTime', 'issued'],
+                'MedicationStatement': ['effectiveDateTime'],
+                'Procedure': ['performedDateTime'],
+                'AllergyIntolerance': ['onsetDateTime', 'recordedDate'],
+                'Patient': ['birthDate'],
+                'DiagnosticReport': ['effectiveDateTime', 'issued'],
+                'Encounter': ['period']  # Special handling for period
+            }
+            
+            resource_type = processed_resource.get('resourceType')
+            if resource_type in temporal_fields_by_type:
+                fields_to_process = temporal_fields_by_type[resource_type]
+                
+                for field in fields_to_process:
+                    if field in processed_resource:
+                        if field == 'period':
+                            # Special handling for period objects
+                            processed_resource[field] = self._process_period_data(processed_resource[field])
+                        else:
+                            # Standard date/time field processing
+                            processed_resource[field] = self.parse_and_format_date(processed_resource[field])
+            
+            # Also process nested period fields (effectivePeriod, performedPeriod)
+            period_fields = ['effectivePeriod', 'performedPeriod']
+            for period_field in period_fields:
+                if period_field in processed_resource:
+                    processed_resource[period_field] = self._process_period_data(processed_resource[period_field])
+            
+            self.logger.debug(f"Processed temporal data for {resource_type} resource")
+            return processed_resource
+            
+        except Exception as e:
+            self.logger.warning(f"Error processing temporal data: {e}")
+            return fhir_resource  # Return original if processing fails
+    
+    def parse_and_format_date(self, date_input: Any) -> Optional[str]:
+        """
+        Parse and format date to FHIR-compliant format (ISO 8601).
+        
+        Handles various input formats:
+        - ISO 8601 strings (already compliant)
+        - MM/DD/YYYY format
+        - DD-MM-YYYY format
+        - Natural language dates
+        - Date objects
+        
+        Args:
+            date_input: Date in various formats
+            
+        Returns:
+            FHIR-compliant date string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS+TZ) or None
+        """
+        if not date_input:
+            return None
+        
+        # If it's already a string, try to parse it
+        if isinstance(date_input, str):
+            date_str = date_input.strip()
+            
+            # Already in ISO 8601 format
+            if self._is_iso8601_format(date_str):
+                return date_str
+            
+            # Try common date formats
+            date_formats = [
+                '%m/%d/%Y',      # MM/DD/YYYY
+                '%m-%d-%Y',      # MM-DD-YYYY
+                '%d/%m/%Y',      # DD/MM/YYYY
+                '%d-%m-%Y',      # DD-MM-YYYY
+                '%Y-%m-%d',      # YYYY-MM-DD
+                '%Y/%m/%d',      # YYYY/MM/DD
+                '%B %d, %Y',     # January 1, 2023
+                '%b %d, %Y',     # Jan 1, 2023
+                '%d %B %Y',      # 1 January 2023
+                '%d %b %Y',      # 1 Jan 2023
+            ]
+            
+            for date_format in date_formats:
+                try:
+                    from datetime import datetime
+                    parsed_date = datetime.strptime(date_str, date_format)
+                    return parsed_date.strftime('%Y-%m-%d')
+                except ValueError:
+                    continue
+            
+            # Try parsing with dateutil for more flexible parsing
+            try:
+                from dateutil.parser import parse as dateutil_parse
+                parsed_date = dateutil_parse(date_str)
+                return parsed_date.strftime('%Y-%m-%d')
+            except:
+                self.logger.warning(f"Could not parse date string: {date_str}")
+                return None
+        
+        # Handle datetime objects
+        elif hasattr(date_input, 'strftime'):
+            return date_input.strftime('%Y-%m-%d')
+        
+        # Handle date objects
+        elif hasattr(date_input, 'isoformat'):
+            return date_input.isoformat()
+        
+        else:
+            self.logger.warning(f"Unsupported date input type: {type(date_input)}")
+            return None
+    
+    def _is_iso8601_format(self, date_str: str) -> bool:
+        """Check if a date string is already in ISO 8601 format."""
+        import re
+        
+        # ISO 8601 patterns
+        iso_patterns = [
+            r'^\d{4}-\d{2}-\d{2}$',                          # YYYY-MM-DD
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$',       # YYYY-MM-DDTHH:MM:SS
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+$',  # YYYY-MM-DDTHH:MM:SS.fff
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$',  # With timezone
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2}$'  # With milliseconds and timezone
+        ]
+        
+        return any(re.match(pattern, date_str) for pattern in iso_patterns)
+    
+    def _process_period_data(self, period_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process period objects (start/end dates).
+        
+        Args:
+            period_data: Period object with 'start' and/or 'end' fields
+            
+        Returns:
+            Processed period object with standardized dates
+        """
+        if not isinstance(period_data, dict):
+            return period_data
+        
+        processed_period = period_data.copy()
+        
+        if 'start' in processed_period:
+            processed_period['start'] = self.parse_and_format_date(processed_period['start'])
+        
+        if 'end' in processed_period:
+            processed_period['end'] = self.parse_and_format_date(processed_period['end'])
+        
+        return processed_period
+    
+    def validate_fhir_temporal_compliance(self, fhir_resource: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate that temporal fields in a FHIR resource comply with FHIR specifications.
+        
+        Args:
+            fhir_resource: FHIR resource to validate
+            
+        Returns:
+            Dictionary with validation results:
+            {
+                'is_valid': bool,
+                'errors': List[str],
+                'warnings': List[str],
+                'processed_fields': List[str]
+            }
+        """
+        validation_result = {
+            'is_valid': True,
+            'errors': [],
+            'warnings': [],
+            'processed_fields': []
+        }
+        
+        if not isinstance(fhir_resource, dict):
+            validation_result['is_valid'] = False
+            validation_result['errors'].append("Resource is not a dictionary")
+            return validation_result
+        
+        resource_type = fhir_resource.get('resourceType')
+        if not resource_type:
+            validation_result['warnings'].append("No resourceType specified")
+        
+        # Check common temporal fields
+        temporal_fields = ['onsetDateTime', 'recordedDate', 'effectiveDateTime', 
+                          'performedDateTime', 'birthDate', 'issued']
+        
+        for field in temporal_fields:
+            if field in fhir_resource:
+                field_value = fhir_resource[field]
+                if field_value and isinstance(field_value, str):
+                    if self._is_iso8601_format(field_value):
+                        validation_result['processed_fields'].append(f"{field}: VALID")
+                    else:
+                        validation_result['errors'].append(f"{field}: Invalid ISO 8601 format: {field_value}")
+                        validation_result['is_valid'] = False
+        
+        # Check period fields
+        period_fields = ['period', 'effectivePeriod', 'performedPeriod']
+        for field in period_fields:
+            if field in fhir_resource:
+                period_data = fhir_resource[field]
+                if isinstance(period_data, dict):
+                    for period_key in ['start', 'end']:
+                        if period_key in period_data:
+                            period_value = period_data[period_key]
+                            if period_value and isinstance(period_value, str):
+                                if self._is_iso8601_format(period_value):
+                                    validation_result['processed_fields'].append(f"{field}.{period_key}: VALID")
+                                else:
+                                    validation_result['errors'].append(f"{field}.{period_key}: Invalid ISO 8601 format: {period_value}")
+                                    validation_result['is_valid'] = False
+        
+        return validation_result
+    
+    # ========================================================================
+    # End Temporal Data Processing Utilities
+    # ========================================================================
     
     def _parse_ai_response_content(self, response_content: str) -> Dict[str, Any]:
         """
