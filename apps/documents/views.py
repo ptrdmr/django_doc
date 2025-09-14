@@ -785,27 +785,37 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 
                 # Handle different extraction_json formats
                 if isinstance(extraction_data, dict):
-                    # Convert dict format to list of fields
+                    # Check if this is FHIR-structured format (has resource type keys)
+                    fhir_resource_types = ['Patient', 'Condition', 'Observation', 'MedicationStatement', 
+                                         'Procedure', 'AllergyIntolerance', 'Practitioner', 'DocumentReference']
+                    is_fhir_structured = any(key in fhir_resource_types for key in extraction_data.keys())
+                    
                     field_list = []
-                    for key, value in extraction_data.items():
-                        if isinstance(value, dict) and 'value' in value:
-                            # Structured format with metadata
-                            field_list.append({
-                                'field_name': key,
-                                'field_value': value.get('value', ''),
-                                'confidence': value.get('confidence', 0.5),
-                                'category': value.get('category', self._categorize_field(key)),
-                                'fhir_path': value.get('fhir_path', ''),
-                            })
-                        else:
-                            # Simple key-value format
-                            field_list.append({
-                                'field_name': key,
-                                'field_value': str(value) if value is not None else '',
-                                'confidence': 0.5,  # Default confidence
-                                'category': self._categorize_field(key),
-                                'fhir_path': '',
-                            })
+                    
+                    if is_fhir_structured:
+                        # Convert FHIR-structured data to flat fields for UI
+                        field_list = self._convert_fhir_structured_to_fields(extraction_data)
+                    else:
+                        # Legacy format conversion
+                        for key, value in extraction_data.items():
+                            if isinstance(value, dict) and 'value' in value:
+                                # Structured format with metadata
+                                field_list.append({
+                                    'field_name': key,
+                                    'field_value': value.get('value', ''),
+                                    'confidence': value.get('confidence', 0.5),
+                                    'category': value.get('category', self._categorize_field(key)),
+                                    'fhir_path': value.get('fhir_path', ''),
+                                })
+                            else:
+                                # Simple key-value format
+                                field_list.append({
+                                    'field_name': key,
+                                    'field_value': str(value) if value is not None else '',
+                                    'confidence': 0.5,  # Default confidence
+                                    'category': self._categorize_field(key),
+                                    'fhir_path': '',
+                                })
                 elif isinstance(extraction_data, list):
                     # Already in list format from ResponseParser
                     field_list = extraction_data
@@ -884,6 +894,142 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             context['parsed_data'] = None
         
         return context
+    
+    def _convert_fhir_structured_to_fields(self, fhir_data):
+        """
+        Convert FHIR-structured data to flat field format for UI display.
+        
+        Args:
+            fhir_data: Dictionary with FHIR resource types as keys
+            
+        Returns:
+            list: List of field dictionaries for UI display
+        """
+        field_list = []
+        
+        # Process Patient resources
+        if 'Patient' in fhir_data:
+            patient_data = fhir_data['Patient']
+            if isinstance(patient_data, dict):
+                # Extract patient demographics
+                if 'name' in patient_data:
+                    name_data = patient_data['name']
+                    field_list.append({
+                        'field_name': 'Patient Name',
+                        'field_value': name_data.get('value', ''),
+                        'confidence': name_data.get('confidence', 0.5),
+                        'category': 'Demographics',
+                        'fhir_path': 'Patient.name',
+                        'source_text': name_data.get('source_text', ''),
+                    })
+                
+                if 'birthDate' in patient_data:
+                    birth_data = patient_data['birthDate']
+                    field_list.append({
+                        'field_name': 'Date of Birth',
+                        'field_value': birth_data.get('value', ''),
+                        'confidence': birth_data.get('confidence', 0.5),
+                        'category': 'Demographics',
+                        'fhir_path': 'Patient.birthDate',
+                        'source_text': birth_data.get('source_text', ''),
+                    })
+                
+                if 'identifier' in patient_data:
+                    id_data = patient_data['identifier']
+                    field_list.append({
+                        'field_name': 'Medical Record Number',
+                        'field_value': id_data.get('value', ''),
+                        'confidence': id_data.get('confidence', 0.5),
+                        'category': 'Demographics',
+                        'fhir_path': 'Patient.identifier',
+                        'source_text': id_data.get('source_text', ''),
+                    })
+        
+        # Process Condition resources
+        if 'Condition' in fhir_data:
+            conditions = fhir_data['Condition']
+            if not isinstance(conditions, list):
+                conditions = [conditions]
+            
+            for i, condition in enumerate(conditions):
+                if isinstance(condition, dict) and 'code' in condition:
+                    code_data = condition['code']
+                    field_list.append({
+                        'field_name': f'Diagnosis {i+1}',
+                        'field_value': code_data.get('value', ''),
+                        'confidence': code_data.get('confidence', 0.5),
+                        'category': 'Medical History',
+                        'fhir_path': f'Condition[{i}].code',
+                        'source_text': code_data.get('source_text', ''),
+                    })
+                    
+                    # Add onset date if available
+                    if 'onsetDateTime' in condition:
+                        onset_data = condition['onsetDateTime']
+                        field_list.append({
+                            'field_name': f'Diagnosis {i+1} Onset Date',
+                            'field_value': onset_data.get('value', ''),
+                            'confidence': onset_data.get('confidence', 0.5),
+                            'category': 'Medical History',
+                            'fhir_path': f'Condition[{i}].onsetDateTime',
+                            'source_text': onset_data.get('source_text', ''),
+                        })
+        
+        # Process MedicationStatement resources
+        if 'MedicationStatement' in fhir_data:
+            medications = fhir_data['MedicationStatement']
+            if not isinstance(medications, list):
+                medications = [medications]
+            
+            for i, medication in enumerate(medications):
+                if isinstance(medication, dict) and 'medicationCodeableConcept' in medication:
+                    med_data = medication['medicationCodeableConcept']
+                    field_list.append({
+                        'field_name': f'Medication {i+1}',
+                        'field_value': med_data.get('value', ''),
+                        'confidence': med_data.get('confidence', 0.5),
+                        'category': 'Medications',
+                        'fhir_path': f'MedicationStatement[{i}].medicationCodeableConcept',
+                        'source_text': med_data.get('source_text', ''),
+                    })
+        
+        # Process Procedure resources
+        if 'Procedure' in fhir_data:
+            procedures = fhir_data['Procedure']
+            if not isinstance(procedures, list):
+                procedures = [procedures]
+            
+            for i, procedure in enumerate(procedures):
+                if isinstance(procedure, dict) and 'code' in procedure:
+                    code_data = procedure['code']
+                    field_list.append({
+                        'field_name': f'Procedure {i+1}',
+                        'field_value': code_data.get('value', ''),
+                        'confidence': code_data.get('confidence', 0.5),
+                        'category': 'Medical History',
+                        'fhir_path': f'Procedure[{i}].code',
+                        'source_text': code_data.get('source_text', ''),
+                    })
+        
+        # Process AllergyIntolerance resources
+        if 'AllergyIntolerance' in fhir_data:
+            allergies = fhir_data['AllergyIntolerance']
+            if not isinstance(allergies, list):
+                allergies = [allergies]
+            
+            for i, allergy in enumerate(allergies):
+                if isinstance(allergy, dict) and 'code' in allergy:
+                    code_data = allergy['code']
+                    field_list.append({
+                        'field_name': f'Allergy {i+1}',
+                        'field_value': code_data.get('value', ''),
+                        'confidence': code_data.get('confidence', 0.5),
+                        'category': 'Allergies',
+                        'fhir_path': f'AllergyIntolerance[{i}].code',
+                        'source_text': code_data.get('source_text', ''),
+                    })
+        
+        return field_list
     
     def _categorize_field(self, field_name):
         """
