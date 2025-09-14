@@ -765,13 +765,20 @@ class PatientDeleteView(LoginRequiredMixin, View):
                     f"with {doc_count} documents and {history_count} history records"
                 )
                 
-                # HARD DELETE: Use Django's Model.delete() to bypass soft delete
-                # This actually removes the record from the database
+                # HARD DELETE: First delete related records, then the patient
+                # Delete patient history first (due to PROTECT constraint)
+                PatientHistory.objects.filter(patient=patient).delete()
+                
+                # Delete any parsed data records
+                if hasattr(patient, 'parsed_data'):
+                    patient.parsed_data.all().delete()
+                
+                # Now we can safely hard delete the patient
                 super(Patient, patient).delete()
                 
                 # Also clean up any other soft-deleted patients with the same MRN
                 # (in case there were previous soft deletes)
-                Patient.all_objects.filter(mrn=patient_mrn, deleted_at__isnull=False).delete()
+                self.cleanup_soft_deleted_with_mrn(patient_mrn)
                 
                 messages.success(
                     request,
@@ -785,6 +792,21 @@ class PatientDeleteView(LoginRequiredMixin, View):
             logger.error(f"Error deleting patient {pk}: {delete_error}")
             messages.error(request, "Error deleting patient. Please try again.")
             return redirect('patients:detail', pk=pk)
+    
+    def cleanup_soft_deleted_with_mrn(self, mrn):
+        """Clean up any soft-deleted patients with the same MRN."""
+        try:
+            soft_deleted = Patient.all_objects.filter(mrn=mrn, deleted_at__isnull=False)
+            for soft_patient in soft_deleted:
+                try:
+                    # Delete related history first
+                    PatientHistory.objects.filter(patient=soft_patient).delete()
+                    # Hard delete the soft-deleted patient
+                    super(Patient, soft_patient).delete()
+                except Exception as cleanup_error:
+                    logger.error(f"Error cleaning up soft-deleted patient {soft_patient.id}: {cleanup_error}")
+        except Exception as e:
+            logger.error(f"Error during MRN cleanup for {mrn}: {e}")
 
 
 @method_decorator([admin_required], name='dispatch')
@@ -845,7 +867,19 @@ class CleanupSoftDeletedView(LoginRequiredMixin, View):
                 
                 # Hard delete all soft-deleted patients
                 for patient in soft_deleted:
-                    super(Patient, patient).delete()
+                    try:
+                        # Delete patient history first (due to PROTECT constraint)
+                        PatientHistory.objects.filter(patient=patient).delete()
+                        
+                        # Delete any parsed data records
+                        if hasattr(patient, 'parsed_data'):
+                            patient.parsed_data.all().delete()
+                        
+                        # Now hard delete the patient
+                        super(Patient, patient).delete()
+                    except Exception as patient_delete_error:
+                        logger.error(f"Error deleting soft-deleted patient {patient.mrn}: {patient_delete_error}")
+                        # Continue with other patients
                 
                 messages.success(
                     request,
