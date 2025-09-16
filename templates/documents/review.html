@@ -817,6 +817,11 @@
         {% endif %}
     </div>
     
+    <!-- Patient Data Comparison Section -->
+    {% if comparison %}
+        {% include 'documents/partials/patient_comparison.html' with comparison_data=comparison.comparison_data comparison=comparison %}
+    {% endif %}
+
     <!-- Review Actions Section -->
     <div class="review-actions">
         {% if document.status == 'review' and parsed_data or request.GET.force_review == '1' %}

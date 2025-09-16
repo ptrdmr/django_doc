@@ -893,6 +893,21 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             # No parsed data available or error occurred
             context['parsed_data'] = None
         
+        # Add Patient Data Comparison for validation
+        try:
+            if context.get('parsed_data'):
+                from .services import PatientDataComparisonService
+                comparison_service = PatientDataComparisonService()
+                comparison = comparison_service.compare_patient_data(self.object, self.object.patient)
+                context['comparison'] = comparison
+                
+                # Add comparison helpers
+                context['has_discrepancies'] = comparison.has_pending_discrepancies()
+                context['comparison_summary'] = comparison.get_discrepancy_summary()
+        except Exception as comparison_error:
+            logger.error(f"Error creating patient data comparison: {comparison_error}")
+            context['comparison'] = None
+        
         return context
     
     def _convert_fhir_structured_to_fields(self, fhir_data):
