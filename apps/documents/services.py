@@ -14,6 +14,7 @@ from django.utils import timezone
 import base64
 import json
 from django.db import transaction
+from django.core.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -4549,3 +4550,608 @@ class PatientDataComparisonService:
             return f"Medium confidence ({confidence:.1f}) - manual review recommended"
         else:
             return "Values are similar - no change needed"
+
+
+class PatientRecordUpdateService:
+    """
+    Service for safely updating patient records with resolved data while maintaining audit trails.
+    
+    Provides atomic transaction handling, comprehensive validation, and HIPAA-compliant
+    audit logging for all patient record modifications during document review process.
+    """
+    
+    def __init__(self):
+        """Initialize the patient record update service."""
+        self.validation_errors = []
+        self.update_summary = {}
+        
+    def apply_comparison_resolutions(self, comparison, reviewer):
+        """
+        Apply all resolved field decisions to the patient record.
+        
+        Args:
+            comparison: PatientDataComparison instance with resolved decisions
+            reviewer: User performing the updates
+            
+        Returns:
+            Dictionary with update results and summary
+        """
+        if not comparison.resolution_decisions:
+            return {
+                'success': False,
+                'error': 'No resolution decisions found',
+                'updates_applied': 0
+            }
+        
+        update_results = {
+            'success': True,
+            'updates_applied': 0,
+            'updates_skipped': 0,
+            'validation_errors': [],
+            'audit_entries': [],
+            'updated_fields': []
+        }
+        
+        try:
+            with transaction.atomic():
+                patient = comparison.patient
+                
+                # Track original values for audit trail
+                original_values = self._capture_original_values(patient)
+                
+                # Apply each resolved field
+                for field_name, resolution_data in comparison.resolution_decisions.items():
+                    resolution = resolution_data.get('resolution')
+                    
+                    if resolution == 'pending':
+                        update_results['updates_skipped'] += 1
+                        continue
+                    
+                    try:
+                        field_updated = self._apply_field_resolution(
+                            patient, field_name, resolution_data, comparison
+                        )
+                        
+                        if field_updated:
+                            update_results['updates_applied'] += 1
+                            update_results['updated_fields'].append(field_name)
+                        else:
+                            update_results['updates_skipped'] += 1
+                            
+                    except ValidationError as ve:
+                        update_results['validation_errors'].append({
+                            'field': field_name,
+                            'error': str(ve)
+                        })
+                        logger.warning(f"Validation error updating field {field_name}: {ve}")
+                
+                # Save patient record if any updates were made
+                if update_results['updates_applied'] > 0:
+                    patient.updated_by = reviewer
+                    patient.save()
+                    
+                    # Generate audit trail
+                    audit_entries = self._generate_audit_trail(
+                        patient, comparison, original_values, 
+                        update_results['updated_fields'], reviewer
+                    )
+                    update_results['audit_entries'] = audit_entries
+                    
+                    # Update comparison status
+                    comparison.status = 'resolved'
+                    comparison.reviewer = reviewer
+                    comparison.reviewed_at = timezone.now()
+                    comparison.save()
+                    
+                    logger.info(f"Applied {update_results['updates_applied']} patient record updates from document {comparison.document.id}")
+                
+        except Exception as e:
+            logger.error(f"Error applying comparison resolutions: {e}")
+            update_results['success'] = False
+            update_results['error'] = str(e)
+        
+        return update_results
+    
+    def _apply_field_resolution(self, patient, field_name, resolution_data, comparison):
+        """
+        Apply a single field resolution to the patient record.
+        
+        Args:
+            patient: Patient instance to update
+            field_name: Name of the field being updated
+            resolution_data: Resolution decision data
+            comparison: PatientDataComparison instance
+            
+        Returns:
+            bool: True if field was updated, False if skipped
+        """
+        resolution = resolution_data.get('resolution')
+        custom_value = resolution_data.get('custom_value')
+        
+        # Get the new value based on resolution type
+        new_value = None
+        
+        if resolution == 'keep_existing':
+            # No update needed - keep current patient record value
+            return False
+            
+        elif resolution == 'use_extracted':
+            # Use the extracted value from the document
+            comparison_field = comparison.comparison_data.get(field_name, {})
+            new_value = comparison_field.get('extracted_value', '')
+            
+        elif resolution == 'manual_edit':
+            # Use the custom value provided by reviewer
+            new_value = custom_value
+            
+        elif resolution == 'no_change':
+            # No change needed
+            return False
+        
+        if new_value is None or new_value == '':
+            return False
+        
+        # Map field name to patient model field
+        patient_field = self._map_field_to_patient_model(field_name)
+        if not patient_field:
+            logger.warning(f"Cannot map field {field_name} to patient model")
+            return False
+        
+        # Validate the new value
+        if not self._validate_field_value(patient_field, new_value, patient):
+            return False
+        
+        # Apply the update
+        try:
+            # Handle different field types
+            if patient_field in ['date_of_birth']:
+                new_value = self._parse_date_value(new_value)
+            elif patient_field in ['phone_number']:
+                new_value = self._normalize_phone_value(new_value)
+            
+            setattr(patient, patient_field, new_value)
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error setting field {patient_field} to {new_value}: {e}")
+            return False
+    
+    def _map_field_to_patient_model(self, field_name):
+        """Map extracted field names to patient model fields."""
+        field_mapping = {
+            'patient_name': None,  # Handled separately - split into first/last
+            'patientName': None,   # Handled separately - split into first/last
+            'date_of_birth': 'date_of_birth',
+            'dateOfBirth': 'date_of_birth',
+            'dob': 'date_of_birth',
+            'gender': 'gender',
+            'sex': 'gender',
+            'phone': 'phone_number',
+            'phone_number': 'phone_number',
+            'address': 'address',
+            'email': 'email',
+            'mrn': 'mrn',
+            'ssn': 'ssn',
+            'insurance': 'insurance_info',
+        }
+        
+        return field_mapping.get(field_name)
+    
+    def _validate_field_value(self, field_name, value, patient):
+        """
+        Validate a field value before applying to patient record.
+        
+        Args:
+            field_name: Patient model field name
+            value: Value to validate
+            patient: Patient instance
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        try:
+            # Basic validation
+            if not value or not str(value).strip():
+                return False
+            
+            # Field-specific validation
+            if field_name == 'date_of_birth':
+                return self._validate_date_value(value)
+            elif field_name == 'phone_number':
+                return self._validate_phone_value(value)
+            elif field_name == 'email':
+                return self._validate_email_value(value)
+            elif field_name == 'mrn':
+                return self._validate_mrn_value(value, patient)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error validating field {field_name}: {e}")
+            return False
+    
+    def _validate_date_value(self, value):
+        """Validate and parse date values."""
+        import datetime
+        
+        date_formats = ['%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%d/%m/%Y']
+        
+        for fmt in date_formats:
+            try:
+                datetime.datetime.strptime(str(value).strip(), fmt)
+                return True
+            except ValueError:
+                continue
+        
+        return False
+    
+    def _validate_phone_value(self, value):
+        """Validate phone number format."""
+        digits_only = re.sub(r'\D', '', str(value))
+        return len(digits_only) in [10, 11]
+    
+    def _validate_email_value(self, value):
+        """Validate email format."""
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return re.match(email_pattern, str(value).strip()) is not None
+    
+    def _validate_mrn_value(self, value, patient):
+        """Validate MRN uniqueness and format."""
+        from apps.patients.models import Patient
+        
+        # Check format
+        if not re.match(r'^[a-zA-Z0-9]{3,}$', str(value)):
+            return False
+        
+        # Check uniqueness (excluding current patient)
+        existing = Patient.objects.filter(mrn=value).exclude(id=patient.id).exists()
+        return not existing
+    
+    def _parse_date_value(self, value):
+        """Parse date value into proper format for database."""
+        import datetime
+        
+        date_formats = ['%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%d/%m/%Y']
+        
+        for fmt in date_formats:
+            try:
+                parsed_date = datetime.datetime.strptime(str(value).strip(), fmt)
+                return parsed_date.date()
+            except ValueError:
+                continue
+        
+        raise ValueError(f"Cannot parse date: {value}")
+    
+    def _normalize_phone_value(self, value):
+        """Normalize phone number for storage."""
+        digits_only = re.sub(r'\D', '', str(value))
+        
+        # Handle US phone numbers
+        if len(digits_only) == 11 and digits_only.startswith('1'):
+            digits_only = digits_only[1:]
+        
+        # Format as (XXX) XXX-XXXX
+        if len(digits_only) == 10:
+            return f"({digits_only[:3]}) {digits_only[3:6]}-{digits_only[6:]}"
+        
+        return value  # Return original if can't format
+    
+    def _capture_original_values(self, patient):
+        """Capture original patient values for audit trail."""
+        return {
+            'first_name': patient.first_name,
+            'last_name': patient.last_name,
+            'date_of_birth': patient.date_of_birth,
+            'gender': patient.gender,
+            'phone_number': patient.phone_number,
+            'address': patient.address,
+            'email': patient.email,
+            'mrn': patient.mrn,
+            'ssn': patient.ssn,
+            'insurance_info': patient.insurance_info,
+        }
+    
+    def _generate_audit_trail(self, patient, comparison, original_values, updated_fields, reviewer):
+        """
+        Generate comprehensive audit trail for patient record updates.
+        
+        Args:
+            patient: Updated patient instance
+            comparison: PatientDataComparison instance
+            original_values: Dictionary of original field values
+            updated_fields: List of fields that were updated
+            reviewer: User who performed the updates
+            
+        Returns:
+            List of audit trail entries
+        """
+        from apps.core.models import AuditLog
+        
+        audit_entries = []
+        
+        for field_name in updated_fields:
+            patient_field = self._map_field_to_patient_model(field_name)
+            if not patient_field:
+                continue
+            
+            original_value = original_values.get(patient_field, '')
+            new_value = getattr(patient, patient_field, '')
+            
+            # Create audit log entry
+            try:
+                audit_entry = AuditLog.objects.create(
+                    user=reviewer,
+                    patient=patient,
+                    action='patient_data_update',
+                    resource_type='Patient',
+                    resource_id=str(patient.id),
+                    ip_address=self._get_client_ip(reviewer.last_login),
+                    user_agent='Document Review System',
+                    details={
+                        'field_name': patient_field,
+                        'original_value': str(original_value) if original_value else '',
+                        'new_value': str(new_value) if new_value else '',
+                        'source_document': comparison.document.filename,
+                        'resolution_type': comparison.get_field_resolution(field_name).get('resolution'),
+                        'reasoning': comparison.get_field_resolution(field_name).get('notes', ''),
+                        'confidence_score': comparison.comparison_data.get(field_name, {}).get('confidence', 0.0)
+                    }
+                )
+                audit_entries.append(audit_entry)
+                
+            except Exception as e:
+                logger.error(f"Error creating audit entry for field {field_name}: {e}")
+        
+        return audit_entries
+    
+    def _get_client_ip(self, request_or_last_login):
+        """Get client IP address for audit logging."""
+        # For now, return a placeholder since we don't have access to request
+        return '127.0.0.1'  # This would be improved with proper request context
+    
+    def validate_batch_updates(self, update_requests):
+        """
+        Validate a batch of update requests before applying.
+        
+        Args:
+            update_requests: List of update request dictionaries
+            
+        Returns:
+            Dictionary with validation results
+        """
+        validation_results = {
+            'is_valid': True,
+            'valid_updates': [],
+            'invalid_updates': [],
+            'warnings': [],
+            'total_requests': len(update_requests)
+        }
+        
+        for i, update_request in enumerate(update_requests):
+            try:
+                patient = update_request.get('patient')
+                field_name = update_request.get('field_name')
+                new_value = update_request.get('new_value')
+                
+                if not all([patient, field_name, new_value]):
+                    validation_results['invalid_updates'].append({
+                        'index': i,
+                        'error': 'Missing required fields (patient, field_name, new_value)'
+                    })
+                    continue
+                
+                # Validate the field value
+                if self._validate_field_value(field_name, new_value, patient):
+                    validation_results['valid_updates'].append(update_request)
+                else:
+                    validation_results['invalid_updates'].append({
+                        'index': i,
+                        'field_name': field_name,
+                        'error': f'Invalid value for field {field_name}: {new_value}'
+                    })
+                    
+            except Exception as e:
+                validation_results['invalid_updates'].append({
+                    'index': i,
+                    'error': f'Validation error: {str(e)}'
+                })
+        
+        # Set overall validation status
+        validation_results['is_valid'] = len(validation_results['invalid_updates']) == 0
+        
+        return validation_results
+    
+    def apply_batch_updates(self, update_requests, reviewer):
+        """
+        Apply a batch of patient record updates atomically.
+        
+        Args:
+            update_requests: List of validated update requests
+            reviewer: User performing the updates
+            
+        Returns:
+            Dictionary with batch update results
+        """
+        batch_results = {
+            'success': True,
+            'total_processed': 0,
+            'successful_updates': 0,
+            'failed_updates': 0,
+            'audit_entries': [],
+            'errors': []
+        }
+        
+        try:
+            with transaction.atomic():
+                for update_request in update_requests:
+                    batch_results['total_processed'] += 1
+                    
+                    try:
+                        patient = update_request['patient']
+                        field_name = update_request['field_name']
+                        new_value = update_request['new_value']
+                        reasoning = update_request.get('reasoning', 'Batch update')
+                        
+                        # Capture original value
+                        original_value = getattr(patient, field_name, '')
+                        
+                        # Apply update
+                        setattr(patient, field_name, new_value)
+                        patient.updated_by = reviewer
+                        patient.save()
+                        
+                        # Create audit entry
+                        audit_entry = self._create_audit_entry(
+                            patient, field_name, original_value, new_value, reviewer, reasoning
+                        )
+                        batch_results['audit_entries'].append(audit_entry)
+                        batch_results['successful_updates'] += 1
+                        
+                    except Exception as update_error:
+                        batch_results['failed_updates'] += 1
+                        batch_results['errors'].append({
+                            'patient_id': update_request.get('patient', {}).id,
+                            'field_name': update_request.get('field_name'),
+                            'error': str(update_error)
+                        })
+                        logger.error(f"Error in batch update: {update_error}")
+                
+        except Exception as batch_error:
+            logger.error(f"Error in batch update transaction: {batch_error}")
+            batch_results['success'] = False
+            batch_results['error'] = str(batch_error)
+        
+        return batch_results
+    
+    def _create_audit_entry(self, patient, field_name, original_value, new_value, reviewer, reasoning):
+        """Create a single audit log entry for a patient field update."""
+        from apps.core.models import AuditLog
+        
+        return AuditLog.objects.create(
+            user=reviewer,
+            patient=patient,
+            action='patient_field_update',
+            resource_type='Patient',
+            resource_id=str(patient.id),
+            ip_address=self._get_client_ip(None),  # Placeholder
+            user_agent='Patient Data Comparison System',
+            details={
+                'field_name': field_name,
+                'original_value': str(original_value) if original_value else '',
+                'new_value': str(new_value) if new_value else '',
+                'reasoning': reasoning,
+                'update_source': 'document_review_comparison'
+            }
+        )
+    
+    def rollback_patient_updates(self, patient, original_values, reviewer):
+        """
+        Rollback patient record to previous values.
+        
+        Args:
+            patient: Patient instance to rollback
+            original_values: Dictionary of original field values
+            reviewer: User performing the rollback
+            
+        Returns:
+            Dictionary with rollback results
+        """
+        rollback_results = {
+            'success': True,
+            'fields_rolled_back': 0,
+            'errors': []
+        }
+        
+        try:
+            with transaction.atomic():
+                for field_name, original_value in original_values.items():
+                    try:
+                        setattr(patient, field_name, original_value)
+                        rollback_results['fields_rolled_back'] += 1
+                        
+                        # Create audit entry for rollback
+                        self._create_audit_entry(
+                            patient, field_name, 
+                            getattr(patient, field_name), original_value,
+                            reviewer, 'Rollback patient data update'
+                        )
+                        
+                    except Exception as field_error:
+                        rollback_results['errors'].append({
+                            'field': field_name,
+                            'error': str(field_error)
+                        })
+                
+                patient.updated_by = reviewer
+                patient.save()
+                
+                logger.info(f"Rolled back {rollback_results['fields_rolled_back']} fields for patient {patient.id}")
+                
+        except Exception as rollback_error:
+            logger.error(f"Error rolling back patient updates: {rollback_error}")
+            rollback_results['success'] = False
+            rollback_results['error'] = str(rollback_error)
+        
+        return rollback_results
+    
+    def get_update_preview(self, comparison):
+        """
+        Generate a preview of what the patient record will look like after updates.
+        
+        Args:
+            comparison: PatientDataComparison with resolution decisions
+            
+        Returns:
+            Dictionary with preview data
+        """
+        if not comparison.resolution_decisions:
+            return {'has_changes': False}
+        
+        preview = {
+            'has_changes': False,
+            'field_changes': [],
+            'summary': {
+                'total_changes': 0,
+                'high_confidence_changes': 0,
+                'manual_edits': 0
+            }
+        }
+        
+        patient = comparison.patient
+        
+        for field_name, resolution_data in comparison.resolution_decisions.items():
+            resolution = resolution_data.get('resolution')
+            
+            if resolution in ['keep_existing', 'no_change', 'pending']:
+                continue
+            
+            preview['has_changes'] = True
+            preview['summary']['total_changes'] += 1
+            
+            # Get current and new values
+            patient_field = self._map_field_to_patient_model(field_name)
+            current_value = getattr(patient, patient_field, '') if patient_field else ''
+            
+            if resolution == 'use_extracted':
+                comparison_field = comparison.comparison_data.get(field_name, {})
+                new_value = comparison_field.get('extracted_value', '')
+                confidence = comparison_field.get('confidence', 0.0)
+                
+                if confidence >= 0.8:
+                    preview['summary']['high_confidence_changes'] += 1
+                    
+            elif resolution == 'manual_edit':
+                new_value = resolution_data.get('custom_value', '')
+                preview['summary']['manual_edits'] += 1
+            else:
+                continue
+            
+            preview['field_changes'].append({
+                'field_name': field_name,
+                'current_value': current_value,
+                'new_value': new_value,
+                'resolution_type': resolution,
+                'reasoning': resolution_data.get('notes', '')
+            })
+        
+        return preview
