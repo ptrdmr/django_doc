@@ -2,8 +2,9 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
+from django.utils import timezone
 
-from .models import Document, ParsedData
+from .models import Document, ParsedData, PatientDataComparison
 
 
 @admin.register(Document)
@@ -300,3 +301,188 @@ class ParsedDataAdmin(admin.ModelAdmin):
         
         self.message_user(request, f'{count} parsed data marked as merged.')
     mark_as_merged.short_description = 'Mark selected data as merged'
+
+
+@admin.register(PatientDataComparison)
+class PatientDataComparisonAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for PatientDataComparison model.
+    Provides management of patient data comparison and resolution workflow.
+    """
+    
+    list_display = [
+        'document',
+        'patient',
+        'status',
+        'completion_percentage_display',
+        'discrepancies_found',
+        'fields_resolved',
+        'reviewer',
+        'created_at',
+    ]
+    
+    list_filter = [
+        'status',
+        'created_at',
+        'reviewed_at',
+        'reviewer',
+        'overall_confidence_score',
+    ]
+    
+    search_fields = [
+        'document__filename',
+        'patient__first_name',
+        'patient__last_name',
+        'patient__mrn',
+        'reviewer__username',
+        'reviewer_notes',
+    ]
+    
+    readonly_fields = [
+        'created_at',
+        'updated_at',
+        'reviewed_at',
+        'completion_percentage_display',
+        'discrepancy_summary_display',
+        'view_document_link',
+        'view_patient_link',
+    ]
+    
+    fieldsets = [
+        ('Basic Information', {
+            'fields': [
+                'document',
+                'view_document_link',
+                'patient',
+                'view_patient_link',
+                'parsed_data',
+                'status',
+            ]
+        }),
+        ('Comparison Metrics', {
+            'fields': [
+                'total_fields_compared',
+                'discrepancies_found',
+                'fields_resolved',
+                'completion_percentage_display',
+                'discrepancy_summary_display',
+            ]
+        }),
+        ('Quality Scores', {
+            'fields': [
+                'overall_confidence_score',
+                'data_quality_score',
+            ]
+        }),
+        ('Review Information', {
+            'fields': [
+                'reviewer',
+                'reviewed_at',
+                'reviewer_notes',
+                'auto_resolution_summary',
+            ]
+        }),
+        ('Comparison Data', {
+            'fields': [
+                'comparison_data',
+                'resolution_decisions',
+            ],
+            'classes': ['collapse'],
+        }),
+        ('Timestamps', {
+            'fields': [
+                'created_at',
+                'updated_at',
+            ]
+        }),
+    ]
+    
+    actions = ['mark_as_resolved', 'reset_to_pending']
+    
+    def completion_percentage_display(self, obj):
+        """Display completion percentage with visual indicator."""
+        percentage = obj.get_completion_percentage()
+        if percentage == 0:
+            color = 'red'
+        elif percentage < 50:
+            color = 'orange'
+        elif percentage < 100:
+            color = 'blue'
+        else:
+            color = 'green'
+        
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{:.1f}%</span>',
+            color,
+            percentage
+        )
+    completion_percentage_display.short_description = 'Completion'
+    
+    def discrepancy_summary_display(self, obj):
+        """Display summary of discrepancies by category."""
+        summary = obj.get_discrepancy_summary()
+        total = sum(summary.values())
+        
+        if total == 0:
+            return format_html('<span style="color: green;">No discrepancies</span>')
+        
+        parts = []
+        for category, count in summary.items():
+            if count > 0:
+                parts.append(f"{category}: {count}")
+        
+        return format_html(
+            '<span style="color: orange;">{}</span>',
+            ', '.join(parts)
+        )
+    discrepancy_summary_display.short_description = 'Discrepancies'
+    
+    def view_document_link(self, obj):
+        """Provide link to view the source document."""
+        if obj.document:
+            url = reverse('admin:documents_document_change', args=[obj.document.id])
+            return format_html(
+                '<a href="{}">View Document</a>',
+                url
+            )
+        return '-'
+    view_document_link.short_description = 'Source Document'
+    
+    def view_patient_link(self, obj):
+        """Provide link to view the patient record."""
+        if obj.patient:
+            url = reverse('admin:patients_patient_change', args=[obj.patient.id])
+            return format_html(
+                '<a href="{}">View Patient</a>',
+                url
+            )
+        return '-'
+    view_patient_link.short_description = 'Patient Record'
+    
+    def mark_as_resolved(self, request, queryset):
+        """Action to mark comparisons as resolved."""
+        count = 0
+        for comparison in queryset:
+            if comparison.status != 'resolved':
+                comparison.status = 'resolved'
+                comparison.reviewed_at = timezone.now()
+                comparison.reviewer = request.user
+                comparison.save(update_fields=['status', 'reviewed_at', 'reviewer'])
+                count += 1
+        
+        self.message_user(request, f'{count} comparisons marked as resolved.')
+    mark_as_resolved.short_description = 'Mark selected comparisons as resolved'
+    
+    def reset_to_pending(self, request, queryset):
+        """Action to reset comparisons to pending status."""
+        count = 0
+        for comparison in queryset:
+            if comparison.status != 'pending':
+                comparison.status = 'pending'
+                comparison.reviewed_at = None
+                comparison.reviewer = None
+                comparison.save(update_fields=['status', 'reviewed_at', 'reviewer'])
+                count += 1
+        
+        self.message_user(request, f'{count} comparisons reset to pending.')
+    reset_to_pending.short_description = 'Reset selected comparisons to pending'
