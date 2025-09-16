@@ -625,6 +625,33 @@
             {% endif %}
         </div>
         
+        <!-- Review Mode Toggle -->
+        {% if comparison and comparison.discrepancies_found > 0 %}
+        <div class="review-mode-toggle mb-4">
+            <div class="flex items-center justify-center space-x-4">
+                <button type="button" 
+                        id="standard-review-btn"
+                        class="mode-toggle-btn bg-blue-100 text-blue-800 px-4 py-2 rounded-lg font-medium transition-colors"
+                        onclick="showStandardReview()">
+                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Standard Review
+                </button>
+                <button type="button" 
+                        id="comparison-review-btn"
+                        class="mode-toggle-btn bg-orange-100 text-orange-800 px-4 py-2 rounded-lg font-medium transition-colors"
+                        onclick="showComparisonReview()">
+                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    Patient Data Comparison
+                    <span class="ml-2 bg-orange-600 text-white px-2 py-1 rounded-full text-xs">{{ comparison.discrepancies_found }} discrepancies</span>
+                </button>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Progress Indicator Section -->
         <div class="progress-indicator">
             <div class="progress-text">
@@ -889,6 +916,52 @@ function showChangesModal() {
         document.getElementById('review-form').submit();
     }
 }
+
+// Review mode toggle functions
+function showStandardReview() {
+    const standardReview = document.querySelector('.review-content');
+    const comparisonReview = document.querySelector('.patient-comparison-container');
+    const standardBtn = document.getElementById('standard-review-btn');
+    const comparisonBtn = document.getElementById('comparison-review-btn');
+    
+    if (standardReview && comparisonReview) {
+        standardReview.style.display = 'block';
+        comparisonReview.style.display = 'none';
+        
+        // Update button states
+        standardBtn.classList.add('bg-blue-600', 'text-white');
+        standardBtn.classList.remove('bg-blue-100', 'text-blue-800');
+        comparisonBtn.classList.add('bg-orange-100', 'text-orange-800');
+        comparisonBtn.classList.remove('bg-orange-600', 'text-white');
+    }
+}
+
+function showComparisonReview() {
+    const standardReview = document.querySelector('.review-content');
+    const comparisonReview = document.querySelector('.patient-comparison-container');
+    const standardBtn = document.getElementById('standard-review-btn');
+    const comparisonBtn = document.getElementById('comparison-review-btn');
+    
+    if (standardReview && comparisonReview) {
+        standardReview.style.display = 'none';
+        comparisonReview.style.display = 'block';
+        
+        // Update button states
+        comparisonBtn.classList.add('bg-orange-600', 'text-white');
+        comparisonBtn.classList.remove('bg-orange-100', 'text-orange-800');
+        standardBtn.classList.add('bg-blue-100', 'text-blue-800');
+        standardBtn.classList.remove('bg-blue-600', 'text-white');
+    }
+}
+
+// Initialize review mode on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Default to standard review mode if comparison has discrepancies
+    const comparison = document.querySelector('.patient-comparison-container');
+    if (comparison) {
+        showStandardReview();
+    }
+});
 
 // New completion workflow functions
 function requestChanges() {
