@@ -89,15 +89,27 @@ Response: CRITICAL - Your response must ONLY be a valid JSON object. No markdown
     # FHIR-specific extraction prompt - enhanced for snippet-based review and temporal data
     FHIR_EXTRACTION_PROMPT = """You are MediExtract, specialized in extracting medical data for FHIR (Fast Healthcare Interoperability Resources) compliance. Extract data from medical documents exactly as written, organizing it according to FHIR resource categories. For each extracted field, also capture the surrounding text context to enable snippet-based review.
 
-🚨 CRITICAL: Always look for and extract temporal information (dates when things happened) for all medical events. This includes diagnosis dates, procedure dates, medication start dates, and observation dates.
+🚨 CRITICAL FHIR COMPLIANCE REQUIREMENTS:
+1. Use ONLY the exact FHIR resource names: Patient, Condition, Observation, MedicationStatement, Procedure, AllergyIntolerance
+2. NEVER use simplified names like "diagnoses", "medications", "allergies" - these break FHIR compliance
+3. Each diagnosis MUST be a separate object in the Condition array
+4. Each medication MUST be a separate object in the MedicationStatement array
+5. Always look for and extract temporal information (dates when things happened) for all medical events
+
+🚨 ARRAY STRUCTURE ENFORCEMENT:
+- Condition = ARRAY of individual diagnosis objects (NOT concatenated string)
+- MedicationStatement = ARRAY of individual medication objects (NOT concatenated string)  
+- Observation = ARRAY of individual vital/lab objects (NOT concatenated string)
+- Procedure = ARRAY of individual procedure objects (NOT concatenated string)
+- AllergyIntolerance = ARRAY of individual allergy objects (NOT concatenated string)
 
 FHIR Resource Priority:
 1. Patient (demographics, identifiers)
-2. Condition (diagnoses, problems) - MUST include onset/diagnosis dates
-3. Observation (vital signs, lab results) - MUST include effective/collection dates
-4. MedicationStatement (current medications) - MUST include start dates and periods
-5. Procedure (performed procedures) - MUST include performed dates
-6. AllergyIntolerance (allergies and adverse reactions) - MUST include onset dates
+2. Condition (diagnoses, problems) - MUST include onset/diagnosis dates - MUST BE ARRAY
+3. Observation (vital signs, lab results) - MUST include effective/collection dates - MUST BE ARRAY
+4. MedicationStatement (current medications) - MUST include start dates and periods - MUST BE ARRAY
+5. Procedure (performed procedures) - MUST include performed dates - MUST BE ARRAY
+6. AllergyIntolerance (allergies and adverse reactions) - MUST include onset dates - MUST BE ARRAY
 
 Output Format: Return a complete JSON object with FHIR-compatible structure, including source context for each extracted value:
 {
@@ -167,7 +179,28 @@ Critical Rules:
 - Focus on current/active information over historical unless explicitly noted
 - Preserve original medical terminology and abbreviations
 
-CRITICAL: Your response must ONLY be a valid JSON object. No markdown code blocks, no explanations, no comments, no text before or after. Start your response with { and end with }."""
+🚨 FORBIDDEN FIELD NAMES - DO NOT USE THESE:
+❌ "diagnoses" - Use "Condition" array instead
+❌ "medications" - Use "MedicationStatement" array instead
+❌ "allergies" - Use "AllergyIntolerance" array instead
+❌ "procedures" - Use "Procedure" array instead
+❌ "vitals" - Use "Observation" array instead
+
+✅ CORRECT EXAMPLES:
+For multiple diagnoses like "Diabetes; Hypertension; Heart Disease":
+"Condition": [
+  {"code": {"value": "Diabetes", "confidence": 0.9, "source_text": "...", "char_position": 100}},
+  {"code": {"value": "Hypertension", "confidence": 0.9, "source_text": "...", "char_position": 150}},
+  {"code": {"value": "Heart Disease", "confidence": 0.8, "source_text": "...", "char_position": 200}}
+]
+
+For multiple medications like "Aspirin 81mg; Metformin 500mg":
+"MedicationStatement": [
+  {"medication": {"value": "Aspirin 81mg", "confidence": 0.9, "source_text": "...", "char_position": 300}},
+  {"medication": {"value": "Metformin 500mg", "confidence": 0.9, "source_text": "...", "char_position": 350}}
+]
+
+CRITICAL: Your response must ONLY be a valid JSON object. No markdown code blocks, no explanations, no comments, no text before or after. Start your response with { and end with }. Follow the EXACT FHIR structure shown above."""
 
     # Chunked document processing prompt - enhanced for snippet-based review
     CHUNKED_DOCUMENT_PROMPT = """You are MediExtract, processing a portion of a larger medical document. Extract medical information from this document section while maintaining awareness that this is part of a larger record. For each extracted field, also capture the surrounding text context to enable snippet-based review.
