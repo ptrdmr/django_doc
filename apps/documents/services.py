@@ -3951,3 +3951,601 @@ class ResponseParser:
             validation["issues"].append("No critical patient demographics found")
         
         return validation
+
+
+class PatientDataComparisonService:
+    """
+    Service class for comparing extracted patient data against existing patient records.
+    
+    Provides comprehensive comparison logic, discrepancy detection, and smart suggestions
+    for resolving data conflicts during document review process.
+    """
+    
+    def __init__(self):
+        """Initialize the patient data comparison service."""
+        self.confidence_threshold_high = 0.8
+        self.confidence_threshold_medium = 0.5
+        self.similarity_threshold = 0.85  # For fuzzy string matching
+        
+    def compare_patient_data(self, document, patient):
+        """
+        Compare extracted patient data against existing patient record.
+        
+        Args:
+            document: Document instance with parsed data
+            patient: Patient instance to compare against
+            
+        Returns:
+            PatientDataComparison instance with comparison results
+        """
+        from .models import PatientDataComparison
+        
+        # Get or create comparison record
+        comparison, created = PatientDataComparison.objects.get_or_create(
+            document=document,
+            patient=patient,
+            defaults={
+                'parsed_data': document.parsed_data,
+                'status': 'pending'
+            }
+        )
+        
+        if not created and comparison.status == 'resolved':
+            # Return existing resolved comparison
+            return comparison
+        
+        # Extract patient demographics from document
+        extracted_data = self._extract_patient_demographics(document)
+        existing_data = self._get_patient_record_data(patient)
+        
+        # Perform field-by-field comparison
+        comparison_results = self.identify_discrepancies(extracted_data, existing_data)
+        
+        # Generate suggestions based on comparison
+        suggestions = self.generate_suggestions(comparison_results)
+        
+        # Update comparison record
+        comparison.comparison_data = comparison_results
+        comparison.total_fields_compared = len(comparison_results)
+        comparison.discrepancies_found = sum(1 for field in comparison_results.values() 
+                                           if field.get('has_discrepancy', False))
+        comparison.overall_confidence_score = self._calculate_overall_confidence(extracted_data)
+        comparison.data_quality_score = self._calculate_data_quality_score(extracted_data)
+        comparison.status = 'in_progress' if comparison.discrepancies_found > 0 else 'skipped'
+        comparison.save()
+        
+        return comparison
+    
+    def identify_discrepancies(self, extracted_data, patient_record):
+        """
+        Perform field-by-field comparison and identify discrepancies.
+        
+        Args:
+            extracted_data: Dictionary of extracted patient data
+            patient_record: Dictionary of existing patient record data
+            
+        Returns:
+            Dictionary with comparison results for each field
+        """
+        comparison_results = {}
+        
+        # Common patient fields to compare
+        field_mappings = {
+            'patient_name': ['first_name', 'last_name', 'full_name'],
+            'patientName': ['first_name', 'last_name', 'full_name'],
+            'date_of_birth': ['date_of_birth', 'dob'],
+            'dateOfBirth': ['date_of_birth', 'dob'],
+            'dob': ['date_of_birth'],
+            'gender': ['gender'],
+            'sex': ['gender'],
+            'phone': ['phone_number', 'phone'],
+            'phone_number': ['phone_number', 'phone'],
+            'address': ['address'],
+            'email': ['email'],
+            'mrn': ['mrn'],
+            'ssn': ['ssn'],
+            'insurance': ['insurance_info'],
+        }
+        
+        for extracted_field, patient_field_options in field_mappings.items():
+            if extracted_field in extracted_data:
+                extracted_value = extracted_data[extracted_field]
+                
+                # Handle both old format (string) and new format (dict with value/confidence)
+                if isinstance(extracted_value, dict):
+                    ext_value = extracted_value.get('value', '')
+                    confidence = float(extracted_value.get('confidence', 0.0))
+                else:
+                    ext_value = str(extracted_value) if extracted_value else ''
+                    confidence = 0.5
+                
+                # Find matching field in patient record
+                patient_value = None
+                matched_field = None
+                
+                for field_option in patient_field_options:
+                    if field_option in patient_record and patient_record[field_option]:
+                        patient_value = str(patient_record[field_option])
+                        matched_field = field_option
+                        break
+                
+                # Compare values and detect discrepancies
+                has_discrepancy, similarity_score = self._compare_field_values(
+                    ext_value, patient_value, extracted_field
+                )
+                
+                comparison_results[extracted_field] = {
+                    'extracted_value': ext_value,
+                    'patient_value': patient_value or '',
+                    'matched_field': matched_field,
+                    'has_discrepancy': has_discrepancy,
+                    'similarity_score': similarity_score,
+                    'confidence': confidence,
+                    'discrepancy_type': self._classify_discrepancy(ext_value, patient_value, similarity_score),
+                    'suggested_resolution': self._suggest_resolution(ext_value, patient_value, confidence, similarity_score),
+                    'field_category': self._categorize_field(extracted_field)
+                }
+        
+        return comparison_results
+    
+    def generate_suggestions(self, comparison_data):
+        """
+        Generate smart suggestions for resolving data conflicts.
+        
+        Args:
+            comparison_data: Dictionary with comparison results
+            
+        Returns:
+            Dictionary with suggestions for each field
+        """
+        suggestions = {
+            'auto_resolutions': [],
+            'manual_review_required': [],
+            'high_confidence_updates': [],
+            'low_confidence_warnings': []
+        }
+        
+        for field_name, field_data in comparison_data.items():
+            if not field_data.get('has_discrepancy', False):
+                continue
+                
+            confidence = field_data.get('confidence', 0.0)
+            similarity = field_data.get('similarity_score', 0.0)
+            suggested_resolution = field_data.get('suggested_resolution', 'manual_edit')
+            
+            suggestion = {
+                'field_name': field_name,
+                'extracted_value': field_data.get('extracted_value', ''),
+                'patient_value': field_data.get('patient_value', ''),
+                'confidence': confidence,
+                'similarity': similarity,
+                'suggested_action': suggested_resolution,
+                'reasoning': self._generate_suggestion_reasoning(field_data)
+            }
+            
+            # Categorize suggestions
+            if confidence >= self.confidence_threshold_high and suggested_resolution == 'use_extracted':
+                suggestions['auto_resolutions'].append(suggestion)
+            elif confidence >= self.confidence_threshold_high:
+                suggestions['high_confidence_updates'].append(suggestion)
+            elif confidence < self.confidence_threshold_medium:
+                suggestions['low_confidence_warnings'].append(suggestion)
+            else:
+                suggestions['manual_review_required'].append(suggestion)
+        
+        return suggestions
+    
+    def validate_data_quality(self, field_data):
+        """
+        Validate data quality and format consistency.
+        
+        Args:
+            field_data: Dictionary of field data to validate
+            
+        Returns:
+            Dictionary with validation results and quality score
+        """
+        validation_results = {
+            'overall_quality_score': 0.0,
+            'field_validations': {},
+            'format_issues': [],
+            'completeness_score': 0.0
+        }
+        
+        total_fields = len(field_data)
+        valid_fields = 0
+        
+        for field_name, field_value in field_data.items():
+            field_validation = self._validate_individual_field(field_name, field_value)
+            validation_results['field_validations'][field_name] = field_validation
+            
+            if field_validation['is_valid']:
+                valid_fields += 1
+            else:
+                validation_results['format_issues'].extend(field_validation['issues'])
+        
+        # Calculate scores
+        validation_results['completeness_score'] = (valid_fields / total_fields) if total_fields > 0 else 0.0
+        validation_results['overall_quality_score'] = self._calculate_quality_score(validation_results)
+        
+        return validation_results
+    
+    def _extract_patient_demographics(self, document):
+        """Extract patient demographic data from document's parsed data."""
+        if not hasattr(document, 'parsed_data') or not document.parsed_data:
+            return {}
+        
+        extraction_data = document.parsed_data.extraction_json
+        if not extraction_data:
+            return {}
+        
+        # Handle different extraction formats
+        if isinstance(extraction_data, dict):
+            return extraction_data
+        elif isinstance(extraction_data, list):
+            # Convert list format to dictionary
+            result = {}
+            for item in extraction_data:
+                if isinstance(item, dict) and 'label' in item:
+                    result[item['label']] = item
+            return result
+        
+        return {}
+    
+    def _get_patient_record_data(self, patient):
+        """Extract relevant data from patient record for comparison."""
+        return {
+            'first_name': patient.first_name,
+            'last_name': patient.last_name,
+            'full_name': patient.get_full_name(),
+            'date_of_birth': patient.date_of_birth.strftime('%m/%d/%Y') if patient.date_of_birth else '',
+            'dob': patient.date_of_birth.strftime('%m/%d/%Y') if patient.date_of_birth else '',
+            'gender': patient.gender,
+            'phone_number': patient.phone_number,
+            'phone': patient.phone_number,
+            'address': patient.address,
+            'email': patient.email,
+            'mrn': patient.mrn,
+            'ssn': patient.ssn,
+            'insurance_info': patient.insurance_info,
+        }
+    
+    def _compare_field_values(self, extracted_value, patient_value, field_name):
+        """
+        Compare two field values and determine if there's a discrepancy.
+        
+        Returns:
+            Tuple of (has_discrepancy: bool, similarity_score: float)
+        """
+        if not extracted_value and not patient_value:
+            return False, 1.0  # Both empty, no discrepancy
+        
+        if not extracted_value or not patient_value:
+            return True, 0.0  # One empty, one has value
+        
+        # Normalize values for comparison
+        ext_normalized = self._normalize_value(extracted_value, field_name)
+        pat_normalized = self._normalize_value(patient_value, field_name)
+        
+        # Exact match check
+        if ext_normalized == pat_normalized:
+            return False, 1.0
+        
+        # Fuzzy string similarity for text fields
+        similarity = self._calculate_string_similarity(ext_normalized, pat_normalized)
+        has_discrepancy = similarity < self.similarity_threshold
+        
+        return has_discrepancy, similarity
+    
+    def _normalize_value(self, value, field_name):
+        """Normalize a value for comparison based on field type."""
+        if not value:
+            return ''
+        
+        value_str = str(value).strip().lower()
+        
+        # Date normalization
+        if any(term in field_name.lower() for term in ['date', 'dob', 'birth']):
+            return self._normalize_date(value_str)
+        
+        # Phone number normalization
+        elif any(term in field_name.lower() for term in ['phone']):
+            return self._normalize_phone(value_str)
+        
+        # Name normalization
+        elif any(term in field_name.lower() for term in ['name']):
+            return self._normalize_name(value_str)
+        
+        # Default: lowercase and remove extra whitespace
+        return re.sub(r'\s+', ' ', value_str)
+    
+    def _normalize_date(self, date_str):
+        """Normalize date strings for comparison."""
+        # Remove common separators and normalize to MMDDYYYY
+        normalized = re.sub(r'[/\-\.]', '', date_str)
+        
+        # Try to parse and reformat common date patterns
+        import datetime
+        
+        patterns = [
+            '%m%d%Y', '%m%d%y', '%Y%m%d', '%d%m%Y',
+            '%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d'
+        ]
+        
+        for pattern in patterns:
+            try:
+                parsed_date = datetime.datetime.strptime(date_str, pattern)
+                return parsed_date.strftime('%m%d%Y')
+            except ValueError:
+                continue
+        
+        # If parsing fails, return normalized string
+        return normalized
+    
+    def _normalize_phone(self, phone_str):
+        """Normalize phone numbers for comparison."""
+        # Remove all non-digits
+        digits_only = re.sub(r'\D', '', phone_str)
+        
+        # Handle US phone numbers (remove country code if present)
+        if len(digits_only) == 11 and digits_only.startswith('1'):
+            digits_only = digits_only[1:]
+        
+        return digits_only
+    
+    def _normalize_name(self, name_str):
+        """Normalize names for comparison."""
+        # Remove titles, suffixes, and normalize spacing
+        name_normalized = re.sub(r'\b(mr|mrs|ms|dr|md|jr|sr|ii|iii)\b\.?', '', name_str)
+        name_normalized = re.sub(r'\s+', ' ', name_normalized).strip()
+        return name_normalized
+    
+    def _calculate_string_similarity(self, str1, str2):
+        """Calculate similarity score between two strings using Levenshtein distance."""
+        if str1 == str2:
+            return 1.0
+        
+        if not str1 or not str2:
+            return 0.0
+        
+        # Simple Levenshtein distance implementation
+        len1, len2 = len(str1), len(str2)
+        
+        if len1 == 0:
+            return 0.0
+        if len2 == 0:
+            return 0.0
+        
+        # Create matrix for dynamic programming
+        matrix = [[0] * (len2 + 1) for _ in range(len1 + 1)]
+        
+        # Initialize first row and column
+        for i in range(len1 + 1):
+            matrix[i][0] = i
+        for j in range(len2 + 1):
+            matrix[0][j] = j
+        
+        # Fill the matrix
+        for i in range(1, len1 + 1):
+            for j in range(1, len2 + 1):
+                if str1[i-1] == str2[j-1]:
+                    cost = 0
+                else:
+                    cost = 1
+                
+                matrix[i][j] = min(
+                    matrix[i-1][j] + 1,      # deletion
+                    matrix[i][j-1] + 1,      # insertion
+                    matrix[i-1][j-1] + cost  # substitution
+                )
+        
+        # Calculate similarity score
+        max_len = max(len1, len2)
+        distance = matrix[len1][len2]
+        similarity = 1.0 - (distance / max_len)
+        
+        return similarity
+    
+    def _classify_discrepancy(self, extracted_value, patient_value, similarity_score):
+        """Classify the type of discrepancy found."""
+        if not extracted_value and not patient_value:
+            return 'no_data'
+        elif not extracted_value:
+            return 'missing_extracted'
+        elif not patient_value:
+            return 'missing_patient'
+        elif similarity_score >= 0.9:
+            return 'minor_difference'
+        elif similarity_score >= 0.7:
+            return 'moderate_difference'
+        else:
+            return 'major_difference'
+    
+    def _suggest_resolution(self, extracted_value, patient_value, confidence, similarity_score):
+        """Suggest the best resolution for a discrepancy."""
+        # No discrepancy
+        if similarity_score >= self.similarity_threshold:
+            return 'no_change'
+        
+        # Missing data scenarios
+        if not extracted_value:
+            return 'keep_existing'
+        if not patient_value:
+            return 'use_extracted' if confidence >= self.confidence_threshold_medium else 'manual_edit'
+        
+        # Both have values - use confidence and data quality to decide
+        if confidence >= self.confidence_threshold_high:
+            return 'use_extracted'
+        elif confidence < self.confidence_threshold_medium:
+            return 'manual_edit'
+        else:
+            # Medium confidence - prefer newer data if it seems more complete
+            if len(extracted_value) > len(patient_value):
+                return 'use_extracted'
+            else:
+                return 'keep_existing'
+    
+    def _categorize_field(self, field_name):
+        """Categorize a field for organization purposes."""
+        field_name_lower = field_name.lower()
+        
+        if any(term in field_name_lower for term in ['name', 'dob', 'birth', 'age', 'gender', 'sex', 'race', 'ethnicity']):
+            return 'demographics'
+        elif any(term in field_name_lower for term in ['phone', 'email', 'address', 'contact', 'emergency']):
+            return 'contact_info'
+        elif any(term in field_name_lower for term in ['mrn', 'insurance', 'provider', 'medical']):
+            return 'medical_info'
+        else:
+            return 'other'
+    
+    def _calculate_overall_confidence(self, extracted_data):
+        """Calculate overall confidence score for extracted data."""
+        if not extracted_data:
+            return 0.0
+        
+        confidences = []
+        for field_data in extracted_data.values():
+            if isinstance(field_data, dict):
+                confidences.append(float(field_data.get('confidence', 0.0)))
+            else:
+                confidences.append(0.5)  # Default for legacy data
+        
+        return sum(confidences) / len(confidences) if confidences else 0.0
+    
+    def _calculate_data_quality_score(self, extracted_data):
+        """Calculate data quality score based on completeness and format validation."""
+        if not extracted_data:
+            return 0.0
+        
+        total_score = 0.0
+        field_count = 0
+        
+        for field_name, field_data in extracted_data.items():
+            field_validation = self._validate_individual_field(field_name, field_data)
+            total_score += field_validation['quality_score']
+            field_count += 1
+        
+        return total_score / field_count if field_count > 0 else 0.0
+    
+    def _validate_individual_field(self, field_name, field_value):
+        """Validate an individual field for format and completeness."""
+        validation = {
+            'is_valid': True,
+            'quality_score': 1.0,
+            'issues': []
+        }
+        
+        # Extract actual value
+        if isinstance(field_value, dict):
+            value = field_value.get('value', '')
+        else:
+            value = str(field_value) if field_value else ''
+        
+        if not value or not value.strip():
+            validation['is_valid'] = False
+            validation['quality_score'] = 0.0
+            validation['issues'].append('Empty value')
+            return validation
+        
+        # Field-specific validation
+        field_name_lower = field_name.lower()
+        
+        if 'date' in field_name_lower or 'dob' in field_name_lower or 'birth' in field_name_lower:
+            validation.update(self._validate_date_field(value))
+        elif 'phone' in field_name_lower:
+            validation.update(self._validate_phone_field(value))
+        elif 'email' in field_name_lower:
+            validation.update(self._validate_email_field(value))
+        elif 'name' in field_name_lower:
+            validation.update(self._validate_name_field(value))
+        
+        return validation
+    
+    def _validate_date_field(self, value):
+        """Validate date field format."""
+        import datetime
+        
+        validation = {'is_valid': True, 'quality_score': 1.0, 'issues': []}
+        
+        # Common date patterns
+        date_patterns = [
+            r'\d{1,2}/\d{1,2}/\d{4}',
+            r'\d{1,2}-\d{1,2}-\d{4}',
+            r'\d{4}-\d{1,2}-\d{1,2}',
+        ]
+        
+        valid_format = any(re.match(pattern, value.strip()) for pattern in date_patterns)
+        if not valid_format:
+            validation['is_valid'] = False
+            validation['quality_score'] = 0.3
+            validation['issues'].append('Invalid date format')
+        
+        return validation
+    
+    def _validate_phone_field(self, value):
+        """Validate phone number format."""
+        validation = {'is_valid': True, 'quality_score': 1.0, 'issues': []}
+        
+        # Remove all non-digits
+        digits_only = re.sub(r'\D', '', value)
+        
+        if len(digits_only) not in [10, 11]:
+            validation['is_valid'] = False
+            validation['quality_score'] = 0.4
+            validation['issues'].append('Invalid phone number length')
+        
+        return validation
+    
+    def _validate_email_field(self, value):
+        """Validate email format."""
+        validation = {'is_valid': True, 'quality_score': 1.0, 'issues': []}
+        
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, value.strip()):
+            validation['is_valid'] = False
+            validation['quality_score'] = 0.2
+            validation['issues'].append('Invalid email format')
+        
+        return validation
+    
+    def _validate_name_field(self, value):
+        """Validate name field format."""
+        validation = {'is_valid': True, 'quality_score': 1.0, 'issues': []}
+        
+        # Check for reasonable name format
+        if len(value.strip()) < 2:
+            validation['is_valid'] = False
+            validation['quality_score'] = 0.1
+            validation['issues'].append('Name too short')
+        elif not re.match(r'^[a-zA-Z\s\.\-\']+$', value):
+            validation['quality_score'] = 0.6
+            validation['issues'].append('Name contains unusual characters')
+        
+        return validation
+    
+    def _calculate_quality_score(self, validation_results):
+        """Calculate overall quality score from validation results."""
+        field_validations = validation_results.get('field_validations', {})
+        if not field_validations:
+            return 0.0
+        
+        scores = [fv.get('quality_score', 0.0) for fv in field_validations.values()]
+        return sum(scores) / len(scores)
+    
+    def _generate_suggestion_reasoning(self, field_data):
+        """Generate human-readable reasoning for a suggestion."""
+        confidence = field_data.get('confidence', 0.0)
+        similarity = field_data.get('similarity_score', 0.0)
+        suggested_resolution = field_data.get('suggested_resolution', 'manual_edit')
+        
+        if suggested_resolution == 'use_extracted':
+            if confidence >= self.confidence_threshold_high:
+                return f"High confidence extraction ({confidence:.1f}) with significant difference from existing record"
+            else:
+                return f"Extracted data appears more complete or recent"
+        elif suggested_resolution == 'keep_existing':
+            return f"Low confidence extraction ({confidence:.1f}) - existing record preferred"
+        elif suggested_resolution == 'manual_edit':
+            return f"Medium confidence ({confidence:.1f}) - manual review recommended"
+        else:
+            return "Values are similar - no change needed"
