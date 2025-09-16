@@ -27,6 +27,9 @@ urlpatterns = [
     # Admin tools
     path('migrate-fhir/', views.MigrateFHIRDataView.as_view(), name='migrate-fhir'),
     
+    # Patient data comparison resolution endpoints
+    path('<int:pk>/resolve/', views.PatientDataResolutionView.as_view(), name='resolve-patient-data'),
+    
     # Field-level review endpoints
     path('field/<str:field_id>/approve/', views.approve_field, name='approve-field'),
     path('field/<str:field_id>/update/', views.update_field_value, name='update-field'),

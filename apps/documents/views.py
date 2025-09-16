@@ -1572,6 +1572,183 @@ class MigrateFHIRDataView(LoginRequiredMixin, View):
         return redirect('documents:migrate-fhir')
 
 
+@method_decorator([provider_required, has_permission('documents.change_document')], name='dispatch')
+class PatientDataResolutionView(LoginRequiredMixin, View):
+    """
+    Handle patient data comparison resolution actions via AJAX/HTMX.
+    """
+    http_method_names = ['post']
+    
+    def post(self, request, *args, **kwargs):
+        """
+        Handle field resolution actions.
+        
+        Expected POST data:
+        - action: 'resolve_field', 'bulk_resolve', 'manual_edit'
+        - field_name: Name of the field being resolved
+        - resolution: 'keep_existing', 'use_extracted', 'manual_edit'
+        - custom_value: For manual edits
+        - reasoning: User's reasoning for the decision
+        """
+        try:
+            document_id = kwargs.get('pk')
+            document = get_object_or_404(Document, id=document_id, created_by=request.user)
+            
+            action = request.POST.get('action')
+            
+            if action == 'resolve_field':
+                return self._handle_field_resolution(request, document)
+            elif action == 'bulk_resolve':
+                return self._handle_bulk_resolution(request, document)
+            elif action == 'manual_edit':
+                return self._handle_manual_edit(request, document)
+            else:
+                return JsonResponse({'error': 'Invalid action'}, status=400)
+                
+        except Exception as e:
+            logger.error(f"Error in patient data resolution: {e}")
+            return JsonResponse({'error': 'Resolution failed'}, status=500)
+    
+    def _handle_field_resolution(self, request, document):
+        """Handle individual field resolution."""
+        field_name = request.POST.get('field_name')
+        resolution = request.POST.get('resolution')
+        reasoning = request.POST.get('reasoning', '')
+        
+        if not field_name or not resolution:
+            return JsonResponse({'error': 'Missing field_name or resolution'}, status=400)
+        
+        try:
+            # Get the comparison record
+            from .models import PatientDataComparison
+            comparison = PatientDataComparison.objects.get(
+                document=document,
+                patient=document.patient
+            )
+            
+            # Mark field as resolved
+            comparison.mark_field_resolved(
+                field_name=field_name,
+                resolution=resolution,
+                notes=reasoning
+            )
+            comparison.reviewer = request.user
+            comparison.save()
+            
+            # Return updated field status
+            return JsonResponse({
+                'success': True,
+                'field_name': field_name,
+                'resolution': resolution,
+                'completion_percentage': comparison.get_completion_percentage(),
+                'fields_resolved': comparison.fields_resolved,
+                'has_pending': comparison.has_pending_discrepancies()
+            })
+            
+        except PatientDataComparison.DoesNotExist:
+            return JsonResponse({'error': 'Comparison record not found'}, status=404)
+        except Exception as e:
+            logger.error(f"Error resolving field {field_name}: {e}")
+            return JsonResponse({'error': 'Field resolution failed'}, status=500)
+    
+    def _handle_bulk_resolution(self, request, document):
+        """Handle bulk resolution actions."""
+        bulk_action = request.POST.get('bulk_action')
+        reasoning = request.POST.get('reasoning', f'Bulk action: {bulk_action}')
+        
+        try:
+            from .models import PatientDataComparison
+            comparison = PatientDataComparison.objects.get(
+                document=document,
+                patient=document.patient
+            )
+            
+            resolved_count = 0
+            
+            if bulk_action == 'keep_all_existing':
+                # Keep all existing patient record data
+                for field_name, field_data in comparison.comparison_data.items():
+                    if field_data.get('has_discrepancy', False):
+                        comparison.mark_field_resolved(field_name, 'keep_existing', notes=reasoning)
+                        resolved_count += 1
+                        
+            elif bulk_action == 'use_all_high_confidence':
+                # Use all high-confidence document data
+                for field_name, field_data in comparison.comparison_data.items():
+                    if (field_data.get('has_discrepancy', False) and 
+                        field_data.get('confidence', 0.0) >= 0.8):
+                        comparison.mark_field_resolved(field_name, 'use_extracted', notes=reasoning)
+                        resolved_count += 1
+                        
+            elif bulk_action == 'apply_suggestions':
+                # Apply all system suggestions
+                for field_name, field_data in comparison.comparison_data.items():
+                    if field_data.get('has_discrepancy', False):
+                        suggested = field_data.get('suggested_resolution', 'manual_edit')
+                        if suggested != 'manual_edit':
+                            comparison.mark_field_resolved(field_name, suggested, notes=reasoning)
+                            resolved_count += 1
+            
+            comparison.reviewer = request.user
+            comparison.save()
+            
+            return JsonResponse({
+                'success': True,
+                'bulk_action': bulk_action,
+                'resolved_count': resolved_count,
+                'completion_percentage': comparison.get_completion_percentage(),
+                'fields_resolved': comparison.fields_resolved,
+                'has_pending': comparison.has_pending_discrepancies()
+            })
+            
+        except PatientDataComparison.DoesNotExist:
+            return JsonResponse({'error': 'Comparison record not found'}, status=404)
+        except Exception as e:
+            logger.error(f"Error in bulk resolution: {e}")
+            return JsonResponse({'error': 'Bulk resolution failed'}, status=500)
+    
+    def _handle_manual_edit(self, request, document):
+        """Handle manual field editing."""
+        field_name = request.POST.get('field_name')
+        custom_value = request.POST.get('custom_value', '')
+        reasoning = request.POST.get('reasoning', '')
+        
+        if not field_name:
+            return JsonResponse({'error': 'Missing field_name'}, status=400)
+        
+        try:
+            from .models import PatientDataComparison
+            comparison = PatientDataComparison.objects.get(
+                document=document,
+                patient=document.patient
+            )
+            
+            # Mark field as resolved with custom value
+            comparison.mark_field_resolved(
+                field_name=field_name,
+                resolution='manual_edit',
+                custom_value=custom_value,
+                notes=reasoning
+            )
+            comparison.reviewer = request.user
+            comparison.save()
+            
+            return JsonResponse({
+                'success': True,
+                'field_name': field_name,
+                'custom_value': custom_value,
+                'completion_percentage': comparison.get_completion_percentage(),
+                'fields_resolved': comparison.fields_resolved,
+                'has_pending': comparison.has_pending_discrepancies()
+            })
+            
+        except PatientDataComparison.DoesNotExist:
+            return JsonResponse({'error': 'Comparison record not found'}, status=404)
+        except Exception as e:
+            logger.error(f"Error in manual edit for field {field_name}: {e}")
+            return JsonResponse({'error': 'Manual edit failed'}, status=500)
+
+
 # ============================================================================
 # FIELD-LEVEL REVIEW ENDPOINTS (Subtasks 31.9-31.13)
 # ============================================================================
