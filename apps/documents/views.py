@@ -1218,6 +1218,34 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
         try:
             parsed_data = self.object.parsed_data
             
+            # Apply patient data comparison resolutions if they exist
+            try:
+                from .models import PatientDataComparison
+                from .services import PatientRecordUpdateService
+                
+                comparison = PatientDataComparison.objects.filter(
+                    document=self.object,
+                    patient=self.object.patient
+                ).first()
+                
+                if comparison and comparison.resolution_decisions:
+                    # Apply resolved patient data updates
+                    update_service = PatientRecordUpdateService()
+                    update_results = update_service.apply_comparison_resolutions(comparison, request.user)
+                    
+                    if update_results['success'] and update_results['updates_applied'] > 0:
+                        logger.info(f"Applied {update_results['updates_applied']} patient record updates from document {self.object.id}")
+                        messages.info(
+                            request,
+                            f"Applied {update_results['updates_applied']} patient record updates based on your comparison decisions."
+                        )
+                    elif update_results.get('validation_errors'):
+                        logger.warning(f"Validation errors during patient updates: {update_results['validation_errors']}")
+                        
+            except Exception as comparison_error:
+                logger.error(f"Error applying patient data comparisons: {comparison_error}")
+                # Don't fail the approval, just log the error
+            
             # Mark parsed data as approved
             parsed_data.is_approved = True
             parsed_data.reviewed_by = request.user
