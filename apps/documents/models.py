@@ -417,3 +417,224 @@ class ParsedData(BaseModel):
         """Check if extraction has high confidence score."""
         return (self.extraction_confidence is not None and 
                 self.extraction_confidence >= threshold)
+
+
+class PatientDataComparison(BaseModel):
+    """
+    Model for tracking patient data comparisons and resolution decisions during document review.
+    
+    This model stores the comparison between extracted document data and existing patient
+    record data, along with reviewer decisions and audit trail information.
+    """
+    
+    # Status choices for comparison workflow
+    STATUS_CHOICES = [
+        ('pending', 'Pending Review'),
+        ('in_progress', 'In Progress'),
+        ('resolved', 'Resolved'),
+        ('conflicted', 'Has Conflicts'),
+        ('skipped', 'Skipped - No Discrepancies'),
+    ]
+    
+    # Resolution choices for individual fields
+    RESOLUTION_CHOICES = [
+        ('keep_existing', 'Keep Existing Patient Data'),
+        ('use_extracted', 'Use Extracted Document Data'),
+        ('manual_edit', 'Manual Edit - Custom Value'),
+        ('pending', 'Pending Decision'),
+        ('no_change', 'No Change Needed'),
+    ]
+    
+    # Core relationships
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name='data_comparisons',
+        help_text="Source document for this comparison"
+    )
+    patient = models.ForeignKey(
+        'patients.Patient',
+        on_delete=models.CASCADE,
+        related_name='data_comparisons',
+        help_text="Patient whose data is being compared"
+    )
+    parsed_data = models.ForeignKey(
+        ParsedData,
+        on_delete=models.CASCADE,
+        related_name='comparisons',
+        help_text="Parsed data being compared against patient record"
+    )
+    
+    # Comparison status and metadata
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        help_text="Current status of the comparison process"
+    )
+    total_fields_compared = models.PositiveIntegerField(
+        default=0,
+        help_text="Total number of fields compared"
+    )
+    discrepancies_found = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of discrepancies found between sources"
+    )
+    fields_resolved = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of fields that have been resolved"
+    )
+    
+    # Comparison data storage
+    comparison_data = models.JSONField(
+        default=dict,
+        help_text="Field-by-field comparison data structure"
+    )
+    resolution_decisions = models.JSONField(
+        default=dict,
+        help_text="Resolution decisions for each field with discrepancies"
+    )
+    
+    # Quality and confidence metrics
+    overall_confidence_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Overall confidence score for the comparison (0.0-1.0)"
+    )
+    data_quality_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Quality score for the extracted data (0.0-1.0)"
+    )
+    
+    # Review and approval tracking
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='patient_data_comparisons',
+        help_text="User who performed the comparison review"
+    )
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the comparison was reviewed and resolved"
+    )
+    
+    # Notes and justification (encrypted for HIPAA compliance)
+    reviewer_notes = encrypt(models.TextField(
+        blank=True,
+        help_text="Reviewer notes and justification for decisions - encrypted at rest"
+    ))
+    auto_resolution_summary = models.TextField(
+        blank=True,
+        help_text="Summary of automatic resolutions applied"
+    )
+    
+    class Meta:
+        db_table = 'patient_data_comparisons'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['patient', 'status']),
+            models.Index(fields=['document', 'status']),
+            models.Index(fields=['reviewer', 'reviewed_at']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['document', 'patient'],
+                name='unique_document_patient_comparison'
+            )
+        ]
+    
+    def __str__(self):
+        return f"Comparison: {self.document.filename} → {self.patient.get_full_name()}"
+    
+    def get_completion_percentage(self):
+        """Calculate completion percentage of the comparison review."""
+        if self.total_fields_compared == 0:
+            return 0
+        return round((self.fields_resolved / self.total_fields_compared) * 100, 1)
+    
+    def has_pending_discrepancies(self):
+        """Check if there are unresolved discrepancies."""
+        return self.discrepancies_found > self.fields_resolved
+    
+    def get_discrepancy_summary(self):
+        """Get summary of discrepancies by category."""
+        summary = {
+            'demographics': 0,
+            'contact_info': 0,
+            'medical_info': 0,
+            'other': 0
+        }
+        
+        if not self.comparison_data:
+            return summary
+        
+        for field_name, field_data in self.comparison_data.items():
+            if field_data.get('has_discrepancy', False):
+                category = self._categorize_field(field_name)
+                summary[category] += 1
+        
+        return summary
+    
+    def _categorize_field(self, field_name):
+        """Categorize a field for discrepancy summary."""
+        field_name_lower = field_name.lower()
+        
+        if any(term in field_name_lower for term in ['name', 'dob', 'birth', 'age', 'gender', 'sex', 'race', 'ethnicity']):
+            return 'demographics'
+        elif any(term in field_name_lower for term in ['phone', 'email', 'address', 'contact', 'emergency']):
+            return 'contact_info'
+        elif any(term in field_name_lower for term in ['mrn', 'insurance', 'provider', 'medical']):
+            return 'medical_info'
+        else:
+            return 'other'
+    
+    def mark_field_resolved(self, field_name, resolution, custom_value=None, notes=None):
+        """Mark a specific field as resolved with the chosen resolution."""
+        if not self.resolution_decisions:
+            self.resolution_decisions = {}
+        
+        self.resolution_decisions[field_name] = {
+            'resolution': resolution,
+            'custom_value': custom_value,
+            'notes': notes,
+            'resolved_at': timezone.now().isoformat(),
+            'resolved_by': self.reviewer.username if self.reviewer else None
+        }
+        
+        # Update resolved count
+        resolved_count = sum(1 for decision in self.resolution_decisions.values() 
+                           if decision.get('resolution') != 'pending')
+        self.fields_resolved = resolved_count
+        
+        # Update status if all fields are resolved
+        if self.fields_resolved >= self.discrepancies_found:
+            self.status = 'resolved'
+            self.reviewed_at = timezone.now()
+        
+        self.save()
+    
+    def get_field_resolution(self, field_name):
+        """Get the resolution decision for a specific field."""
+        if not self.resolution_decisions:
+            return None
+        return self.resolution_decisions.get(field_name)
+    
+    def get_unresolved_fields(self):
+        """Get list of fields that still need resolution."""
+        unresolved = []
+        
+        if not self.comparison_data:
+            return unresolved
+        
+        for field_name, field_data in self.comparison_data.items():
+            if field_data.get('has_discrepancy', False):
+                resolution = self.get_field_resolution(field_name)
+                if not resolution or resolution.get('resolution') == 'pending':
+                    unresolved.append(field_name)
+        
+        return unresolved
