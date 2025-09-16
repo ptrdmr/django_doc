@@ -1,0 +1,474 @@
+# Task ID: 34
+# Title: Refactor Core Document Processing Pipeline for Individual Medical Records
+# Status: pending
+# Dependencies: 6, 13, 31, 5, 20
+# Priority: high
+# Description: Refactor the document processing pipeline to extract and handle individual medical records, ensuring clean data flow from upload to FHIR conversion and review.
+# Details:
+Implement the following changes to refactor the core document processing pipeline:
+
+1. Update AI extraction prompt:
+   Modify the AI service call in `documents/services/ai_extraction.py` to request clean arrays:
+   ```python
+   def extract_medical_data(text):
+       prompt = """
+       Extract medical information from the following text. 
+       Return a JSON object with the following structure:
+       {
+           "diagnoses": ["diagnosis1", "diagnosis2", ...],
+           "medications": ["medication1 dose1", "medication2 dose2", ...],
+           "procedures": ["procedure1", "procedure2", ...],
+           "lab_results": [{"test": "test_name", "value": "result", "unit": "unit"}, ...]
+       }
+       """
+       response = ai_service.complete(prompt + text)
+       return json.loads(response)
+   ```
+
+2. Remove FHIR conversion from DocumentAnalyzer:
+   Update `documents/analyzers.py` to focus solely on text extraction and AI processing:
+   ```python
+   class DocumentAnalyzer:
+       def analyze(self, document):
+           text = self.extract_text(document)
+           medical_data = self.extract_medical_data(text)
+           return medical_data
+   
+       def extract_text(self, document):
+           # Existing text extraction logic
+   
+       def extract_medical_data(self, text):
+           return ai_extraction.extract_medical_data(text)
+   ```
+
+3. Implement dedicated FHIR conversion:
+   Create `apps/fhir/converters.py` for FHIR conversion:
+   ```python
+   from fhir.resources.condition import Condition
+   from fhir.resources.medicationstatement import MedicationStatement
+   
+   def convert_to_fhir(medical_data, patient_reference):
+       fhir_resources = []
+       
+       for diagnosis in medical_data['diagnoses']:
+           condition = Condition(
+               subject=patient_reference,
+               code={
+                   "text": diagnosis
+               },
+               verificationStatus={
+                   "coding": [{
+                       "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+                       "code": "unconfirmed"
+                   }]
+               }
+           )
+           fhir_resources.append(condition)
+       
+       for medication in medical_data['medications']:
+           med_statement = MedicationStatement(
+               subject=patient_reference,
+               medicationCodeableConcept={
+                   "text": medication
+               },
+               status="unknown"
+           )
+           fhir_resources.append(med_statement)
+       
+       # Add similar conversions for procedures and lab results
+       
+       return fhir_resources
+   ```
+
+4. Update document processing workflow:
+   Modify `documents/tasks.py` to use the new pipeline:
+   ```python
+   from celery import shared_task
+   from .analyzers import DocumentAnalyzer
+   from apps.fhir.converters import convert_to_fhir
+   from .models import Document
+   
+   @shared_task
+   def process_document(document_id):
+       document = Document.objects.get(id=document_id)
+       analyzer = DocumentAnalyzer()
+       
+       medical_data = analyzer.analyze(document)
+       fhir_resources = convert_to_fhir(medical_data, document.patient.fhir_reference)
+       
+       # Store FHIR resources and update document status
+       document.fhir_resources = fhir_resources
+       document.status = 'processed'
+       document.save()
+   ```
+
+5. Update review interface:
+   Modify `documents/views.py` and corresponding templates to display individual records:
+   ```python
+   class DocumentReviewView(LoginRequiredMixin, View):
+       def get(self, request, document_id):
+           document = get_object_or_404(Document, id=document_id)
+           fhir_resources = document.fhir_resources
+           
+           context = {
+               'document': document,
+               'conditions': [r for r in fhir_resources if isinstance(r, Condition)],
+               'medications': [r for r in fhir_resources if isinstance(r, MedicationStatement)],
+               # Add other resource types as needed
+           }
+           return render(request, 'documents/review.html', context)
+   ```
+
+6. Implement individual record review in the template:
+   Update `templates/documents/review.html`:
+   ```html
+   {% for condition in conditions %}
+     <div class="review-item">
+       <h3>Diagnosis</h3>
+       <p>{{ condition.code.text }}</p>
+       <button class="accept">Accept</button>
+       <button class="edit">Edit</button>
+       <button class="remove">Remove</button>
+     </div>
+   {% endfor %}
+   
+   {% for medication in medications %}
+     <div class="review-item">
+       <h3>Medication</h3>
+       <p>{{ medication.medicationCodeableConcept.text }}</p>
+       <button class="accept">Accept</button>
+       <button class="edit">Edit</button>
+       <button class="remove">Remove</button>
+     </div>
+   {% endfor %}
+   ```
+
+7. Implement review actions:
+   Add JavaScript to handle review actions:
+   ```javascript
+   document.querySelectorAll('.review-item button').forEach(button => {
+     button.addEventListener('click', function() {
+       const action = this.className;
+       const itemType = this.closest('.review-item').querySelector('h3').textContent.toLowerCase();
+       const itemContent = this.closest('.review-item').querySelector('p').textContent;
+       
+       fetch('/api/review-action/', {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+           'X-CSRFToken': getCookie('csrftoken')
+         },
+         body: JSON.stringify({
+           action: action,
+           type: itemType,
+           content: itemContent,
+           document_id: documentId
+         })
+       }).then(response => response.json())
+         .then(data => {
+           if (data.success) {
+             // Update UI based on action
+           }
+         });
+     });
+   });
+   ```
+
+8. Implement API endpoint for review actions:
+   Add a new view in `documents/views.py`:
+   ```python
+   from django.http import JsonResponse
+   from django.views.decorators.http import require_POST
+   
+   @require_POST
+   def review_action(request):
+       data = json.loads(request.body)
+       document = get_object_or_404(Document, id=data['document_id'])
+       
+       # Process the action (accept/edit/remove) and update FHIR resources
+       # This will depend on your specific FHIR handling logic
+       
+       return JsonResponse({'success': True})
+   ```
+
+9. Update FHIR bundle creation:
+   Modify the FHIR bundle creation process to include individual resources:
+   ```python
+   from fhir.resources.bundle import Bundle
+   
+   def create_fhir_bundle(patient, documents):
+       bundle = Bundle(type="transaction")
+       
+       for document in documents:
+           for resource in document.fhir_resources:
+               bundle.entry.append({
+                   "resource": resource,
+                   "request": {
+                       "method": "POST",
+                       "url": resource.resource_type
+                   }
+               })
+       
+       return bundle
+   ```
+
+10. Remove legacy system interference:
+    Audit the codebase for any remaining legacy system calls or data merging, and remove or refactor as necessary.
+
+Throughout this refactoring, maintain proper error handling, logging, and HIPAA compliance measures. Ensure that the AuditLog system (Task 20) is properly integrated to track all data access and modifications in this new pipeline.
+
+# Test Strategy:
+To verify the correct implementation of the refactored document processing pipeline:
+
+1. Unit Tests:
+   a. Test AI extraction function:
+      ```python
+      def test_ai_extraction():
+          sample_text = "Patient has diabetes and hypertension. Currently taking Metformin 500mg and Lisinopril 10mg."
+          result = ai_extraction.extract_medical_data(sample_text)
+          assert 'diagnoses' in result
+          assert 'medications' in result
+          assert 'diabetes' in result['diagnoses']
+          assert 'hypertension' in result['diagnoses']
+          assert 'Metformin 500mg' in result['medications']
+          assert 'Lisinopril 10mg' in result['medications']
+      ```
+
+   b. Test FHIR conversion:
+      ```python
+      def test_fhir_conversion():
+          medical_data = {
+              'diagnoses': ['diabetes', 'hypertension'],
+              'medications': ['Metformin 500mg', 'Lisinopril 10mg']
+          }
+          patient_reference = {'reference': 'Patient/123'}
+          fhir_resources = convert_to_fhir(medical_data, patient_reference)
+          
+          assert len(fhir_resources) == 4
+          assert any(isinstance(r, Condition) and r.code.text == 'diabetes' for r in fhir_resources)
+          assert any(isinstance(r, MedicationStatement) and r.medicationCodeableConcept.text == 'Metformin 500mg' for r in fhir_resources)
+      ```
+
+   c. Test document processing task:
+      ```python
+      @patch('documents.analyzers.DocumentAnalyzer.analyze')
+      @patch('apps.fhir.converters.convert_to_fhir')
+      def test_process_document(mock_convert, mock_analyze):
+          mock_analyze.return_value = {'diagnoses': ['test'], 'medications': []}
+          mock_convert.return_value = [Condition(...)]
+          
+          document = Document.objects.create(...)
+          process_document(document.id)
+          
+          document.refresh_from_db()
+          assert document.status == 'processed'
+          assert len(document.fhir_resources) == 1
+      ```
+
+2. Integration Tests:
+   a. Test full pipeline from document upload to review:
+      ```python
+      def test_document_pipeline():
+          client = Client()
+          client.login(username='testuser', password='password')
+          
+          with open('test_document.pdf', 'rb') as doc:
+              response = client.post('/documents/upload/', {'file': doc, 'patient_id': 1})
+          
+          assert response.status_code == 302
+          document = Document.objects.latest('id')
+          
+          # Wait for Celery task to complete
+          from django_celery_results.models import TaskResult
+          while not TaskResult.objects.filter(task_id=document.task_id, status='SUCCESS').exists():
+              time.sleep(1)
+          
+          document.refresh_from_db()
+          assert document.status == 'processed'
+          
+          response = client.get(f'/documents/{document.id}/review/')
+          assert response.status_code == 200
+          assert 'Diagnosis' in response.content.decode()
+          assert 'Medication' in response.content.decode()
+      ```
+
+3. User Interface Tests:
+   a. Test review interface functionality:
+      ```python
+      def test_review_interface():
+          # Setup test document with FHIR resources
+          document = create_test_document_with_fhir_resources()
+          
+          self.browser.get(f'{self.live_server_url}/documents/{document.id}/review/')
+          
+          # Check if individual items are displayed
+          assert self.browser.find_element_by_css_selector('.review-item h3').text == 'Diagnosis'
+          
+          # Test accept action
+          accept_button = self.browser.find_element_by_css_selector('.review-item .accept')
+          accept_button.click()
+          WebDriverWait(self.browser, 10).until(
+              EC.text_to_be_present_in_element((By.CSS_SELECTOR, '.review-item .status'), 'Accepted')
+          )
+          
+          # Test edit action
+          edit_button = self.browser.find_element_by_css_selector('.review-item .edit')
+          edit_button.click()
+          edit_input = self.browser.find_element_by_css_selector('.review-item input')
+          edit_input.clear()
+          edit_input.send_keys('Updated Diagnosis')
+          self.browser.find_element_by_css_selector('.review-item .save').click()
+          WebDriverWait(self.browser, 10).until(
+              EC.text_to_be_present_in_element((By.CSS_SELECTOR, '.review-item p'), 'Updated Diagnosis')
+          )
+          
+          # Test remove action
+          remove_button = self.browser.find_element_by_css_selector('.review-item .remove')
+          remove_button.click()
+          WebDriverWait(self.browser, 10).until(
+              EC.invisibility_of_element_located((By.CSS_SELECTOR, '.review-item'))
+          )
+      ```
+
+4. Performance Tests:
+   a. Test processing time for various document sizes:
+      ```python
+      @pytest.mark.parametrize("file_size", [1, 5, 10, 20])  # MB
+      def test_document_processing_performance(file_size):
+          document = create_test_document(file_size)
+          
+          start_time = time.time()
+          process_document(document.id)
+          end_time = time.time()
+          
+          processing_time = end_time - start_time
+          assert processing_time < file_size * 2  # Adjust threshold as needed
+      ```
+
+5. Error Handling Tests:
+   a. Test pipeline behavior with corrupt or invalid documents:
+      ```python
+      def test_invalid_document_handling():
+          with open('invalid_document.txt', 'rb') as doc:
+              response = self.client.post('/documents/upload/', {'file': doc, 'patient_id': 1})
+          
+          assert response.status_code == 400
+          assert 'Invalid document format' in response.content.decode()
+      ```
+
+   b. Test AI service failure handling:
+      ```python
+      @patch('documents.services.ai_extraction.ai_service.complete', side_effect=Exception('AI service error'))
+      def test_ai_service_failure(mock_ai_service):
+          document = Document.objects.create(...)
+          process_document(document.id)
+          
+          document.refresh_from_db()
+          assert document.status == 'error'
+          assert 'AI service error' in document.error_message
+      ```
+
+6. Security Tests:
+   a. Verify that the AuditLog system is recording all necessary actions:
+      ```python
+      def test_audit_logging():
+          initial_log_count = AuditLog.objects.count()
+          
+          # Perform document upload and processing
+          document = create_and_process_test_document()
+          
+          # Check audit logs
+          new_logs = AuditLog.objects.filter(timestamp__gt=document.created_at)
+          assert new_logs.count() > 0
+          assert new_logs.filter(action='CREATE', resource_type='Document').exists()
+          assert new_logs.filter(action='UPDATE', resource_type='Document').exists()
+          assert new_logs.filter(action='CREATE', resource_type='Condition').exists()
+          assert new_logs.filter(action='CREATE', resource_type='MedicationStatement').exists()
+      ```
+
+7. End-to-End Tests:
+   a. Test the entire workflow from document upload to FHIR bundle creation:
+      ```python
+      def test_end_to_end_workflow():
+          patient = Patient.objects.create(...)
+          
+          # Upload document
+          with open('test_document.pdf', 'rb') as doc:
+              response = self.client.post('/documents/upload/', {'file': doc, 'patient_id': patient.id})
+          
+          document = Document.objects.latest('id')
+          
+          # Wait for processing to complete
+          while document.status != 'processed':
+              time.sleep(1)
+              document.refresh_from_db()
+          
+          # Perform review actions
+          review_data = [
+              {'action': 'accept', 'type': 'diagnosis', 'content': 'Diabetes'},
+              {'action': 'edit', 'type': 'medication', 'content': 'Metformin 500mg', 'new_content': 'Metformin 1000mg'},
+              {'action': 'remove', 'type': 'diagnosis', 'content': 'Hypertension'}
+          ]
+          for action in review_data:
+              self.client.post('/api/review-action/', data=json.dumps(action), content_type='application/json')
+          
+          # Generate FHIR bundle
+          bundle = create_fhir_bundle(patient, [document])
+          
+          # Verify bundle contents
+          assert any(entry['resource'].resource_type == 'Condition' and entry['resource'].code.text == 'Diabetes' for entry in bundle.entry)
+          assert any(entry['resource'].resource_type == 'MedicationStatement' and entry['resource'].medicationCodeableConcept.text == 'Metformin 1000mg' for entry in bundle.entry)
+          assert not any(entry['resource'].resource_type == 'Condition' and entry['resource'].code.text == 'Hypertension' for entry in bundle.entry)
+      ```
+
+These tests cover various aspects of the refactored pipeline, including functionality, performance, error handling, security, and end-to-end workflow. Adjust the specific assertions and thresholds as needed based on your exact implementation and requirements.
+
+# Subtasks:
+## 1. Update AI extraction prompt [pending]
+### Dependencies: None
+### Description: Modify the AI service call in documents/services/ai_extraction.py to request clean arrays for medical data extraction.
+### Details:
+Update the extract_medical_data function to use a new prompt that requests a JSON object with arrays for diagnoses, medications, procedures, and lab results.
+
+## 2. Remove FHIR conversion from DocumentAnalyzer [pending]
+### Dependencies: 34.1
+### Description: Update documents/analyzers.py to focus solely on text extraction and AI processing, removing FHIR conversion logic.
+### Details:
+Modify the DocumentAnalyzer class to only handle text extraction and medical data extraction, removing any FHIR-related code.
+
+## 3. Implement dedicated FHIR conversion [pending]
+### Dependencies: 34.2
+### Description: Create apps/fhir/converters.py for FHIR conversion logic, separating it from the document analysis process.
+### Details:
+Develop a new module with functions to convert extracted medical data into FHIR resources such as Condition and MedicationStatement.
+
+## 4. Update document processing workflow [pending]
+### Dependencies: 34.2, 34.3
+### Description: Modify documents/tasks.py to use the new pipeline, integrating the separate document analysis and FHIR conversion steps.
+### Details:
+Refactor the process_document task to use the updated DocumentAnalyzer and the new FHIR conversion functions, storing individual FHIR resources.
+
+## 5. Update review interface backend [pending]
+### Dependencies: 34.4
+### Description: Modify documents/views.py to handle individual records for the document review process.
+### Details:
+Update the DocumentReviewView to fetch and organize individual FHIR resources for display in the review interface.
+
+## 6. Implement individual record review in frontend [pending]
+### Dependencies: 34.5
+### Description: Update templates/documents/review.html to display and allow interaction with individual medical records.
+### Details:
+Modify the review template to show separate sections for diagnoses, medications, and other record types, with individual accept/edit/remove buttons.
+
+## 7. Implement review actions and API endpoint [pending]
+### Dependencies: 34.6
+### Description: Create JavaScript functions to handle review actions and implement a corresponding API endpoint in Django.
+### Details:
+Develop client-side JavaScript for accept/edit/remove actions and create a Django view to handle these actions server-side, updating FHIR resources accordingly.
+
+## 8. Update FHIR bundle creation and remove legacy code [pending]
+### Dependencies: 34.7
+### Description: Modify the FHIR bundle creation process to include individual resources and remove any remaining legacy system calls or data merging.
+### Details:
+Update the create_fhir_bundle function to work with individual FHIR resources and perform a codebase audit to remove or refactor any legacy system interference.
+
