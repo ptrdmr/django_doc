@@ -549,7 +549,7 @@ class PatientDataComparison(BaseModel):
         ]
     
     def __str__(self):
-        return f"Comparison: {self.document.filename} → {self.patient.get_full_name()}"
+        return f"Comparison: {self.document.filename} → {self.patient.first_name} {self.patient.last_name}"
     
     def get_completion_percentage(self):
         """Calculate completion percentage of the comparison review."""
@@ -638,3 +638,210 @@ class PatientDataComparison(BaseModel):
                     unresolved.append(field_name)
         
         return unresolved
+
+
+class PatientDataAudit(BaseModel):
+    """
+    Specialized audit model for tracking patient data changes during document review.
+    
+    Extends the general audit system with patient-data-specific functionality
+    and enhanced reporting capabilities for HIPAA compliance.
+    """
+    
+    # Change type choices
+    CHANGE_TYPE_CHOICES = [
+        ('field_update', 'Field Update'),
+        ('bulk_update', 'Bulk Update'),
+        ('manual_edit', 'Manual Edit'),
+        ('rollback', 'Rollback'),
+        ('merge_conflict_resolution', 'Merge Conflict Resolution'),
+    ]
+    
+    # Change source choices
+    SOURCE_CHOICES = [
+        ('document_review', 'Document Review Comparison'),
+        ('manual_entry', 'Manual Entry'),
+        ('system_migration', 'System Migration'),
+        ('admin_correction', 'Admin Correction'),
+    ]
+    
+    # Core relationships
+    patient = models.ForeignKey(
+        'patients.Patient',
+        on_delete=models.CASCADE,
+        related_name='data_audit_logs',
+        help_text="Patient whose data was modified"
+    )
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='patient_data_audits',
+        help_text="Source document that triggered the change (if applicable)"
+    )
+    comparison = models.ForeignKey(
+        PatientDataComparison,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='audit_logs',
+        help_text="Data comparison that led to this change (if applicable)"
+    )
+    
+    # Change details
+    field_name = models.CharField(
+        max_length=100,
+        help_text="Name of the patient field that was changed"
+    )
+    change_type = models.CharField(
+        max_length=30,
+        choices=CHANGE_TYPE_CHOICES,
+        help_text="Type of change that was made"
+    )
+    change_source = models.CharField(
+        max_length=30,
+        choices=SOURCE_CHOICES,
+        default='document_review',
+        help_text="Source system that initiated the change"
+    )
+    
+    # Data values (encrypted for HIPAA compliance)
+    original_value = encrypt(models.TextField(
+        blank=True,
+        help_text="Original value before change - encrypted at rest"
+    ))
+    new_value = encrypt(models.TextField(
+        blank=True,
+        help_text="New value after change - encrypted at rest"
+    ))
+    
+    # Change metadata
+    confidence_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Confidence score of the data that triggered the change"
+    )
+    data_quality_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Quality score of the new data"
+    )
+    
+    # Reviewer information
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='patient_data_audits',
+        help_text="User who made the change"
+    )
+    reviewer_reasoning = encrypt(models.TextField(
+        blank=True,
+        help_text="Reviewer's reasoning for the change - encrypted at rest"
+    ))
+    
+    # System metadata
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text="IP address of the user who made the change"
+    )
+    user_agent = models.TextField(
+        blank=True,
+        help_text="User agent string of the browser/system"
+    )
+    session_key = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text="Session key for grouping related changes"
+    )
+    
+    # Additional context
+    additional_context = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional context data for the change"
+    )
+    
+    class Meta:
+        db_table = 'patient_data_audit_logs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['patient', 'created_at']),
+            models.Index(fields=['document', 'created_at']),
+            models.Index(fields=['field_name', 'change_type']),
+            models.Index(fields=['reviewer', 'created_at']),
+            models.Index(fields=['change_source', 'created_at']),
+        ]
+    
+    def __str__(self):
+        return f"Audit: {self.patient.first_name} {self.patient.last_name} - {self.field_name} ({self.change_type})"
+    
+    def get_change_summary(self):
+        """Get a human-readable summary of the change."""
+        if self.change_type == 'field_update':
+            return f"Updated {self.field_name} from '{self.original_value[:50]}' to '{self.new_value[:50]}'"
+        elif self.change_type == 'bulk_update':
+            return f"Bulk update applied to {self.field_name}"
+        elif self.change_type == 'manual_edit':
+            return f"Manual edit of {self.field_name}"
+        elif self.change_type == 'rollback':
+            return f"Rolled back {self.field_name} to previous value"
+        else:
+            return f"{self.change_type} on {self.field_name}"
+    
+    def is_high_impact_change(self):
+        """Determine if this is a high-impact change that needs special attention."""
+        high_impact_fields = ['mrn', 'ssn', 'date_of_birth', 'first_name', 'last_name']
+        return self.field_name in high_impact_fields
+    
+    def get_related_changes(self, time_window_minutes=60):
+        """Get other changes made around the same time (for grouping)."""
+        from datetime import timedelta
+        
+        time_window = timedelta(minutes=time_window_minutes)
+        start_time = self.created_at - time_window
+        end_time = self.created_at + time_window
+        
+        return PatientDataAudit.objects.filter(
+            patient=self.patient,
+            created_at__range=(start_time, end_time),
+            reviewer=self.reviewer
+        ).exclude(id=self.id).order_by('created_at')
+    
+    @classmethod
+    def get_patient_change_history(cls, patient, limit=50):
+        """Get recent change history for a patient."""
+        return cls.objects.filter(patient=patient).order_by('-created_at')[:limit]
+    
+    @classmethod
+    def get_reviewer_activity(cls, reviewer, days=30):
+        """Get recent activity for a specific reviewer."""
+        from datetime import timedelta
+        
+        cutoff_date = timezone.now() - timedelta(days=days)
+        return cls.objects.filter(
+            reviewer=reviewer,
+            created_at__gte=cutoff_date
+        ).order_by('-created_at')
+    
+    @classmethod
+    def get_field_change_analytics(cls, field_name, days=30):
+        """Get analytics for changes to a specific field type."""
+        from datetime import timedelta
+        from django.db.models import Count, Avg
+        
+        cutoff_date = timezone.now() - timedelta(days=days)
+        
+        return cls.objects.filter(
+            field_name=field_name,
+            created_at__gte=cutoff_date
+        ).aggregate(
+            total_changes=Count('id'),
+            avg_confidence=Avg('confidence_score'),
+            avg_quality=Avg('data_quality_score'),
+            unique_patients=Count('patient', distinct=True),
+            unique_reviewers=Count('reviewer', distinct=True)
+        )

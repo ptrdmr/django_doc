@@ -4,7 +4,7 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django.utils import timezone
 
-from .models import Document, ParsedData, PatientDataComparison
+from .models import Document, ParsedData, PatientDataComparison, PatientDataAudit
 
 
 @admin.register(Document)
@@ -486,3 +486,169 @@ class PatientDataComparisonAdmin(admin.ModelAdmin):
         
         self.message_user(request, f'{count} comparisons reset to pending.')
     reset_to_pending.short_description = 'Reset selected comparisons to pending'
+
+
+@admin.register(PatientDataAudit)
+class PatientDataAuditAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for PatientDataAudit model.
+    Provides comprehensive audit trail management for patient data changes.
+    """
+    
+    list_display = [
+        'patient',
+        'field_name',
+        'change_type',
+        'change_source',
+        'reviewer',
+        'is_high_impact_change',
+        'created_at',
+    ]
+    
+    list_filter = [
+        'change_type',
+        'change_source',
+        'field_name',
+        'created_at',
+        'reviewer',
+        'confidence_score',
+    ]
+    
+    search_fields = [
+        'patient__first_name',
+        'patient__last_name',
+        'patient__mrn',
+        'field_name',
+        'reviewer__username',
+        'reviewer_reasoning',
+        'original_value',
+        'new_value',
+    ]
+    
+    readonly_fields = [
+        'created_at',
+        'updated_at',
+        'change_summary_display',
+        'view_patient_link',
+        'view_document_link',
+        'view_comparison_link',
+    ]
+    
+    fieldsets = [
+        ('Change Information', {
+            'fields': [
+                'patient',
+                'view_patient_link',
+                'field_name',
+                'change_type',
+                'change_source',
+                'change_summary_display',
+            ]
+        }),
+        ('Data Changes', {
+            'fields': [
+                'original_value',
+                'new_value',
+            ]
+        }),
+        ('Quality Metrics', {
+            'fields': [
+                'confidence_score',
+                'data_quality_score',
+            ]
+        }),
+        ('Review Information', {
+            'fields': [
+                'reviewer',
+                'reviewer_reasoning',
+                'document',
+                'view_document_link',
+                'comparison',
+                'view_comparison_link',
+            ]
+        }),
+        ('System Metadata', {
+            'fields': [
+                'ip_address',
+                'user_agent',
+                'session_key',
+                'additional_context',
+            ],
+            'classes': ['collapse'],
+        }),
+        ('Timestamps', {
+            'fields': [
+                'created_at',
+                'updated_at',
+            ]
+        }),
+    ]
+    
+    actions = ['export_audit_report', 'mark_as_reviewed']
+    
+    def change_summary_display(self, obj):
+        """Display a summary of the change."""
+        summary = obj.get_change_summary()
+        if obj.is_high_impact_change():
+            return format_html(
+                '<span style="color: red; font-weight: bold;">⚠️ {}</span>',
+                summary
+            )
+        return summary
+    change_summary_display.short_description = 'Change Summary'
+    
+    def view_patient_link(self, obj):
+        """Provide link to view the patient record."""
+        if obj.patient:
+            url = reverse('admin:patients_patient_change', args=[obj.patient.id])
+            return format_html(
+                '<a href="{}">View Patient</a>',
+                url
+            )
+        return '-'
+    view_patient_link.short_description = 'Patient Record'
+    
+    def view_document_link(self, obj):
+        """Provide link to view the source document."""
+        if obj.document:
+            url = reverse('admin:documents_document_change', args=[obj.document.id])
+            return format_html(
+                '<a href="{}">View Document</a>',
+                url
+            )
+        return '-'
+    view_document_link.short_description = 'Source Document'
+    
+    def view_comparison_link(self, obj):
+        """Provide link to view the comparison record."""
+        if obj.comparison:
+            url = reverse('admin:documents_patientdatacomparison_change', args=[obj.comparison.id])
+            return format_html(
+                '<a href="{}">View Comparison</a>',
+                url
+            )
+        return '-'
+    view_comparison_link.short_description = 'Data Comparison'
+    
+    def export_audit_report(self, request, queryset):
+        """Export audit trail as a report."""
+        # This would generate a comprehensive audit report
+        count = queryset.count()
+        self.message_user(request, f'Audit report functionality would export {count} records.')
+    export_audit_report.short_description = 'Export audit report'
+    
+    def mark_as_reviewed(self, request, queryset):
+        """Mark audit entries as reviewed."""
+        count = 0
+        for audit in queryset:
+            # Add a flag or note that this has been reviewed
+            if not audit.additional_context:
+                audit.additional_context = {}
+            audit.additional_context['admin_reviewed'] = True
+            audit.additional_context['reviewed_by'] = request.user.username
+            audit.additional_context['reviewed_at'] = timezone.now().isoformat()
+            audit.save()
+            count += 1
+        
+        self.message_user(request, f'{count} audit entries marked as reviewed.')
+    mark_as_reviewed.short_description = 'Mark selected entries as reviewed'
