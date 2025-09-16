@@ -4198,17 +4198,17 @@ class PatientDataComparisonService:
         return {
             'first_name': patient.first_name,
             'last_name': patient.last_name,
-            'full_name': patient.get_full_name(),
-            'date_of_birth': patient.date_of_birth.strftime('%m/%d/%Y') if patient.date_of_birth else '',
-            'dob': patient.date_of_birth.strftime('%m/%d/%Y') if patient.date_of_birth else '',
+            'full_name': f"{patient.first_name} {patient.last_name}".strip(),
+            'date_of_birth': patient.date_of_birth if patient.date_of_birth else '',
+            'dob': patient.date_of_birth if patient.date_of_birth else '',
             'gender': patient.gender,
-            'phone_number': patient.phone_number,
-            'phone': patient.phone_number,
+            'phone_number': patient.phone,  # Note: Patient model uses 'phone', not 'phone_number'
+            'phone': patient.phone,
             'address': patient.address,
             'email': patient.email,
             'mrn': patient.mrn,
             'ssn': patient.ssn,
-            'insurance_info': patient.insurance_info,
+            'insurance_info': getattr(patient, 'insurance_info', ''),  # May not exist
         }
     
     def _compare_field_values(self, extracted_value, patient_value, field_name):
