@@ -577,51 +577,75 @@ To verify the correct implementation of the refactored document processing pipel
 These tests cover various aspects of the refactored pipeline, including functionality, performance, error handling, security, and end-to-end workflow. Adjust the specific assertions and thresholds as needed based on your exact implementation and requirements.
 
 # Subtasks:
-## 1. Update AI extraction prompt [pending]
+## 1. Update AI extraction service [pending]
 ### Dependencies: None
-### Description: Modify the AI service call in documents/services/ai_extraction.py to request clean arrays for medical data extraction.
+### Description: Modify the AI service call in documents/services/ai_extraction.py to use instructor library for structured data extraction.
 ### Details:
-Update the extract_medical_data function to use a new prompt that requests a JSON object with arrays for diagnoses, medications, procedures, and lab results.
+Install instructor library, create Pydantic models for structured medical data, and update the extract_medical_data function to use instructor for GPT-based extraction.
 
-## 2. Remove FHIR conversion from DocumentAnalyzer [pending]
+## 2. Refactor DocumentAnalyzer class [pending]
 ### Dependencies: 34.1
-### Description: Update documents/analyzers.py to focus solely on text extraction and AI processing, removing FHIR conversion logic.
+### Description: Update the DocumentAnalyzer class in documents/analyzers.py to focus on text extraction and structured AI processing.
 ### Details:
-Modify the DocumentAnalyzer class to only handle text extraction and medical data extraction, removing any FHIR-related code.
+Remove FHIR conversion logic, add a new method for structured analysis, and update the existing analyze method to use the new structured extraction.
 
 ## 3. Implement dedicated FHIR conversion [pending]
-### Dependencies: 34.2
-### Description: Create apps/fhir/converters.py for FHIR conversion logic, separating it from the document analysis process.
+### Dependencies: 34.1, 34.2
+### Description: Create a new module apps/fhir/converters.py for FHIR resource conversion from structured data.
 ### Details:
-Develop a new module with functions to convert extracted medical data into FHIR resources such as Condition and MedicationStatement.
+Implement functions to convert structured medical data (conditions, medications) to FHIR resources (Condition, MedicationStatement).
 
 ## 4. Update document processing workflow [pending]
 ### Dependencies: 34.2, 34.3
-### Description: Modify documents/tasks.py to use the new pipeline, integrating the separate document analysis and FHIR conversion steps.
+### Description: Modify the Celery task in documents/tasks.py to use the new structured extraction and FHIR conversion pipeline.
 ### Details:
-Refactor the process_document task to use the updated DocumentAnalyzer and the new FHIR conversion functions, storing individual FHIR resources.
+Update the process_document task to use the new DocumentAnalyzer methods and FHIR conversion, storing both structured data and FHIR resources.
 
-## 5. Update review interface backend [pending]
+## 5. Enhance error handling and logging [pending]
+### Dependencies: 34.1, 34.2, 34.3, 34.4
+### Description: Implement comprehensive error handling and logging throughout the new pipeline.
+### Details:
+Add try-except blocks, custom exceptions, and detailed logging for each step of the document processing pipeline.
+
+## 6. Update document model [pending]
 ### Dependencies: 34.4
-### Description: Modify documents/views.py to handle individual records for the document review process.
+### Description: Modify the Document model to store structured extraction data and processing metadata.
 ### Details:
-Update the DocumentReviewView to fetch and organize individual FHIR resources for display in the review interface.
+Add fields for structured_data (JSONField), processing_time, error_log, and update existing fields as necessary.
 
-## 6. Implement individual record review in frontend [pending]
-### Dependencies: 34.5
-### Description: Update templates/documents/review.html to display and allow interaction with individual medical records.
+## 7. Implement data validation middleware [pending]
+### Dependencies: 34.1, 34.6
+### Description: Create a middleware layer to validate structured data at various points in the pipeline.
 ### Details:
-Modify the review template to show separate sections for diagnoses, medications, and other record types, with individual accept/edit/remove buttons.
+Implement validation functions using Pydantic models to ensure data integrity throughout the processing pipeline.
 
-## 7. Implement review actions and API endpoint [pending]
-### Dependencies: 34.6
-### Description: Create JavaScript functions to handle review actions and implement a corresponding API endpoint in Django.
+## 8. Update review interface backend [pending]
+### Dependencies: 34.6, 34.7
+### Description: Modify documents/views.py to handle structured data in the document review process.
 ### Details:
-Develop client-side JavaScript for accept/edit/remove actions and create a Django view to handle these actions server-side, updating FHIR resources accordingly.
+Update DocumentReviewView to use structured data for display and implement new API endpoints for handling structured data edits.
 
-## 8. Update FHIR bundle creation and remove legacy code [pending]
-### Dependencies: 34.7
-### Description: Modify the FHIR bundle creation process to include individual resources and remove any remaining legacy system calls or data merging.
+## 9. Refactor review interface frontend [pending]
+### Dependencies: 34.8
+### Description: Update templates/documents/review.html and associated JavaScript to work with structured data.
 ### Details:
-Update the create_fhir_bundle function to work with individual FHIR resources and perform a codebase audit to remove or refactor any legacy system interference.
+Modify the review interface to display structured data, implement edit functionality for each data type, and update AJAX calls to use new API endpoints.
+
+## 10. Implement performance optimizations [pending]
+### Dependencies: 34.4, 34.5
+### Description: Optimize the document processing pipeline for improved performance.
+### Details:
+Implement caching strategies, database query optimizations, and consider parallel processing for large documents.
+
+## 11. Update FHIR bundle creation process [pending]
+### Dependencies: 34.3, 34.6
+### Description: Modify the FHIR bundle creation to work with the new structured data and individual resources.
+### Details:
+Update the create_fhir_bundle function to use the new structured data format and include individual FHIR resources in the bundle.
+
+## 12. Implement comprehensive testing suite [pending]
+### Dependencies: 34.1, 34.2, 34.3, 34.4, 34.5, 34.6, 34.7, 34.8, 34.9, 34.10, 34.11
+### Description: Create a comprehensive set of unit and integration tests for the refactored pipeline.
+### Details:
+Develop unit tests for each component and integration tests for the entire pipeline, including edge cases and error scenarios.
 

@@ -1,0 +1,21 @@
+{
+	"meta": {
+		"generatedAt": "2025-09-17T13:00:36.446Z",
+		"tasksAnalyzed": 1,
+		"totalTasks": 29,
+		"analysisCount": 1,
+		"thresholdScore": 5,
+		"projectName": "Taskmaster",
+		"usedResearch": true
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 34,
+			"taskTitle": "Refactor Core Document Processing Pipeline for Individual Medical Records",
+			"complexityScore": 9,
+			"recommendedSubtasks": 12,
+			"expansionPrompt": "Break down the refactoring of the document processing pipeline into more granular steps, including data model changes, AI integration improvements, error handling enhancements, and performance optimizations.",
+			"reasoning": "This task involves a significant overhaul of a core system component, touching multiple layers of the application including AI integration, data processing, FHIR conversion, and user interface. The high number of dependencies and the need for maintaining HIPAA compliance while improving performance add to its complexity."
+		}
+	]
+}
