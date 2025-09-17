@@ -3,24 +3,35 @@ AI Extraction Service with Instructor-based Structured Data Extraction
 
 This service uses the instructor library to provide structured medical data extraction
 from clinical documents with Pydantic validation and type safety.
+
+Primary AI: Anthropic Claude (claude-3-5-sonnet)
+Fallback AI: OpenAI GPT (gpt-4o-mini)
 """
 
 import logging
 import json
 import instructor
 from typing import List, Optional, Dict, Any
-from openai import OpenAI
+from anthropic import Anthropic
 from pydantic import BaseModel, Field, validator
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Initialize instructor-patched OpenAI client
+# Initialize instructor-patched Anthropic client (primary)
 try:
-    client = instructor.patch(OpenAI(api_key=getattr(settings, 'OPENAI_API_KEY', None)))
+    client = instructor.patch(Anthropic(api_key=getattr(settings, 'ANTHROPIC_API_KEY', None)))
 except Exception as e:
-    logger.warning(f"Failed to initialize OpenAI client: {e}")
+    logger.warning(f"Failed to initialize Anthropic client: {e}")
     client = None
+
+# Fallback OpenAI client for when Anthropic fails
+openai_client = None
+try:
+    from openai import OpenAI
+    openai_client = instructor.patch(OpenAI(api_key=getattr(settings, 'OPENAI_API_KEY', None)))
+except Exception as e:
+    logger.warning(f"Failed to initialize OpenAI fallback client: {e}")
 
 
 class SourceContext(BaseModel):
@@ -158,7 +169,7 @@ class StructuredMedicalExtraction(BaseModel):
 
 def extract_medical_data_structured(text: str, context: Optional[str] = None) -> StructuredMedicalExtraction:
     """
-    Extract structured medical data using instructor and GPT.
+    Extract structured medical data using instructor and Claude (primary) with OpenAI fallback.
     
     Args:
         text: The medical document text to analyze
@@ -168,11 +179,8 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
         StructuredMedicalExtraction object with all extracted data
         
     Raises:
-        Exception: If the AI service fails or response is invalid
+        Exception: If both AI services fail or response is invalid
     """
-    if not client:
-        raise Exception("OpenAI client not properly initialized")
-    
     # Build the extraction prompt
     system_prompt = """You are MediExtract Pro, an expert medical data extraction AI. 
 
@@ -208,32 +216,70 @@ Document context: {context or 'General clinical document'}
 
 Return structured data with complete source context for each item."""
 
-    try:
-        extraction = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            response_model=StructuredMedicalExtraction,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1,  # Low temperature for consistent extraction
-            max_tokens=4000
-        )
-        
-        # Set extraction timestamp
-        from datetime import datetime
-        extraction.extraction_timestamp = datetime.now().isoformat()
-        extraction.document_type = context
-        
-        logger.info(f"Successfully extracted {len(extraction.conditions)} conditions, "
-                   f"{len(extraction.medications)} medications, "
-                   f"{len(extraction.vital_signs)} vital signs from document")
-        
-        return extraction
-        
-    except Exception as e:
-        logger.error(f"Structured extraction failed: {e}")
-        raise
+    # Primary model configuration (Claude)
+    primary_model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620')
+    fallback_model = getattr(settings, 'AI_MODEL_FALLBACK', 'gpt-4o-mini')
+    
+    # Try primary AI service (Claude)
+    if client:
+        try:
+            extraction = client.chat.completions.create(
+                model=primary_model,
+                response_model=StructuredMedicalExtraction,
+                messages=[
+                    {"role": "user", "content": f"{system_prompt}\n\n{user_prompt}"}
+                ],
+                temperature=0.1,  # Low temperature for consistent extraction
+                max_tokens=4000
+            )
+            
+            # Set extraction timestamp and metadata
+            from datetime import datetime
+            extraction.extraction_timestamp = datetime.now().isoformat()
+            extraction.document_type = context
+            
+            logger.info(f"Claude extracted {len(extraction.conditions)} conditions, "
+                       f"{len(extraction.medications)} medications, "
+                       f"{len(extraction.vital_signs)} vital signs from document")
+            
+            return extraction
+            
+        except Exception as e:
+            logger.warning(f"Claude extraction failed: {e}, trying OpenAI fallback")
+    
+    # Fallback to OpenAI if Claude fails
+    if openai_client:
+        try:
+            extraction = openai_client.chat.completions.create(
+                model=fallback_model,
+                response_model=StructuredMedicalExtraction,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=4000
+            )
+            
+            # Set extraction timestamp and metadata
+            from datetime import datetime
+            extraction.extraction_timestamp = datetime.now().isoformat()
+            extraction.document_type = context
+            
+            logger.info(f"OpenAI fallback extracted {len(extraction.conditions)} conditions, "
+                       f"{len(extraction.medications)} medications, "
+                       f"{len(extraction.vital_signs)} vital signs from document")
+            
+            return extraction
+            
+        except Exception as e:
+            logger.error(f"OpenAI fallback also failed: {e}")
+    
+    # If both services fail, raise an exception
+    if not client and not openai_client:
+        raise Exception("Neither Anthropic nor OpenAI clients are properly initialized")
+    else:
+        raise Exception("Both Anthropic and OpenAI extraction services failed")
 
 
 def extract_medical_data(text: str, context: Optional[str] = None) -> Dict[str, Any]:
