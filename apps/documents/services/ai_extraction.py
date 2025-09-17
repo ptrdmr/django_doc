@@ -1,49 +1,51 @@
 """
 AI Extraction Service with Instructor-based Structured Data Extraction
 
-This service uses the instructor library to provide structured medical data extraction
-from clinical documents with Pydantic validation and type safety.
-
-Primary AI: Anthropic Claude (claude-3-5-sonnet)
-Fallback AI: OpenAI GPT (gpt-4o-mini)
+This service uses the instructor library with Anthropic Claude (primary) and OpenAI (fallback)
+to provide structured medical data extraction from clinical documents with Pydantic validation.
+Follows the project's established AI service patterns and configuration.
 """
 
 import logging
 import json
 import instructor
-from typing import List, Optional, Dict, Any
-from anthropic import Anthropic
+from typing import List, Optional, Dict, Any, Union
+from datetime import datetime
 from pydantic import BaseModel, Field, validator
 from django.conf import settings
+import anthropic
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-# Initialize instructor-patched Anthropic client (primary)
+# Initialize AI clients following project patterns
 try:
-    client = instructor.patch(Anthropic(api_key=getattr(settings, 'ANTHROPIC_API_KEY', None)))
+    # Primary: Anthropic Claude (following project's AI_MODEL_PRIMARY setting)
+    anthropic_client = anthropic.Anthropic(
+        api_key=getattr(settings, 'ANTHROPIC_API_KEY', None)
+    ) if getattr(settings, 'ANTHROPIC_API_KEY', None) else None
+    
+    # Fallback: OpenAI (following project's AI_MODEL_FALLBACK setting)
+    openai_client = instructor.patch(OpenAI(
+        api_key=getattr(settings, 'OPENAI_API_KEY', None)
+    )) if getattr(settings, 'OPENAI_API_KEY', None) else None
+    
 except Exception as e:
-    logger.warning(f"Failed to initialize Anthropic client: {e}")
-    client = None
-
-# Fallback OpenAI client for when Anthropic fails
-openai_client = None
-try:
-    from openai import OpenAI
-    openai_client = instructor.patch(OpenAI(api_key=getattr(settings, 'OPENAI_API_KEY', None)))
-except Exception as e:
-    logger.warning(f"Failed to initialize OpenAI fallback client: {e}")
+    logger.warning(f"Failed to initialize AI clients: {e}")
+    anthropic_client = None
+    openai_client = None
 
 
 class SourceContext(BaseModel):
     """Context information about where data was extracted from in the source text."""
     text: str = Field(description="The exact text snippet from the document")
-    start_index: int = Field(description="Start position in the source text", ge=0)
-    end_index: int = Field(description="End position in the source text", ge=0)
+    start_index: int = Field(description="Approximate start position in source text", ge=0, default=0)
+    end_index: int = Field(description="Approximate end position in source text", ge=0, default=0)
     
     @validator('end_index')
     def end_after_start(cls, v, values):
-        if 'start_index' in values and v < values['start_index']:
-            raise ValueError('end_index must be >= start_index')
+        if 'start_index' in values and v < values['start_index'] and v != 0:
+            v = values['start_index'] + len(values.get('text', ''))
         return v
 
 
@@ -52,11 +54,10 @@ class MedicalCondition(BaseModel):
     name: str = Field(description="The medical condition or diagnosis name")
     status: str = Field(
         description="Status of the condition",
-        default="active",
-        pattern="^(active|resolved|suspected|ruled_out|chronic)$"
+        default="active"
     )
-    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0)
-    onset_date: Optional[str] = Field(default=None, description="When the condition was first diagnosed (YYYY-MM-DD)")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
+    onset_date: Optional[str] = Field(default=None, description="When condition was diagnosed")
     icd_code: Optional[str] = Field(default=None, description="ICD-10 code if mentioned")
     source: SourceContext = Field(description="Source context in the document")
 
@@ -64,27 +65,23 @@ class MedicalCondition(BaseModel):
 class Medication(BaseModel):
     """A medication, drug, or therapeutic substance."""
     name: str = Field(description="The medication name")
-    dosage: Optional[str] = Field(default=None, description="Dosage amount (e.g., '500mg', '10 units')")
-    route: Optional[str] = Field(default=None, description="Route of administration (e.g., 'oral', 'IV', 'topical')")
-    frequency: Optional[str] = Field(default=None, description="Dosing frequency (e.g., 'twice daily', 'PRN')")
-    status: str = Field(
-        description="Medication status",
-        default="active",
-        pattern="^(active|discontinued|prescribed|held|unknown)$"
-    )
-    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0)
-    start_date: Optional[str] = Field(default=None, description="When medication was started (YYYY-MM-DD)")
-    stop_date: Optional[str] = Field(default=None, description="When medication was stopped (YYYY-MM-DD)")
+    dosage: Optional[str] = Field(default=None, description="Dosage amount")
+    route: Optional[str] = Field(default=None, description="Route of administration")
+    frequency: Optional[str] = Field(default=None, description="Dosing frequency")
+    status: str = Field(description="Medication status", default="active")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
+    start_date: Optional[str] = Field(default=None, description="When medication was started")
+    stop_date: Optional[str] = Field(default=None, description="When medication was stopped")
     source: SourceContext = Field(description="Source context in the document")
 
 
 class VitalSign(BaseModel):
     """A vital sign measurement."""
-    measurement_type: str = Field(description="Type of vital sign (e.g., 'blood_pressure', 'temperature')")
+    measurement_type: str = Field(description="Type of vital sign")
     value: str = Field(description="The measured value")
     unit: Optional[str] = Field(default=None, description="Unit of measurement")
-    timestamp: Optional[str] = Field(default=None, description="When the measurement was taken (YYYY-MM-DD HH:MM)")
-    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0)
+    timestamp: Optional[str] = Field(default=None, description="When measurement was taken")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     source: SourceContext = Field(description="Source context in the document")
 
 
@@ -94,19 +91,19 @@ class LabResult(BaseModel):
     value: str = Field(description="Test result value")
     unit: Optional[str] = Field(default=None, description="Unit of measurement")
     reference_range: Optional[str] = Field(default=None, description="Normal reference range")
-    status: Optional[str] = Field(default=None, description="Result status (e.g., 'normal', 'abnormal', 'critical')")
-    test_date: Optional[str] = Field(default=None, description="Date test was performed (YYYY-MM-DD)")
-    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0)
+    status: Optional[str] = Field(default=None, description="Result status")
+    test_date: Optional[str] = Field(default=None, description="Date test was performed")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     source: SourceContext = Field(description="Source context in the document")
 
 
 class Procedure(BaseModel):
     """A medical procedure or intervention."""
     name: str = Field(description="Name of the procedure")
-    procedure_date: Optional[str] = Field(default=None, description="Date procedure was performed (YYYY-MM-DD)")
-    provider: Optional[str] = Field(default=None, description="Provider who performed the procedure")
-    outcome: Optional[str] = Field(default=None, description="Outcome or result of the procedure")
-    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0)
+    procedure_date: Optional[str] = Field(default=None, description="Date procedure was performed")
+    provider: Optional[str] = Field(default=None, description="Provider who performed procedure")
+    outcome: Optional[str] = Field(default=None, description="Outcome or result")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     source: SourceContext = Field(description="Source context in the document")
 
 
@@ -115,8 +112,8 @@ class Provider(BaseModel):
     name: str = Field(description="Provider's name")
     specialty: Optional[str] = Field(default=None, description="Medical specialty")
     role: Optional[str] = Field(default=None, description="Role in patient care")
-    contact_info: Optional[str] = Field(default=None, description="Contact information if available")
-    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0)
+    contact_info: Optional[str] = Field(default=None, description="Contact information")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     source: SourceContext = Field(description="Source context in the document")
 
 
@@ -152,7 +149,7 @@ class StructuredMedicalExtraction(BaseModel):
     # Metadata
     extraction_timestamp: str = Field(description="When this extraction was performed")
     document_type: Optional[str] = Field(default=None, description="Type of clinical document")
-    confidence_average: Optional[float] = Field(default=None, description="Average confidence across all extractions")
+    confidence_average: Optional[float] = Field(default=None, description="Average confidence")
     
     @validator('confidence_average', always=True)
     def calculate_average_confidence(cls, v, values):
@@ -169,7 +166,7 @@ class StructuredMedicalExtraction(BaseModel):
 
 def extract_medical_data_structured(text: str, context: Optional[str] = None) -> StructuredMedicalExtraction:
     """
-    Extract structured medical data using instructor and Claude (primary) with OpenAI fallback.
+    Extract structured medical data using Claude (primary) or OpenAI (fallback) with instructor.
     
     Args:
         text: The medical document text to analyze
@@ -188,7 +185,7 @@ Your task is to extract ALL medical information from clinical documents with the
 
 CRITICAL REQUIREMENTS:
 1. Extract EVERY piece of medical information mentioned
-2. Provide exact source context for each extracted item
+2. Provide source context for each extracted item (use the exact text snippet)
 3. Assign accurate confidence scores based on clarity
 4. Use proper medical terminology and classifications
 5. Include dates, values, and units exactly as written
@@ -216,70 +213,116 @@ Document context: {context or 'General clinical document'}
 
 Return structured data with complete source context for each item."""
 
-    # Primary model configuration (Claude)
-    primary_model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620')
-    fallback_model = getattr(settings, 'AI_MODEL_FALLBACK', 'gpt-4o-mini')
-    
-    # Try primary AI service (Claude)
-    if client:
+    # Try Claude first (primary AI service)
+    if anthropic_client:
         try:
-            extraction = client.chat.completions.create(
-                model=primary_model,
-                response_model=StructuredMedicalExtraction,
+            logger.info("Attempting structured extraction with Claude (primary)")
+            
+            # Claude doesn't directly support instructor, so we'll use it conventionally
+            # and parse the JSON response into our Pydantic model
+            # Create a detailed schema prompt for Claude
+            schema_prompt = f"""
+Return valid JSON that exactly matches this schema structure:
+
+{{
+  "conditions": [
+    {{
+      "name": "condition name",
+      "status": "active",
+      "confidence": 0.9,
+      "onset_date": null,
+      "icd_code": null,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "medications": [
+    {{
+      "name": "medication name",
+      "dosage": "dosage amount",
+      "route": null,
+      "frequency": "frequency",
+      "status": "active",
+      "confidence": 0.9,
+      "start_date": null,
+      "stop_date": null,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "vital_signs": [],
+  "lab_results": [],
+  "procedures": [],
+  "providers": [],
+  "extraction_timestamp": "",
+  "document_type": "",
+  "confidence_average": null
+}}
+
+CRITICAL: Every extracted item MUST include a "source" object with the exact text snippet."""
+
+            response = anthropic_client.messages.create(
+                model=getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620'),
+                max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096),
+                temperature=0.1,
+                system=system_prompt,
                 messages=[
-                    {"role": "user", "content": f"{system_prompt}\n\n{user_prompt}"}
-                ],
-                temperature=0.1,  # Low temperature for consistent extraction
-                max_tokens=4000
+                    {"role": "user", "content": user_prompt + "\n\n" + schema_prompt}
+                ]
             )
             
-            # Set extraction timestamp and metadata
-            from datetime import datetime
-            extraction.extraction_timestamp = datetime.now().isoformat()
-            extraction.document_type = context
+            # Parse Claude's response
+            response_text = response.content[0].text
             
-            logger.info(f"Claude extracted {len(extraction.conditions)} conditions, "
-                       f"{len(extraction.medications)} medications, "
-                       f"{len(extraction.vital_signs)} vital signs from document")
-            
-            return extraction
-            
+            # Try to extract JSON from the response
+            import re
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                json_data = json.loads(json_match.group())
+                
+                # Set extraction timestamp and document type
+                json_data['extraction_timestamp'] = datetime.now().isoformat()
+                json_data['document_type'] = context
+                
+                # Parse into Pydantic model
+                extraction = StructuredMedicalExtraction(**json_data)
+                
+                logger.info(f"Claude extraction successful: {len(extraction.conditions)} conditions, "
+                           f"{len(extraction.medications)} medications")
+                return extraction
+            else:
+                raise ValueError("No valid JSON found in Claude response")
+                
         except Exception as e:
             logger.warning(f"Claude extraction failed: {e}, trying OpenAI fallback")
     
-    # Fallback to OpenAI if Claude fails
+    # Try OpenAI as fallback
     if openai_client:
         try:
+            logger.info("Attempting structured extraction with OpenAI (fallback)")
+            
             extraction = openai_client.chat.completions.create(
-                model=fallback_model,
+                model=getattr(settings, 'AI_MODEL_FALLBACK', 'gpt-4o-mini'),
                 response_model=StructuredMedicalExtraction,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=4000
+                max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096)
             )
             
-            # Set extraction timestamp and metadata
-            from datetime import datetime
+            # Set extraction timestamp and document type
             extraction.extraction_timestamp = datetime.now().isoformat()
             extraction.document_type = context
             
-            logger.info(f"OpenAI fallback extracted {len(extraction.conditions)} conditions, "
-                       f"{len(extraction.medications)} medications, "
-                       f"{len(extraction.vital_signs)} vital signs from document")
-            
+            logger.info(f"OpenAI extraction successful: {len(extraction.conditions)} conditions, "
+                       f"{len(extraction.medications)} medications")
             return extraction
             
         except Exception as e:
-            logger.error(f"OpenAI fallback also failed: {e}")
+            logger.error(f"OpenAI extraction also failed: {e}")
     
     # If both services fail, raise an exception
-    if not client and not openai_client:
-        raise Exception("Neither Anthropic nor OpenAI clients are properly initialized")
-    else:
-        raise Exception("Both Anthropic and OpenAI extraction services failed")
+    raise Exception("Both Claude and OpenAI extraction services failed")
 
 
 def extract_medical_data(text: str, context: Optional[str] = None) -> Dict[str, Any]:
@@ -369,7 +412,6 @@ def legacy_extract_medical_data(text: str, context: Optional[str] = None) -> Dic
     
     # Simple keyword-based extraction as fallback
     import re
-    from datetime import datetime
     
     # Basic medication pattern matching
     medication_patterns = [
