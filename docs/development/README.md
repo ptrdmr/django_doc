@@ -3363,4 +3363,117 @@ def _extract_condition_metadata(self, condition_resource, summary):
 
 ---
 
-*Updated: 2025-09-13 20:29:01 | Enhanced FHIR temporal data extraction implementation*
+### 🔧 DocumentAnalyzer Refactoring Patterns - Task 34.2 Complete ✅
+
+**Clean separation of concerns in document processing pipeline with comprehensive testing.**
+
+#### Core Refactoring Principles
+
+**✅ DO: Separate Concerns with Focused Classes**
+```python
+# ✅ DO: Dedicated analyzer class for text extraction and AI processing
+class DocumentAnalyzer:
+    """
+    Refactored DocumentAnalyzer focused solely on text extraction and AI processing.
+    FHIR conversion moved to dedicated apps/fhir/converters.py module.
+    """
+    
+    def extract_text(self, document_path: str) -> Dict[str, Any]:
+        """Extract text from document with robust error handling."""
+        
+    def extract_medical_data(self, text: str, context: str = None) -> Dict[str, Any]:
+        """Extract structured medical data using AI services."""
+        
+    def analyze_document_structured(self, document_path: str) -> Dict[str, Any]:
+        """New structured analysis method with comprehensive data extraction."""
+        
+    def analyze(self, document, use_ai=True) -> List[Dict[str, Any]]:
+        """Legacy-compatible method for backward compatibility."""
+
+# ❌ DON'T: Mix text extraction with FHIR conversion in same class
+class DocumentAnalyzer:
+    def analyze_and_convert_to_fhir(self):  # Too many responsibilities!
+```
+
+#### Session-Based Processing Pattern
+
+**✅ DO: Use UUID Sessions for Audit Trails**
+```python
+class DocumentAnalyzer:
+    def __init__(self, document=None):
+        self.processing_session = str(uuid4())  # Unique session tracking
+        self.stats = {
+            'session_id': self.processing_session,
+            'extraction_attempts': 0,
+            'successful_extractions': 0,
+            'errors_encountered': [],
+            'start_time': time.time()
+        }
+        self.logger.info(f"DocumentAnalyzer initialized for session {self.processing_session}")
+    
+    def get_processing_stats(self) -> Dict[str, Any]:
+        """Provide comprehensive processing statistics for monitoring."""
+        return {
+            'session_id': self.processing_session,
+            'total_processing_time': time.time() - self.stats['start_time'],
+            'success_rate': self.stats['successful_extractions'] / max(1, self.stats['extraction_attempts'])
+        }
+```
+
+#### Testing Patterns for Import Conflicts
+
+**✅ DO: Handle Python Import Shadowing**
+```python
+# Problem: services/ package shadows services.py module
+# Solution: Direct module loading for testing
+
+# In DocumentAnalyzer:
+def _get_pdf_extractor(self):
+    """Get PDFTextExtractor instance. Separated for easier testing."""
+    import importlib.util
+    import os
+    spec = importlib.util.spec_from_file_location("services_py", 
+                                                 os.path.join(os.path.dirname(__file__), "services.py"))
+    services_py = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(services_py)
+    return services_py.PDFTextExtractor()
+
+# In tests:
+def test_extract_text_success(self):
+    mock_extractor = Mock()
+    mock_extractor.extract_text.return_value = {'success': True, 'text': 'sample'}
+    
+    with patch.object(self.analyzer, '_get_pdf_extractor', return_value=mock_extractor):
+        result = self.analyzer.extract_text('/tmp/test.pdf')
+        self.assertTrue(result['success'])
+```
+
+#### Backward Compatibility Patterns
+
+**✅ DO: Maintain Legacy API While Modernizing**
+```python
+def analyze(self, document, use_ai=True) -> List[Dict[str, Any]]:
+    """Legacy-compatible analyze method for backward compatibility."""
+    # New implementation using structured approach
+    structured_result = self.analyze_document_structured(document_path)
+    
+    # Convert to legacy format
+    legacy_fields = self._convert_to_legacy_fields(structured_result)
+    return legacy_fields
+
+def _convert_to_legacy_fields(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Convert structured data to legacy field format."""
+    fields = []
+    for diagnosis in extracted_data.get('diagnoses', []):
+        fields.append({
+            'label': 'diagnosis',
+            'value': diagnosis,
+            'confidence': extracted_data.get('extraction_confidence', 0.8),
+            'category': 'medical_condition'
+        })
+    return fields
+```
+
+---
+
+*Updated: 2025-09-17 07:36:02 | Task 34.2 refactoring patterns documented with testing and compatibility strategies*
