@@ -59,6 +59,7 @@ def process_document_async(self, document_id: int):
     
     from .models import Document
     from .services import PDFTextExtractor, DocumentAnalyzer, APIRateLimitError
+    from apps.fhir.converters import StructuredDataConverter
     
     try:
         logger.info(f"Starting document processing for document {document_id}")
@@ -112,13 +113,14 @@ def process_document_async(self, document_id: int):
         logger.info(f"PDF extraction successful: {extraction_result['page_count']} pages, "
                    f"{len(extraction_result['text'])} characters")
         
-        # STEP 2: Analyze document with AI using comprehensive error recovery
+        # STEP 2: Analyze document with AI using new structured extraction pipeline
         ai_result = None
+        structured_extraction = None
         if extraction_result['text'].strip():
             try:
-                logger.info(f"Step 2: Starting AI analysis with comprehensive error recovery for document {document_id}")
+                logger.info(f"Step 2: Starting AI analysis with structured extraction pipeline for document {document_id}")
                 
-                # Initialize document analyzer with document for cost monitoring
+                # Initialize document analyzer
                 ai_analyzer = DocumentAnalyzer(document=document)
                 
                 # Prepare context for AI analysis
@@ -130,11 +132,77 @@ def process_document_async(self, document_id: int):
                     provider = document.providers.first()
                     context = f"{provider.name} - {provider.specialty}" if hasattr(provider, 'specialty') else provider.name
                 
-                # DIRECT FIX: Call analyze_document directly to bypass any issues in process_with_comprehensive_recovery
-                ai_result = ai_analyzer.analyze_document(
-                    document_content=extraction_result['text'],
-                    context=context
-                )
+                # NEW: Use structured extraction pipeline
+                try:
+                    logger.info(f"Attempting structured extraction for document {document_id}")
+                    structured_extraction = ai_analyzer.analyze_document_structured(
+                        document_content=extraction_result['text'],
+                        context=context
+                    )
+                    
+                    if structured_extraction:
+                        # Convert structured data to legacy format for backward compatibility
+                        ai_result = {
+                            'success': True,
+                            'fields': [
+                                # Convert conditions
+                                *[{
+                                    'label': f'diagnosis_{i+1}',
+                                    'value': condition.name,
+                                    'confidence': condition.confidence,
+                                    'source_text': condition.source.text,
+                                    'char_position': condition.source.start_index
+                                } for i, condition in enumerate(structured_extraction.conditions)],
+                                
+                                # Convert medications
+                                *[{
+                                    'label': f'medication_{i+1}',
+                                    'value': f"{medication.name} {medication.dosage or ''}".strip(),
+                                    'confidence': medication.confidence,
+                                    'source_text': medication.source.text,
+                                    'char_position': medication.source.start_index
+                                } for i, medication in enumerate(structured_extraction.medications)],
+                                
+                                # Convert vital signs
+                                *[{
+                                    'label': f'vital_{vital.measurement_type.lower().replace(" ", "_")}',
+                                    'value': f"{vital.value} {vital.unit or ''}".strip(),
+                                    'confidence': vital.confidence,
+                                    'source_text': vital.source.text,
+                                    'char_position': vital.source.start_index
+                                } for vital in structured_extraction.vital_signs],
+                                
+                                # Convert lab results
+                                *[{
+                                    'label': f'lab_{lab.test_name.lower().replace(" ", "_")}',
+                                    'value': f"{lab.value} {lab.unit or ''}".strip(),
+                                    'confidence': lab.confidence,
+                                    'source_text': lab.source.text,
+                                    'char_position': lab.source.start_index
+                                } for lab in structured_extraction.lab_results]
+                            ],
+                            'model_used': 'structured_extraction_claude',
+                            'processing_method': 'structured_pydantic',
+                            'usage': {
+                                'total_tokens': 0,  # Will be updated if available
+                            },
+                            'processing_duration_ms': 0,  # Will be updated if available
+                            'structured_data': structured_extraction  # Store the original structured data
+                        }
+                        
+                        logger.info(f"Structured extraction successful: {len(ai_result['fields'])} fields extracted from structured data")
+                    
+                except Exception as structured_exc:
+                    logger.warning(f"Structured extraction failed for document {document_id}, falling back to legacy: {structured_exc}")
+                    structured_extraction = None
+                
+                # FALLBACK: Use legacy extraction if structured extraction failed
+                if not structured_extraction:
+                    logger.info(f"Using legacy AI analysis for document {document_id}")
+                    ai_result = ai_analyzer.analyze_document(
+                        document_content=extraction_result['text'],
+                        context=context
+                    )
                 
                 # Handle graceful degradation responses
                 if ai_result.get('degraded'):
@@ -168,51 +236,79 @@ def process_document_async(self, document_id: int):
                 if ai_result['success']:
                     logger.info(f"AI analysis successful: {len(ai_result['fields'])} fields extracted")
                     
-                    # STEP 3: Convert to FHIR format using enhanced FHIR processor
+                    # STEP 3: Convert to FHIR format using appropriate converter
                     patient_id = str(document.patient.id) if document.patient else None
                     
-                    # Use the new FHIRProcessor for comprehensive resource processing
-                    try:
-                        from apps.fhir.services import FHIRProcessor, FHIRMetricsService
-                        
-                        fhir_processor = FHIRProcessor()
-                        fhir_resources = fhir_processor.process_extracted_data(ai_result['fields'], patient_id)
-                        
-                        logger.info(f"FHIRProcessor created {len(fhir_resources)} resources from extracted data")
-                        
-                        # Calculate data capture metrics
+                    # NEW: Use StructuredDataConverter if we have structured data
+                    if structured_extraction:
                         try:
-                            metrics_service = FHIRMetricsService()
-                            capture_metrics = metrics_service.calculate_data_capture_metrics(
-                                ai_result['fields'], fhir_resources
+                            logger.info(f"Using StructuredDataConverter for FHIR conversion")
+                            structured_converter = StructuredDataConverter()
+                            
+                            # Prepare metadata for conversion
+                            conversion_metadata = {
+                                'document_id': document.id,
+                                'extraction_timestamp': structured_extraction.extraction_timestamp,
+                                'document_type': structured_extraction.document_type,
+                                'confidence_average': structured_extraction.confidence_average
+                            }
+                            
+                            fhir_resources = structured_converter.convert_structured_data(
+                                structured_extraction, 
+                                conversion_metadata, 
+                                document.patient
                             )
                             
-                            # Store metrics in AI result for reporting
-                            ai_result['capture_metrics'] = capture_metrics
+                            logger.info(f"StructuredDataConverter created {len(fhir_resources)} resources from structured data")
                             
-                            # Log metrics summary
-                            overall_rate = capture_metrics['overall']['capture_rate']
-                            total_points = capture_metrics['overall']['total_data_points']
-                            captured_points = capture_metrics['overall']['captured_data_points']
+                        except Exception as struct_conv_exc:
+                            logger.warning(f"StructuredDataConverter failed, falling back to legacy: {struct_conv_exc}")
+                            structured_extraction = None  # Clear to trigger fallback
+                    
+                    # FALLBACK: Use legacy FHIR processor if structured conversion failed or not available
+                    if not structured_extraction:
+                        try:
+                            from apps.fhir.services import FHIRProcessor, FHIRMetricsService
                             
-                            logger.info(
-                                f"Data capture metrics for document {document_id}: "
-                                f"{overall_rate:.1f}% capture rate "
-                                f"({captured_points}/{total_points} data points)"
-                            )
+                            fhir_processor = FHIRProcessor()
+                            fhir_resources = fhir_processor.process_extracted_data(ai_result['fields'], patient_id)
                             
-                            # Generate and log detailed metrics report
-                            metrics_report = metrics_service.generate_metrics_report(capture_metrics)
-                            logger.info(f"Detailed metrics report for document {document_id}:\n{metrics_report}")
+                            logger.info(f"Legacy FHIRProcessor created {len(fhir_resources)} resources from extracted data")
                             
-                        except Exception as metrics_exc:
-                            logger.warning(f"Metrics calculation failed for document {document_id}: {metrics_exc}")
-                            # Don't fail the task if metrics calculation fails
+                        except Exception as fhir_proc_exc:
+                            logger.warning(f"FHIRProcessor failed, falling back to basic converter: {fhir_proc_exc}")
+                            # Final fallback to basic converter
+                            fhir_resources = ai_analyzer.convert_to_fhir(ai_result['fields'], patient_id)
+                    
+                    # Calculate data capture metrics (works with both structured and legacy data)
+                    try:
+                        from apps.fhir.services import FHIRMetricsService
+                        metrics_service = FHIRMetricsService()
+                        capture_metrics = metrics_service.calculate_data_capture_metrics(
+                            ai_result['fields'], fhir_resources
+                        )
                         
-                    except Exception as fhir_proc_exc:
-                        logger.warning(f"FHIRProcessor failed, falling back to legacy converter: {fhir_proc_exc}")
-                        # Fallback to legacy converter if new processor fails
-                        fhir_resources = ai_analyzer.convert_to_fhir(ai_result['fields'], patient_id)
+                        # Store metrics in AI result for reporting
+                        ai_result['capture_metrics'] = capture_metrics
+                        
+                        # Log metrics summary
+                        overall_rate = capture_metrics['overall']['capture_rate']
+                        total_points = capture_metrics['overall']['total_data_points']
+                        captured_points = capture_metrics['overall']['captured_data_points']
+                        
+                        logger.info(
+                            f"Data capture metrics for document {document_id}: "
+                            f"{overall_rate:.1f}% capture rate "
+                            f"({captured_points}/{total_points} data points)"
+                        )
+                        
+                        # Generate and log detailed metrics report
+                        metrics_report = metrics_service.generate_metrics_report(capture_metrics)
+                        logger.info(f"Detailed metrics report for document {document_id}:\n{metrics_report}")
+                        
+                    except Exception as metrics_exc:
+                        logger.warning(f"Metrics calculation failed for document {document_id}: {metrics_exc}")
+                        # Don't fail the task if metrics calculation fails
                     
                     # FHIR resources are now stored in ParsedData for review workflow
                     # Actual accumulation to patient record happens after user approval
@@ -231,7 +327,7 @@ def process_document_async(self, document_id: int):
                     if hasattr(document, 'ai_model_used'):
                         document.ai_model_used = ai_result.get('model_used', 'unknown')
                     
-                    # CRITICAL FIX: Create ParsedData record with snippet support
+                    # ENHANCED: Create ParsedData record with structured data support
                     try:
                         from .models import ParsedData
                         
@@ -247,15 +343,24 @@ def process_document_async(self, document_id: int):
                                     'char_position': field.get('char_position', 0)
                                 }
                         
-                        # CRITICAL FIX: Calculate confidence and processing time from fields and usage data
+                        # Calculate confidence and processing time from fields and usage data
                         avg_confidence = 0.0
-                        if fields_data:
+                        if structured_extraction:
+                            # Use structured data confidence average if available
+                            avg_confidence = structured_extraction.confidence_average
+                        elif fields_data:
+                            # Fallback to calculating from individual fields
                             confidences = [field.get('confidence', 0.0) for field in fields_data if isinstance(field, dict)]
                             avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
                         
                         # Get processing time from usage data
                         usage_data = ai_result.get('usage', {})
                         processing_time = ai_result.get('processing_duration_ms', 0) / 1000.0 if 'processing_duration_ms' in ai_result else 0.0
+                        
+                        # Prepare structured data for storage (serialize if available)
+                        structured_data_dict = None
+                        if structured_extraction:
+                            structured_data_dict = structured_extraction.dict()
                         
                         parsed_data, created = ParsedData.objects.update_or_create(
                             document=document,
@@ -272,6 +377,8 @@ def process_document_async(self, document_id: int):
                                 'is_merged': False,    # Reset merge status for reprocessed documents
                                 'reviewed_at': None,   # Clear review timestamp for reprocessed documents
                                 'reviewed_by': None,   # Clear reviewer for reprocessed documents
+                                # NEW: Store structured data if available (could add a field for this)
+                                'corrections': {'structured_data': structured_data_dict} if structured_data_dict else {},
                             }
                         )
                         
@@ -344,7 +451,16 @@ def process_document_async(self, document_id: int):
                 'model_used': ai_result.get('model_used'),
                 'processing_method': ai_result.get('processing_method'),
                 'tokens_used': ai_result.get('usage', {}).get('total_tokens', 0),
-                'fhir_resources_created': len(fhir_resources) if fhir_resources else 0
+                'fhir_resources_created': len(fhir_resources) if fhir_resources else 0,
+                'structured_extraction_used': structured_extraction is not None,
+                'structured_data_types': {
+                    'conditions': len(structured_extraction.conditions) if structured_extraction else 0,
+                    'medications': len(structured_extraction.medications) if structured_extraction else 0,
+                    'vital_signs': len(structured_extraction.vital_signs) if structured_extraction else 0,
+                    'lab_results': len(structured_extraction.lab_results) if structured_extraction else 0,
+                    'procedures': len(structured_extraction.procedures) if structured_extraction else 0,
+                    'providers': len(structured_extraction.providers) if structured_extraction else 0
+                } if structured_extraction else {}
             })
         
         logger.info(f"Document {document_id} processing completed successfully")
