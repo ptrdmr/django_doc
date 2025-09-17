@@ -216,6 +216,159 @@ Implement the following changes to refactor the core document processing pipelin
     Audit the codebase for any remaining legacy system calls or data merging, and remove or refactor as necessary.
 
 Throughout this refactoring, maintain proper error handling, logging, and HIPAA compliance measures. Ensure that the AuditLog system (Task 20) is properly integrated to track all data access and modifications in this new pipeline.
+<info added on 2025-09-17T12:36:54.208Z>
+Based on the user request, here's the new text to be appended to the task details:
+
+11. Integrate Pydantic for structured validation:
+
+   a. Install the instructor library:
+   ```
+   pip install instructor==1.3.3
+   ```
+
+   b. Create Pydantic models in `documents/models.py`:
+   ```python
+   from pydantic import BaseModel, Field
+   from typing import List, Optional
+
+   class SourceContext(BaseModel):
+       text: str
+       start_index: int
+       end_index: int
+
+   class MedicalCondition(BaseModel):
+       name: str
+       confidence: float
+       source: SourceContext
+
+   class Medication(BaseModel):
+       name: str
+       dosage: Optional[str]
+       frequency: Optional[str]
+       confidence: float
+       source: SourceContext
+
+   class StructuredMedicalExtraction(BaseModel):
+       conditions: List[MedicalCondition] = Field(default_factory=list)
+       medications: List[Medication] = Field(default_factory=list)
+   ```
+
+   c. Update `documents/services/ai_extraction.py` to use instructor for structured extraction:
+   ```python
+   import instructor
+   from openai import OpenAI
+   from documents.models import StructuredMedicalExtraction
+
+   client = instructor.patch(OpenAI())
+
+   def extract_medical_data_structured(text: str) -> StructuredMedicalExtraction:
+       return client.chat.completions.create(
+           model="gpt-3.5-turbo",
+           response_model=StructuredMedicalExtraction,
+           messages=[
+               {"role": "system", "content": "Extract medical conditions and medications from the given text."},
+               {"role": "user", "content": text}
+           ]
+       )
+
+   def extract_medical_data(text: str) -> dict:
+       try:
+           structured_data = extract_medical_data_structured(text)
+           # Convert structured data to legacy format
+           return {
+               "diagnoses": [condition.name for condition in structured_data.conditions],
+               "medications": [f"{med.name} {med.dosage or ''}" for med in structured_data.medications],
+           }
+       except Exception as e:
+           print(f"Structured extraction failed: {e}")
+           # Fallback to legacy method
+           return legacy_extract_medical_data(text)
+   ```
+
+   d. Update `documents/analyzers.py` to use the new structured extraction:
+   ```python
+   from .services import ai_extraction
+
+   class DocumentAnalyzer:
+       def analyze(self, document):
+           text = self.extract_text(document)
+           return self.extract_medical_data(text)
+
+       def extract_text(self, document):
+           # Existing text extraction logic
+
+       def extract_medical_data(self, text):
+           return ai_extraction.extract_medical_data(text)
+
+       def analyze_document_structured(self, document):
+           text = self.extract_text(document)
+           return ai_extraction.extract_medical_data_structured(text)
+   ```
+
+   e. Update FHIR conversion in `apps/fhir/converters.py` to use structured data:
+   ```python
+   from fhir.resources.condition import Condition
+   from fhir.resources.medicationstatement import MedicationStatement
+   from documents.models import StructuredMedicalExtraction
+
+   def convert_to_fhir(structured_data: StructuredMedicalExtraction, patient_reference):
+       fhir_resources = []
+       
+       for condition in structured_data.conditions:
+           fhir_condition = Condition(
+               subject=patient_reference,
+               code={
+                   "text": condition.name
+               },
+               verificationStatus={
+                   "coding": [{
+                       "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+                       "code": "unconfirmed"
+                   }]
+               }
+           )
+           fhir_resources.append(fhir_condition)
+       
+       for medication in structured_data.medications:
+           fhir_medication = MedicationStatement(
+               subject=patient_reference,
+               medicationCodeableConcept={
+                   "text": f"{medication.name} {medication.dosage or ''}"
+               },
+               dosage=[{
+                   "text": f"{medication.dosage or ''} {medication.frequency or ''}"
+               }] if medication.dosage or medication.frequency else None,
+               status="unknown"
+           )
+           fhir_resources.append(fhir_medication)
+       
+       return fhir_resources
+   ```
+
+   f. Update the document processing workflow in `documents/tasks.py`:
+   ```python
+   from celery import shared_task
+   from .analyzers import DocumentAnalyzer
+   from apps.fhir.converters import convert_to_fhir
+   from .models import Document
+
+   @shared_task
+   def process_document(document_id):
+       document = Document.objects.get(id=document_id)
+       analyzer = DocumentAnalyzer()
+       
+       structured_data = analyzer.analyze_document_structured(document)
+       fhir_resources = convert_to_fhir(structured_data, document.patient.fhir_reference)
+       
+       # Store FHIR resources and update document status
+       document.fhir_resources = fhir_resources
+       document.structured_data = structured_data.dict()  # Store raw structured data for future use
+       document.status = 'processed'
+       document.save()
+   ```
+
+This enhancement integrates Pydantic for structured validation, improving data quality and FHIR compliance while maintaining compatibility with existing systems. It provides a robust foundation for future improvements in medical data extraction and processing.
+</info added on 2025-09-17T12:36:54.208Z>
 
 # Test Strategy:
 To verify the correct implementation of the refactored document processing pipeline:
