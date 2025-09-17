@@ -3,14 +3,23 @@ FHIR Resource Converters
 
 Standalone module containing converters that transform validated document
 data into FHIR resources. Kept separate for clarity and testability.
+
+This module now includes support for structured medical data from the new
+Pydantic-based AI extraction service (Task 34).
 """
 
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from uuid import uuid4
 
 from fhir.resources.resource import Resource
+from fhir.resources.condition import Condition
+from fhir.resources.medicationstatement import MedicationStatement
+from fhir.resources.observation import Observation
+from fhir.resources.procedure import Procedure
+from fhir.resources.practitioner import Practitioner
+from fhir.resources.bundle import Bundle
 
 from .validation import DataNormalizer
 from .code_systems import default_code_mapper, NormalizedCode
@@ -20,6 +29,22 @@ from .fhir_models import (
     ObservationResource,
     MedicationStatementResource,
 )
+
+# Import structured medical data models
+try:
+    from apps.documents.services.ai_extraction import (
+        StructuredMedicalExtraction,
+        MedicalCondition,
+        Medication,
+        VitalSign,
+        LabResult,
+        Procedure as MedicalProcedure,
+        Provider,
+        SourceContext
+    )
+except ImportError:
+    logger.warning("Unable to import structured medical data models - structured conversion unavailable")
+    StructuredMedicalExtraction = None
 
 
 logger = logging.getLogger(__name__)
@@ -526,6 +551,360 @@ class DischargeSummaryConverter(BaseFHIRConverter):
             )
         except Exception as exc:
             self.logger.warning(f"Failed to create procedure observation: {exc}")
+            return None
+
+
+class StructuredDataConverter(BaseFHIRConverter):
+    """
+    Converter for structured medical data from AI extraction service.
+    
+    This converter bridges the new Pydantic-based AI extraction (Task 34.1) 
+    with the existing FHIR engine, maintaining minimal layers while ensuring
+    comprehensive document flow integration.
+    
+    Flow: StructuredMedicalExtraction → Dict format → Existing FHIR engine
+    """
+
+    def convert_structured_data(self, structured_data: 'StructuredMedicalExtraction', metadata: Dict[str, Any], patient) -> List[Resource]:
+        """
+        Convert structured medical data from AI extraction to FHIR resources.
+        
+        This is the main entry point that bridges AI-extracted Pydantic models
+        with the existing FHIR converter infrastructure.
+        
+        Args:
+            structured_data: StructuredMedicalExtraction from AI service
+            metadata: Document metadata (document_id, extraction_timestamp, etc.)
+            patient: Patient model instance
+            
+        Returns:
+            List of FHIR Resource objects ready for the existing FHIR engine
+            
+        Raises:
+            ValueError: If structured_data is None or invalid
+            ImportError: If structured data models not available
+        """
+        if not structured_data:
+            raise ValueError("structured_data cannot be None")
+            
+        if StructuredMedicalExtraction is None:
+            raise ImportError("Structured medical data models not available")
+        
+        self.logger.info(f"Converting structured data to FHIR for patient {patient.id}")
+        
+        try:
+            # Convert structured data to dictionary format that existing converters expect
+            converted_data = self._convert_structured_to_dict(structured_data)
+            
+            # Use the existing convert method with the converted data
+            resources = self.convert(converted_data, metadata, patient)
+            
+            self.logger.info(f"Successfully converted structured data to {len(resources)} FHIR resources")
+            return resources
+            
+        except Exception as e:
+            self.logger.error(f"Failed to convert structured data: {e}", exc_info=True)
+            raise
+
+    def convert(self, data: Dict[str, Any], metadata: Dict[str, Any], patient) -> List[Resource]:
+        """
+        Convert dictionary data to FHIR resources using existing infrastructure.
+        
+        This method handles the converted dictionary format and creates FHIR resources
+        using the existing converter patterns and resource creation methods.
+        
+        Args:
+            data: Converted structured data in dictionary format
+            metadata: Document metadata
+            patient: Patient model instance
+            
+        Returns:
+            List of FHIR Resource objects
+        """
+        resources: List[Resource] = []
+        patient_id = self._get_patient_id(patient)
+        
+        try:
+            # Handle conditions/diagnoses
+            if "conditions" in data and isinstance(data["conditions"], list):
+                for condition_data in data["conditions"]:
+                    condition = self._create_condition_from_structured(condition_data, patient_id, metadata)
+                    if condition:
+                        resources.append(condition)
+            
+            # Handle medications
+            if "medications" in data and isinstance(data["medications"], list):
+                for medication_data in data["medications"]:
+                    medication = self._create_medication_from_structured(medication_data, patient_id, metadata)
+                    if medication:
+                        resources.append(medication)
+            
+            # Handle vital signs
+            if "vital_signs" in data and isinstance(data["vital_signs"], list):
+                for vital_data in data["vital_signs"]:
+                    observation = self._create_vital_sign_observation(vital_data, patient_id, metadata)
+                    if observation:
+                        resources.append(observation)
+            
+            # Handle lab results
+            if "lab_results" in data and isinstance(data["lab_results"], list):
+                for lab_data in data["lab_results"]:
+                    observation = self._create_lab_observation(lab_data, patient_id, metadata)
+                    if observation:
+                        resources.append(observation)
+            
+            # Handle procedures
+            if "procedures" in data and isinstance(data["procedures"], list):
+                for procedure_data in data["procedures"]:
+                    observation = self._create_procedure_observation_structured(procedure_data, patient_id, metadata)
+                    if observation:
+                        resources.append(observation)
+            
+            # Handle providers
+            if "providers" in data and isinstance(data["providers"], list):
+                for provider_data in data["providers"]:
+                    practitioner = self._create_provider_from_structured(provider_data)
+                    if practitioner:
+                        resources.append(practitioner)
+            
+            self.logger.info(f"Structured data converter created {len(resources)} resources")
+            return resources
+            
+        except Exception as exc:
+            self.logger.error(f"Structured data conversion failed: {exc}", exc_info=True)
+            return []
+
+    def _convert_structured_to_dict(self, structured_data: 'StructuredMedicalExtraction') -> Dict[str, Any]:
+        """
+        Convert StructuredMedicalExtraction to dictionary format.
+        
+        This method transforms Pydantic models into the dictionary format
+        that existing converters expect, preserving all relevant data.
+        
+        Args:
+            structured_data: StructuredMedicalExtraction instance
+            
+        Returns:
+            Dictionary with converted data in expected format
+        """
+        converted = {
+            "extraction_timestamp": structured_data.extraction_timestamp,
+            "document_type": structured_data.document_type,
+            "confidence_average": structured_data.confidence_average,
+            "conditions": [],
+            "medications": [],
+            "vital_signs": [],
+            "lab_results": [],
+            "procedures": [],
+            "providers": []
+        }
+        
+        # Convert conditions
+        for condition in structured_data.conditions:
+            converted["conditions"].append({
+                "name": condition.name,
+                "status": condition.status,
+                "confidence": condition.confidence,
+                "onset_date": condition.onset_date,
+                "icd_code": condition.icd_code,
+                "source_text": condition.source.text,
+                "source_start": condition.source.start_index,
+                "source_end": condition.source.end_index
+            })
+        
+        # Convert medications
+        for medication in structured_data.medications:
+            converted["medications"].append({
+                "name": medication.name,
+                "dosage": medication.dosage,
+                "route": medication.route,
+                "frequency": medication.frequency,
+                "status": medication.status,
+                "confidence": medication.confidence,
+                "start_date": medication.start_date,
+                "stop_date": medication.stop_date,
+                "source_text": medication.source.text,
+                "source_start": medication.source.start_index,
+                "source_end": medication.source.end_index
+            })
+        
+        # Convert vital signs
+        for vital in structured_data.vital_signs:
+            converted["vital_signs"].append({
+                "measurement_type": vital.measurement_type,
+                "value": vital.value,
+                "unit": vital.unit,
+                "timestamp": vital.timestamp,
+                "confidence": vital.confidence,
+                "source_text": vital.source.text,
+                "source_start": vital.source.start_index,
+                "source_end": vital.source.end_index
+            })
+        
+        # Convert lab results
+        for lab in structured_data.lab_results:
+            converted["lab_results"].append({
+                "test_name": lab.test_name,
+                "value": lab.value,
+                "unit": lab.unit,
+                "reference_range": lab.reference_range,
+                "status": lab.status,
+                "test_date": lab.test_date,
+                "confidence": lab.confidence,
+                "source_text": lab.source.text,
+                "source_start": lab.source.start_index,
+                "source_end": lab.source.end_index
+            })
+        
+        # Convert procedures
+        for procedure in structured_data.procedures:
+            converted["procedures"].append({
+                "name": procedure.name,
+                "procedure_date": procedure.procedure_date,
+                "provider": procedure.provider,
+                "outcome": procedure.outcome,
+                "confidence": procedure.confidence,
+                "source_text": procedure.source.text,
+                "source_start": procedure.source.start_index,
+                "source_end": procedure.source.end_index
+            })
+        
+        # Convert providers
+        for provider in structured_data.providers:
+            converted["providers"].append({
+                "name": provider.name,
+                "specialty": provider.specialty,
+                "role": provider.role,
+                "contact_info": provider.contact_info,
+                "confidence": provider.confidence,
+                "source_text": provider.source.text,
+                "source_start": provider.source.start_index,
+                "source_end": provider.source.end_index
+            })
+        
+        return converted
+
+    def _create_condition_from_structured(self, condition_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[ConditionResource]:
+        """Create a Condition resource from structured condition data."""
+        try:
+            onset_date = None
+            if condition_data.get("onset_date"):
+                onset_date = self._normalize_date_for_fhir(condition_data["onset_date"])
+            
+            return ConditionResource.create_from_diagnosis(
+                patient_id=patient_id,
+                condition_code=condition_data.get("icd_code") or condition_data["name"],
+                condition_display=condition_data["name"],
+                clinical_status=condition_data.get("status", "active"),
+                onset_date=onset_date,
+            )
+        except Exception as exc:
+            self.logger.warning(f"Failed to create Condition from structured data: {exc}")
+            return None
+
+    def _create_medication_from_structured(self, medication_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[MedicationStatementResource]:
+        """Create a MedicationStatement resource from structured medication data."""
+        try:
+            effective_date = None
+            if medication_data.get("start_date"):
+                effective_date = self._normalize_date_for_fhir(medication_data["start_date"])
+            
+            # Combine dosage information
+            dosage_text = ""
+            if medication_data.get("dosage"):
+                dosage_text = medication_data["dosage"]
+            if medication_data.get("frequency"):
+                dosage_text += f" {medication_data['frequency']}" if dosage_text else medication_data["frequency"]
+            if medication_data.get("route"):
+                dosage_text += f" via {medication_data['route']}" if dosage_text else f"via {medication_data['route']}"
+            
+            return MedicationStatementResource.create_from_medication(
+                patient_id=patient_id,
+                medication_name=medication_data["name"],
+                medication_code=None,  # Could be enhanced with drug codes
+                dosage=dosage_text if dosage_text else None,
+                frequency=medication_data.get("frequency"),
+                status=medication_data.get("status", "active"),
+                effective_date=effective_date,
+            )
+        except Exception as exc:
+            self.logger.warning(f"Failed to create MedicationStatement from structured data: {exc}")
+            return None
+
+    def _create_vital_sign_observation(self, vital_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[ObservationResource]:
+        """Create an Observation resource for vital signs from structured data."""
+        try:
+            observation_date = None
+            if vital_data.get("timestamp"):
+                observation_date = self._normalize_date_for_fhir(vital_data["timestamp"])
+            
+            return ObservationResource.create_from_lab_result(
+                patient_id=patient_id,
+                test_code=f"VITAL-{vital_data['measurement_type'].upper().replace(' ', '-')}",
+                test_name=vital_data["measurement_type"],
+                value=vital_data["value"],
+                unit=vital_data.get("unit"),
+                observation_date=observation_date or datetime.utcnow(),
+            )
+        except Exception as exc:
+            self.logger.warning(f"Failed to create vital sign observation from structured data: {exc}")
+            return None
+
+    def _create_lab_observation(self, lab_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[ObservationResource]:
+        """Create an Observation resource for lab results from structured data."""
+        try:
+            test_date = None
+            if lab_data.get("test_date"):
+                test_date = self._normalize_date_for_fhir(lab_data["test_date"])
+            
+            return ObservationResource.create_from_lab_result(
+                patient_id=patient_id,
+                test_code=f"LAB-{hash(lab_data['test_name'].lower()) % 100000:05d}",
+                test_name=lab_data["test_name"],
+                value=lab_data["value"],
+                unit=lab_data.get("unit"),
+                observation_date=test_date or datetime.utcnow(),
+            )
+        except Exception as exc:
+            self.logger.warning(f"Failed to create lab observation from structured data: {exc}")
+            return None
+
+    def _create_procedure_observation_structured(self, procedure_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[ObservationResource]:
+        """Create an Observation resource for procedures from structured data."""
+        try:
+            procedure_date = None
+            if procedure_data.get("procedure_date"):
+                procedure_date = self._normalize_date_for_fhir(procedure_data["procedure_date"])
+            
+            return ObservationResource.create_from_lab_result(
+                patient_id=patient_id,
+                test_code=f"PROC-{hash(procedure_data['name'].lower()) % 100000:05d}",
+                test_name=f"Procedure: {procedure_data['name']}",
+                value=procedure_data.get("outcome", "Performed"),
+                observation_date=procedure_date or datetime.utcnow(),
+            )
+        except Exception as exc:
+            self.logger.warning(f"Failed to create procedure observation from structured data: {exc}")
+            return None
+
+    def _create_provider_from_structured(self, provider_data: Dict[str, Any]) -> Optional[PractitionerResource]:
+        """Create a Practitioner resource from structured provider data."""
+        try:
+            name_parts = provider_data["name"].strip().split()
+            if len(name_parts) >= 2:
+                first_name = name_parts[0]
+                last_name = " ".join(name_parts[1:])
+            else:
+                first_name = provider_data["name"]
+                last_name = "Unknown"
+            
+            return PractitionerResource.create_from_provider(
+                first_name=first_name,
+                last_name=last_name,
+                specialty=provider_data.get("specialty"),
+            )
+        except Exception as exc:
+            self.logger.warning(f"Failed to create Practitioner from structured data: {exc}")
             return None
 
 
