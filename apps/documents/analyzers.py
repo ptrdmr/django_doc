@@ -29,6 +29,18 @@ from .services.ai_extraction import (
     StructuredMedicalExtraction
 )
 
+# Import custom exceptions for enhanced error handling
+from .exceptions import (
+    DocumentProcessingError,
+    PDFExtractionError,
+    AIExtractionError,
+    AIServiceTimeoutError,
+    AIServiceRateLimitError,
+    ConfigurationError,
+    categorize_exception,
+    get_recovery_strategy
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,7 +82,7 @@ class DocumentAnalyzer:
     
     def extract_text(self, document_path: str) -> Dict[str, Any]:
         """
-        Extract text from a document file.
+        Extract text from a document file with comprehensive error handling.
         
         Currently supports PDF files via the existing PDFTextExtractor.
         Future enhancements could add support for other document formats.
@@ -85,41 +97,162 @@ class DocumentAnalyzer:
             - error_message: str (if extraction failed)
             - metadata: dict (file information)
         """
-        self.logger.info(f"Starting text extraction for {document_path}")
+        session_id = str(self.processing_session)
+        self.logger.info(f"[{session_id}] Starting text extraction for {document_path}")
         
         try:
-            # Import here to avoid circular imports
-            # Import from the services.py module (not the services/ package)
-            extractor = self._get_pdf_extractor()
-            result = extractor.extract_text(document_path)
+            # Validate input
+            if not document_path:
+                raise PDFExtractionError(
+                    "Document path is required for text extraction",
+                    file_path=document_path,
+                    details={'session_id': session_id}
+                )
             
-            if result['success']:
-                self.logger.info(f"Text extraction successful: {len(result['text'])} characters, "
-                               f"{result.get('page_count', 0)} pages")
-            else:
-                self.logger.error(f"Text extraction failed: {result.get('error_message', 'Unknown error')}")
-                self.stats['errors_encountered'].append(f"Text extraction: {result.get('error_message', 'Unknown error')}")
+            # Validate file existence
+            import os
+            if not os.path.exists(document_path):
+                raise PDFExtractionError(
+                    f"Document file not found: {document_path}",
+                    file_path=document_path,
+                    details={'session_id': session_id, 'file_exists': False}
+                )
             
-            return result
+            # Check file size
+            file_size = os.path.getsize(document_path)
+            if file_size == 0:
+                raise PDFExtractionError(
+                    "Document file is empty",
+                    file_path=document_path,
+                    details={'session_id': session_id, 'file_size': file_size}
+                )
             
-        except Exception as e:
-            error_msg = f"Text extraction error: {str(e)}"
-            self.logger.error(error_msg)
-            self.stats['errors_encountered'].append(error_msg)
+            # Log file information
+            self.logger.info(f"[{session_id}] Processing file: {os.path.basename(document_path)} "
+                           f"({file_size / 1024:.1f} KB)")
+            
+            # Perform text extraction
+            start_time = time.time()
+            
+            try:
+                extractor = self._get_pdf_extractor()
+                result = extractor.extract_text(document_path)
+                
+                extraction_time = time.time() - start_time
+                
+                # Enhanced result validation
+                if not result.get('success', False):
+                    error_msg = result.get('error_message', 'Unknown PDF extraction error')
+                    raise PDFExtractionError(
+                        f"PDF extraction failed: {error_msg}",
+                        file_path=document_path,
+                        details={
+                            'session_id': session_id,
+                            'file_size': file_size,
+                            'extraction_time': extraction_time,
+                            'extractor_result': result
+                        }
+                    )
+                
+                # Validate extracted text
+                extracted_text = result.get('text', '')
+                if not extracted_text or not extracted_text.strip():
+                    raise PDFExtractionError(
+                        "PDF extraction returned no text content",
+                        file_path=document_path,
+                        details={
+                            'session_id': session_id,
+                            'file_size': file_size,
+                            'page_count': result.get('page_count', 0),
+                            'extraction_time': extraction_time
+                        }
+                    )
+                
+                # Success logging
+                self.logger.info(f"[{session_id}] Text extraction successful: {len(extracted_text)} characters, "
+                               f"{result.get('page_count', 0)} pages in {extraction_time:.2f}s")
+                
+                # Update stats
+                self.stats['successful_extractions'] += 1
+                
+                return result
+                
+            except PDFExtractionError:
+                raise
+            except ImportError as import_error:
+                raise ConfigurationError(
+                    f"PDF extractor not available: {str(import_error)}",
+                    details={'session_id': session_id, 'missing_component': 'PDFTextExtractor'}
+                )
+            except Exception as extractor_error:
+                error_info = categorize_exception(extractor_error)
+                raise PDFExtractionError(
+                    f"Unexpected PDF extraction error: {str(extractor_error)}",
+                    file_path=document_path,
+                    details={
+                        'session_id': session_id,
+                        'file_size': file_size,
+                        'error_category': error_info.get('category', 'unknown'),
+                        'error_type': type(extractor_error).__name__
+                    }
+                ) from extractor_error
+            
+        except (PDFExtractionError, ConfigurationError) as expected_error:
+            # Log and track expected errors
+            self.logger.error(f"[{session_id}] {expected_error}")
+            self.stats['errors_encountered'].append({
+                'step': 'text_extraction',
+                'error_type': type(expected_error).__name__,
+                'error_code': expected_error.error_code if hasattr(expected_error, 'error_code') else None,
+                'error_message': str(expected_error),
+                'timestamp': time.time(),
+                'recovery_strategy': get_recovery_strategy(expected_error.error_code) if hasattr(expected_error, 'error_code') else 'manual_intervention'
+            })
+            
+            # Return structured error response for backward compatibility
+            return {
+                'success': False,
+                'text': '',
+                'error_message': str(expected_error),
+                'metadata': {
+                    'file_path': document_path,
+                    'error_type': type(expected_error).__name__,
+                    'error_code': expected_error.error_code if hasattr(expected_error, 'error_code') else None,
+                    'session_id': session_id
+                }
+            }
+        except Exception as unexpected_error:
+            # Handle completely unexpected errors
+            error_info = categorize_exception(unexpected_error)
+            self.logger.error(f"[{session_id}] Unexpected error during text extraction: {unexpected_error}", 
+                            exc_info=True)
+            
+            self.stats['errors_encountered'].append({
+                'step': 'text_extraction',
+                'error_type': type(unexpected_error).__name__,
+                'error_message': str(unexpected_error),
+                'timestamp': time.time(),
+                'error_category': error_info.get('category', 'unknown')
+            })
             
             return {
                 'success': False,
                 'text': '',
-                'error_message': error_msg,
-                'metadata': {}
+                'error_message': f"Unexpected text extraction error: {str(unexpected_error)}",
+                'metadata': {
+                    'file_path': document_path,
+                    'error_type': type(unexpected_error).__name__,
+                    'session_id': session_id,
+                    'error_category': error_info.get('category', 'unknown')
+                }
             }
     
     def analyze_document_structured(self, document_content: str, context: Optional[str] = None) -> StructuredMedicalExtraction:
         """
         Analyze document content and return structured medical data using new AI extraction.
         
-        This is the new method that leverages the instructor-based AI extraction service
-        for structured Pydantic model responses.
+        This method leverages the instructor-based AI extraction service for structured 
+        Pydantic model responses with comprehensive error handling and recovery.
         
         Args:
             document_content: The text content from the document
@@ -129,49 +262,169 @@ class DocumentAnalyzer:
             StructuredMedicalExtraction object with all extracted medical data
             
         Raises:
-            Exception: If extraction fails completely
+            AIExtractionError: For AI service-related failures
+            AIServiceTimeoutError: For timeout issues
+            AIServiceRateLimitError: For rate limiting issues
+            ConfigurationError: For missing API keys or service configuration
+            DocumentProcessingError: For general processing failures
         """
-        self.logger.info(f"Starting structured analysis for session {self.processing_session}")
+        session_id = str(self.processing_session)
+        self.logger.info(f"[{session_id}] Starting structured analysis")
         self.stats['extraction_attempts'] += 1
         
         try:
-            # Use the new structured extraction service
-            structured_data = extract_medical_data_structured(document_content, context)
+            # Input validation
+            if not document_content or not document_content.strip():
+                raise AIExtractionError(
+                    "Document content is empty or invalid",
+                    details={
+                        'session_id': session_id,
+                        'content_length': len(document_content) if document_content else 0,
+                        'context': context
+                    }
+                )
             
-            self.stats['successful_extractions'] += 1
+            # Log analysis details
+            content_length = len(document_content)
+            self.logger.info(f"[{session_id}] Analyzing {content_length} characters of text content")
             
-            # Log extraction summary
-            total_items = (
-                len(structured_data.conditions) + 
-                len(structured_data.medications) + 
-                len(structured_data.vital_signs) + 
-                len(structured_data.lab_results) + 
-                len(structured_data.procedures) + 
-                len(structured_data.providers)
-            )
+            if context:
+                self.logger.info(f"[{session_id}] Using context: {context}")
             
-            self.logger.info(
-                f"Structured extraction completed: {total_items} total items extracted "
-                f"(confidence: {structured_data.confidence_average:.3f})"
-            )
+            # Use the new structured extraction service with comprehensive error handling
+            start_time = time.time()
             
-            # Detailed breakdown
-            self.logger.info(
-                f"Extraction breakdown - Conditions: {len(structured_data.conditions)}, "
-                f"Medications: {len(structured_data.medications)}, "
-                f"Vital Signs: {len(structured_data.vital_signs)}, "
-                f"Lab Results: {len(structured_data.lab_results)}, "
-                f"Procedures: {len(structured_data.procedures)}, "
-                f"Providers: {len(structured_data.providers)}"
-            )
-            
-            return structured_data
-            
-        except Exception as e:
-            error_msg = f"Structured analysis failed: {str(e)}"
-            self.logger.error(error_msg)
-            self.stats['errors_encountered'].append(error_msg)
+            try:
+                structured_data = extract_medical_data_structured(document_content, context)
+                
+                analysis_time = time.time() - start_time
+                
+                # Validate returned data
+                if not structured_data:
+                    raise AIExtractionError(
+                        "AI extraction returned no structured data",
+                        details={
+                            'session_id': session_id,
+                            'content_length': content_length,
+                            'context': context,
+                            'analysis_time': analysis_time
+                        }
+                    )
+                
+                # Validate data structure
+                if not hasattr(structured_data, 'conditions'):
+                    raise AIExtractionError(
+                        "Invalid structured data format returned",
+                        details={
+                            'session_id': session_id,
+                            'data_type': type(structured_data).__name__,
+                            'analysis_time': analysis_time
+                        }
+                    )
+                
+                self.stats['successful_extractions'] += 1
+                
+                # Log extraction summary
+                total_items = (
+                    len(structured_data.conditions) + 
+                    len(structured_data.medications) + 
+                    len(structured_data.vital_signs) + 
+                    len(structured_data.lab_results) + 
+                    len(structured_data.procedures) + 
+                    len(structured_data.providers)
+                )
+                
+                self.logger.info(
+                    f"[{session_id}] Structured extraction completed in {analysis_time:.2f}s: "
+                    f"{total_items} total items extracted (confidence: {structured_data.confidence_average:.3f})"
+                )
+                
+                # Detailed breakdown
+                self.logger.info(
+                    f"[{session_id}] Extraction breakdown - Conditions: {len(structured_data.conditions)}, "
+                    f"Medications: {len(structured_data.medications)}, "
+                    f"Vital Signs: {len(structured_data.vital_signs)}, "
+                    f"Lab Results: {len(structured_data.lab_results)}, "
+                    f"Procedures: {len(structured_data.procedures)}, "
+                    f"Providers: {len(structured_data.providers)}"
+                )
+                
+                return structured_data
+                
+            except (AIExtractionError, AIServiceTimeoutError, AIServiceRateLimitError) as ai_error:
+                # Re-raise specific AI errors to allow proper handling upstream
+                self.logger.error(f"[{session_id}] AI extraction failed: {ai_error}")
+                self.stats['errors_encountered'].append({
+                    'step': 'structured_analysis',
+                    'error_type': type(ai_error).__name__,
+                    'error_message': str(ai_error),
+                    'timestamp': time.time(),
+                    'recovery_strategy': get_recovery_strategy(ai_error.error_code) if hasattr(ai_error, 'error_code') else 'retry_later'
+                })
+                raise
+            except ImportError as import_error:
+                raise ConfigurationError(
+                    f"AI extraction service not available: {str(import_error)}",
+                    details={'session_id': session_id, 'missing_component': 'StructuredMedicalExtraction'}
+                )
+            except Exception as unexpected_error:
+                error_info = categorize_exception(unexpected_error)
+                self.logger.error(f"[{session_id}] Unexpected error in structured analysis: {unexpected_error}", 
+                                exc_info=True)
+                
+                self.stats['errors_encountered'].append({
+                    'step': 'structured_analysis',
+                    'error_type': type(unexpected_error).__name__,
+                    'error_message': str(unexpected_error),
+                    'timestamp': time.time(),
+                    'error_category': error_info.get('category', 'unknown')
+                })
+                
+                raise AIExtractionError(
+                    f"Unexpected error during structured analysis: {str(unexpected_error)}",
+                    details={
+                        'session_id': session_id,
+                        'content_length': content_length,
+                        'context': context,
+                        'error_category': error_info.get('category', 'unknown'),
+                        'error_type': type(unexpected_error).__name__
+                    }
+                ) from unexpected_error
+                
+        except (AIExtractionError, ConfigurationError) as expected_error:
+            # Log and track expected errors
+            self.logger.error(f"[{session_id}] {expected_error}")
+            self.stats['errors_encountered'].append({
+                'step': 'structured_analysis',
+                'error_type': type(expected_error).__name__,
+                'error_code': expected_error.error_code if hasattr(expected_error, 'error_code') else None,
+                'error_message': str(expected_error),
+                'timestamp': time.time(),
+                'recovery_strategy': get_recovery_strategy(expected_error.error_code) if hasattr(expected_error, 'error_code') else 'manual_intervention'
+            })
             raise
+        except Exception as unexpected_error:
+            # Handle completely unexpected errors
+            error_info = categorize_exception(unexpected_error)
+            self.logger.error(f"[{session_id}] Unexpected error in analysis setup: {unexpected_error}", 
+                            exc_info=True)
+            
+            self.stats['errors_encountered'].append({
+                'step': 'structured_analysis_setup',
+                'error_type': type(unexpected_error).__name__,
+                'error_message': str(unexpected_error),
+                'timestamp': time.time(),
+                'error_category': error_info.get('category', 'unknown')
+            })
+            
+            raise DocumentProcessingError(
+                f"Failed to perform structured analysis: {str(unexpected_error)}",
+                details={
+                    'session_id': session_id,
+                    'error_category': error_info.get('category', 'unknown'),
+                    'error_type': type(unexpected_error).__name__
+                }
+            ) from unexpected_error
     
     def analyze(self, document) -> Dict[str, Any]:
         """

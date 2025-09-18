@@ -1,6 +1,8 @@
 """
 Celery tasks for document processing.
 Handles async document parsing and FHIR data extraction.
+
+Enhanced with comprehensive error handling and logging for Task 34.5.
 """
 
 from celery import shared_task
@@ -8,6 +10,20 @@ from meddocparser.celery import app
 import time
 import logging
 from django.utils import timezone
+from typing import Dict, Any
+
+# Import custom exceptions for enhanced error handling
+from .exceptions import (
+    DocumentProcessingError,
+    PDFExtractionError,
+    AIExtractionError,
+    AIServiceRateLimitError,
+    AIServiceTimeoutError,
+    FHIRConversionError,
+    CeleryTaskError,
+    categorize_exception,
+    get_recovery_strategy
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,64 +62,210 @@ def test_celery_task(self, message="Hello from Celery!"):
         raise self.retry(exc=exc, countdown=60, max_retries=3)
 
 
-@shared_task(bind=True, name="apps.documents.tasks.process_document_async", acks_late=True)
+@shared_task(bind=True, name="apps.documents.tasks.process_document_async", acks_late=True, 
+             autoretry_for=(AIServiceRateLimitError, AIServiceTimeoutError), 
+             retry_kwargs={'max_retries': 3, 'countdown': 60})
 def process_document_async(self, document_id: int):
     """
     Asynchronous task to process an uploaded medical document.
     This task handles PDF text extraction, AI analysis, and FHIR data accumulation.
     It's designed to be robust, with retries and comprehensive error logging.
+    
+    Enhanced with comprehensive error handling and recovery strategies for Task 34.5.
+    
+    Args:
+        document_id: ID of the document to process
+        
+    Returns:
+        Dict with processing results and error information
+        
+    Raises:
+        CeleryTaskError: For critical failures that require manual intervention
     """
     # Ensure Django is set up before importing models
     import django
     django.setup()
     
     from .models import Document
-    from .services import PDFTextExtractor, DocumentAnalyzer, APIRateLimitError
+    from apps.documents.services import PDFTextExtractor, APIRateLimitError
+    from apps.documents.analyzers import DocumentAnalyzer
     from apps.fhir.converters import StructuredDataConverter
     
+    # Initialize task tracking
+    task_id = self.request.id
+    start_time = time.time()
+    processing_errors = []
+    recovery_actions = []
+    
+    logger.info(f"[{task_id}] Starting document processing for document {document_id}")
+    
     try:
-        logger.info(f"Starting document processing for document {document_id}")
-        
-        # Get the document object
+        # Enhanced document retrieval with validation
         try:
-            document = Document.objects.get(id=document_id)
+            document = Document.objects.select_related('patient').get(id=document_id)
+            
+            # Validate document state
+            if not document.file:
+                raise DocumentProcessingError(
+                    "Document has no associated file",
+                    error_code="MISSING_FILE",
+                    details={'document_id': document_id, 'task_id': task_id}
+                )
+            
+            if not document.patient:
+                raise DocumentProcessingError(
+                    "Document has no associated patient",
+                    error_code="MISSING_PATIENT",
+                    details={'document_id': document_id, 'task_id': task_id}
+                )
+            
+            logger.info(f"[{task_id}] Document validated: {document.file.name} for patient {document.patient.id}")
+            
         except Document.DoesNotExist:
             error_msg = f"Document with ID {document_id} does not exist"
-            logger.error(error_msg)
+            logger.error(f"[{task_id}] {error_msg}")
+            raise CeleryTaskError(
+                error_msg,
+                task_id=task_id,
+                details={'document_id': document_id, 'lookup_failed': True}
+            )
+        except DocumentProcessingError:
+            raise
+        except Exception as e:
+            raise CeleryTaskError(
+                f"Failed to retrieve document {document_id}: {str(e)}",
+                task_id=task_id,
+                details={'document_id': document_id, 'error_type': type(e).__name__}
+            )
+        
+        # Update status to processing with comprehensive tracking
+        try:
+            document.status = 'processing'
+            document.processing_started_at = timezone.now()
+            document.increment_processing_attempts()
+            document.save()
+            
+            logger.info(f"[{task_id}] Document status updated to processing (attempt #{document.processing_attempts})")
+            
+        except Exception as e:
+            logger.error(f"[{task_id}] Failed to update document status: {e}")
+            # Continue processing despite status update failure
+            
+        # STEP 1: Enhanced PDF text extraction with detailed error handling
+        pdf_step_start = time.time()
+        logger.info(f"[{task_id}] Step 1: Starting PDF text extraction from {document.file.path}")
+        
+        try:
+            # Validate file existence and readability
+            import os
+            if not os.path.exists(document.file.path):
+                raise PDFExtractionError(
+                    f"Document file not found: {document.file.path}",
+                    file_path=document.file.path,
+                    details={'document_id': document_id, 'task_id': task_id}
+                )
+            
+            file_size = os.path.getsize(document.file.path)
+            if file_size == 0:
+                raise PDFExtractionError(
+                    "Document file is empty",
+                    file_path=document.file.path,
+                    details={'document_id': document_id, 'task_id': task_id, 'file_size': file_size}
+                )
+            
+            if file_size > 100 * 1024 * 1024:  # 100MB limit
+                logger.warning(f"[{task_id}] Large file detected: {file_size / (1024*1024):.1f}MB")
+            
+            # Perform PDF extraction
+            pdf_extractor = PDFTextExtractor()
+            extraction_result = pdf_extractor.extract_text(document.file.path)
+            
+            pdf_step_time = time.time() - pdf_step_start
+            
+            if not extraction_result.get('success', False):
+                error_msg = extraction_result.get('error_message', 'Unknown PDF extraction error')
+                raise PDFExtractionError(
+                    f"PDF extraction failed: {error_msg}",
+                    file_path=document.file.path,
+                    details={
+                        'document_id': document_id,
+                        'task_id': task_id,
+                        'file_size': file_size,
+                        'extraction_time': pdf_step_time,
+                        'extraction_result': extraction_result
+                    }
+                )
+            
+            # Validate extraction results
+            extracted_text = extraction_result.get('text', '')
+            if not extracted_text or not extracted_text.strip():
+                logger.warning(f"[{task_id}] PDF extraction returned empty text")
+                raise PDFExtractionError(
+                    "PDF extraction returned no text content",
+                    file_path=document.file.path,
+                    details={
+                        'document_id': document_id,
+                        'task_id': task_id,
+                        'page_count': extraction_result.get('page_count', 0),
+                        'extraction_time': pdf_step_time
+                    }
+                )
+            
+            logger.info(f"[{task_id}] PDF extraction successful: {extraction_result.get('page_count', 0)} pages, "
+                       f"{len(extracted_text)} characters in {pdf_step_time:.2f}s")
+            
+        except PDFExtractionError as pdf_error:
+            processing_errors.append(str(pdf_error))
+            
+            # Update document with failure information
+            try:
+                document.status = 'failed'
+                document.error_message = str(pdf_error)
+                document.processed_at = timezone.now()
+                document.save()
+            except Exception as save_error:
+                logger.error(f"[{task_id}] Failed to save PDF error to document: {save_error}")
+            
+            logger.error(f"[{task_id}] PDF extraction failed: {pdf_error}")
+            
+            # Return detailed error information
             return {
                 'success': False,
                 'document_id': document_id,
-                'error_message': error_msg,
-                'task_id': self.request.id
+                'status': 'failed',
+                'task_id': task_id,
+                'error_type': 'PDFExtractionError',
+                'error_code': pdf_error.error_code,
+                'error_message': str(pdf_error),
+                'error_details': pdf_error.details,
+                'processing_time': time.time() - start_time,
+                'recovery_strategy': get_recovery_strategy(pdf_error.error_code)
             }
-        
-        # Update status to processing
-        document.status = 'processing'
-        document.processing_started_at = timezone.now()
-        document.increment_processing_attempts()
-        document.save()
-        
-        # STEP 1: Extract text from PDF
-        logger.info(f"Step 1: Extracting text from PDF: {document.file.path}")
-        pdf_extractor = PDFTextExtractor()
-        extraction_result = pdf_extractor.extract_text(document.file.path)
-        
-        if not extraction_result['success']:
-            # Handle PDF extraction failure
-            document.status = 'failed'
-            document.error_message = f"PDF extraction failed: {extraction_result['error_message']}"
-            document.processed_at = timezone.now()
-            document.save()
+        except Exception as unexpected_error:
+            error_info = categorize_exception(unexpected_error)
+            processing_errors.append(str(unexpected_error))
             
-            logger.error(f"PDF extraction failed for document {document_id}: {extraction_result['error_message']}")
+            logger.error(f"[{task_id}] Unexpected PDF extraction error: {unexpected_error}", exc_info=True)
+            
+            # Update document with failure information
+            try:
+                document.status = 'failed'
+                document.error_message = f"Unexpected PDF error: {str(unexpected_error)}"
+                document.processed_at = timezone.now()
+                document.save()
+            except Exception as save_error:
+                logger.error(f"[{task_id}] Failed to save unexpected PDF error: {save_error}")
             
             return {
                 'success': False,
                 'document_id': document_id,
                 'status': 'failed',
-                'task_id': self.request.id,
-                'error_message': extraction_result['error_message'],
-                'message': 'PDF text extraction failed'
+                'task_id': task_id,
+                'error_type': 'UnexpectedError',
+                'error_message': str(unexpected_error),
+                'error_details': error_info,
+                'processing_time': time.time() - start_time,
+                'recovery_strategy': 'manual_intervention'
             }
         
         # Store extracted text in document
@@ -165,7 +327,7 @@ def process_document_async(self, document_id: int):
                                 
                                 # Convert vital signs
                                 *[{
-                                    'label': f'vital_{vital.measurement_type.lower().replace(" ", "_")}',
+                                    'label': f'vital_{vital.measurement.lower().replace(" ", "_")}',
                                     'value': f"{vital.value} {vital.unit or ''}".strip(),
                                     'confidence': vital.confidence,
                                     'source_text': vital.source.text,
@@ -193,19 +355,28 @@ def process_document_async(self, document_id: int):
                         logger.info(f"Structured extraction successful: {len(ai_result['fields'])} fields extracted from structured data")
                     
                 except Exception as structured_exc:
-                    logger.warning(f"Structured extraction failed for document {document_id}, falling back to legacy: {structured_exc}")
+                    logger.error(f"Structured extraction failed for document {document_id}: {structured_exc}")
                     structured_extraction = None
+                    # Create a failure ai_result instead of None
+                    ai_result = {
+                        'success': False,
+                        'error': f"Structured extraction failed: {str(structured_exc)}",
+                        'fields': [],
+                        'model_used': 'structured_extraction_failed',
+                        'processing_method': 'failed'
+                    }
                 
                 # FALLBACK: Use legacy extraction if structured extraction failed
-                if not structured_extraction:
-                    logger.info(f"Using legacy AI analysis for document {document_id}")
-                    ai_result = ai_analyzer.analyze_document(
-                        document_content=extraction_result['text'],
-                        context=context
-                    )
+                # KEEP DISABLED TO FORCE STRUCTURED EXTRACTION AND EXPOSE REAL ERRORS
+                # if not structured_extraction:
+                #     logger.error(f"STRUCTURED EXTRACTION FAILED for document {document_id}, using legacy fallback")
+                #     ai_result = ai_analyzer.analyze_document(
+                #         document_content=extraction_result['text'],
+                #         context=context
+                #     )
                 
                 # Handle graceful degradation responses
-                if ai_result.get('degraded'):
+                if ai_result and ai_result.get('degraded'):
                     logger.warning(f"Document {document_id} processed with degradation: {ai_result.get('error_context', 'Unknown error')}")
                     
                     # Mark document for manual review
@@ -233,7 +404,7 @@ def process_document_async(self, document_id: int):
                     # Normal successful processing
                     ai_result = ai_result
                 
-                if ai_result['success']:
+                if ai_result and ai_result.get('success'):
                     logger.info(f"AI analysis successful: {len(ai_result['fields'])} fields extracted")
                     
                     # STEP 3: Convert to FHIR format using appropriate converter
@@ -276,9 +447,9 @@ def process_document_async(self, document_id: int):
                             logger.info(f"Legacy FHIRProcessor created {len(fhir_resources)} resources from extracted data")
                             
                         except Exception as fhir_proc_exc:
-                            logger.warning(f"FHIRProcessor failed, falling back to basic converter: {fhir_proc_exc}")
-                            # Final fallback to basic converter
-                            fhir_resources = ai_analyzer.convert_to_fhir(ai_result['fields'], patient_id)
+                            logger.warning(f"FHIRProcessor failed, no FHIR conversion available: {fhir_proc_exc}")
+                            # No fallback available - structured extraction should handle FHIR conversion
+                            fhir_resources = []
                     
                     # Calculate data capture metrics (works with both structured and legacy data)
                     try:

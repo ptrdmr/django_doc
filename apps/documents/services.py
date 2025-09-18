@@ -847,7 +847,7 @@ class DocumentAnalyzer:
         Returns:
             Extraction results using fallback prompt
         """
-        from .prompts import MedicalPrompts
+        from apps.documents.prompts import MedicalPrompts
         
         # Get simplified fallback prompt
         fallback_prompt = MedicalPrompts.get_fallback_prompt()
@@ -1368,7 +1368,7 @@ class DocumentAnalyzer:
         Returns:
             Specialized medical extraction prompt
         """
-        from .prompts import MedicalPrompts, ChunkInfo, ContextTag
+        from apps.documents.prompts import MedicalPrompts, ChunkInfo, ContextTag
         
         # Convert chunk info if provided
         chunk_obj = None
@@ -1421,7 +1421,7 @@ class DocumentAnalyzer:
         Returns:
             List of extracted field dictionaries with calibrated confidence scores
         """
-        from .prompts import ConfidenceScoring
+        from apps.documents.prompts import ConfidenceScoring
         
         parser = ResponseParser()
         parsed_fields = parser.extract_structured_data(response_text)
@@ -3979,7 +3979,7 @@ class PatientDataComparisonService:
         Returns:
             PatientDataComparison instance with comparison results
         """
-        from .models import PatientDataComparison
+        from apps.documents.models import PatientDataComparison
         
         # Get or create comparison record
         comparison, created = PatientDataComparison.objects.get_or_create(

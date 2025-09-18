@@ -168,6 +168,27 @@ class Document(BaseModel):
         help_text="Extracted text from PDF - encrypted at rest"
     ))
     
+    # Structured extraction data (encrypted for HIPAA compliance)
+    structured_data = encrypt(models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Structured medical data extracted by AI using Pydantic models - encrypted at rest"
+    ))
+    
+    # Processing performance and timing
+    processing_time_ms = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="AI processing time in milliseconds"
+    )
+    
+    # Enhanced error tracking
+    error_log = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Detailed error log with timestamps and context for debugging"
+    )
+    
     # Error handling
     error_message = models.TextField(
         blank=True,
@@ -237,6 +258,87 @@ class Document(BaseModel):
         end_time = self.processed_at or timezone.now()
         duration = end_time - self.processing_started_at
         return duration.total_seconds()
+    
+    def get_ai_processing_time_seconds(self):
+        """
+        Get AI processing time in seconds from milliseconds field.
+        Returns None if not available.
+        """
+        if self.processing_time_ms is None:
+            return None
+        return self.processing_time_ms / 1000.0
+    
+    def add_error_to_log(self, error_type, error_message, context=None):
+        """
+        Add an error entry to the error log with timestamp.
+        
+        Args:
+            error_type (str): Type of error (e.g., 'ai_extraction', 'fhir_conversion')
+            error_message (str): Error message
+            context (dict, optional): Additional context data
+        """
+        if not isinstance(self.error_log, list):
+            self.error_log = []
+        
+        error_entry = {
+            'timestamp': timezone.now().isoformat(),
+            'type': error_type,
+            'message': str(error_message),
+            'attempt': self.processing_attempts,
+            'context': context or {}
+        }
+        
+        self.error_log.append(error_entry)
+        self.save(update_fields=['error_log'])
+    
+    def get_structured_medical_data(self):
+        """
+        Get structured medical data if available.
+        Returns the decrypted structured_data dict or None.
+        """
+        if not self.structured_data:
+            return None
+        return self.structured_data
+    
+    def has_structured_data(self):
+        """
+        Check if document has structured extraction data.
+        """
+        return bool(self.structured_data and 
+                   isinstance(self.structured_data, dict) and 
+                   len(self.structured_data) > 0)
+    
+    def get_extraction_confidence(self):
+        """
+        Get extraction confidence from structured data.
+        Returns None if not available.
+        """
+        if not self.has_structured_data():
+            return None
+        
+        return self.structured_data.get('confidence_average')
+    
+    def get_extracted_resource_counts(self):
+        """
+        Get counts of extracted medical resources from structured data.
+        Returns dict with resource type counts or empty dict.
+        """
+        if not self.has_structured_data():
+            return {}
+        
+        counts = {}
+        structured = self.structured_data
+        
+        # Count each resource type
+        resource_types = ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers']
+        for resource_type in resource_types:
+            resources = structured.get(resource_type, [])
+            if isinstance(resources, list):
+                counts[resource_type] = len(resources)
+            else:
+                counts[resource_type] = 0
+        
+        return counts
     
     def can_retry_processing(self):
         """Check if document can be retried for processing."""
@@ -309,6 +411,18 @@ class ParsedData(BaseModel):
         help_text="Time taken for AI processing in seconds"
     )
     
+    # Enhanced structured data support
+    structured_extraction_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Metadata from structured Pydantic extraction including resource counts and validation info"
+    )
+    fallback_method_used = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Fallback extraction method used if primary AI failed (e.g., 'regex', 'gpt-fallback')"
+    )
+    
     # Integration status
     merged_at = models.DateTimeField(
         null=True,
@@ -358,7 +472,7 @@ class ParsedData(BaseModel):
     ))
     corrections = models.JSONField(
         default=dict,
-        help_text="Manual corrections to extracted data"
+        help_text="Manual corrections to extracted data (also stores structured data if available)"
     )
     
     class Meta:
@@ -417,6 +531,60 @@ class ParsedData(BaseModel):
         """Check if extraction has high confidence score."""
         return (self.extraction_confidence is not None and 
                 self.extraction_confidence >= threshold)
+    
+    def get_structured_data_summary(self):
+        """
+        Get summary of structured extraction data.
+        Returns dict with resource counts and metadata.
+        """
+        summary = {
+            'has_structured_data': bool(self.structured_extraction_metadata),
+            'resource_counts': {},
+            'total_resources': 0,
+            'extraction_method': 'primary' if not self.fallback_method_used else self.fallback_method_used,
+            'confidence_score': self.extraction_confidence
+        }
+        
+        if self.structured_extraction_metadata:
+            # Extract resource counts from metadata
+            resource_counts = self.structured_extraction_metadata.get('resource_counts', {})
+            summary['resource_counts'] = resource_counts
+            summary['total_resources'] = sum(resource_counts.values())
+        
+        return summary
+    
+    def was_fallback_extraction_used(self):
+        """
+        Check if fallback extraction method was used.
+        """
+        return bool(self.fallback_method_used)
+    
+    def get_extraction_quality_indicators(self):
+        """
+        Get indicators of extraction quality for review prioritization.
+        Returns dict with quality indicators.
+        """
+        indicators = {
+            'confidence_level': 'unknown',
+            'needs_review': True,
+            'fallback_used': self.was_fallback_extraction_used(),
+            'resource_count': self.get_fhir_resource_count(),
+            'quality_score': self.extraction_quality_score
+        }
+        
+        # Determine confidence level
+        if self.extraction_confidence is not None:
+            if self.extraction_confidence >= 0.9:
+                indicators['confidence_level'] = 'high'
+                indicators['needs_review'] = False
+            elif self.extraction_confidence >= 0.7:
+                indicators['confidence_level'] = 'medium' 
+                indicators['needs_review'] = True
+            else:
+                indicators['confidence_level'] = 'low'
+                indicators['needs_review'] = True
+        
+        return indicators
 
 
 class PatientDataComparison(BaseModel):
