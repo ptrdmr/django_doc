@@ -4,34 +4,110 @@ AI Extraction Service with Instructor-based Structured Data Extraction
 This service uses the instructor library with Anthropic Claude (primary) and OpenAI (fallback)
 to provide structured medical data extraction from clinical documents with Pydantic validation.
 Follows the project's established AI service patterns and configuration.
+
+Enhanced with comprehensive error handling and logging for Task 34.5.
 """
 
 import logging
 import json
 import instructor
+import time
+import re
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ValidationError
 from django.conf import settings
 import anthropic
 from openai import OpenAI
 
+# Import custom exceptions for enhanced error handling
+from apps.documents.exceptions import (
+    AIExtractionError,
+    AIServiceTimeoutError,
+    AIServiceRateLimitError,
+    AIResponseParsingError,
+    PydanticModelError,
+    ConfigurationError,
+    ExternalServiceError
+)
+
 logger = logging.getLogger(__name__)
 
-# Initialize AI clients following project patterns
+# Import enhanced prompting service for comprehensive data capture
+# Note: This import is now handled locally in each function to avoid scope issues
+
+# Initialize AI clients following project patterns with enhanced error handling
+def _initialize_ai_clients():
+    """Initialize AI clients with comprehensive error handling and validation."""
+    anthropic_client = None
+    openai_client = None
+    
+    try:
+        # Validate configuration
+        anthropic_key = getattr(settings, 'ANTHROPIC_API_KEY', None)
+        openai_key = getattr(settings, 'OPENAI_API_KEY', None)
+        
+        if not anthropic_key and not openai_key:
+            raise ConfigurationError(
+                "No AI service API keys configured",
+                config_key="ANTHROPIC_API_KEY, OPENAI_API_KEY",
+                details={
+                    'available_settings': dir(settings),
+                    'has_anthropic_key': bool(anthropic_key),
+                    'has_openai_key': bool(openai_key)
+                }
+            )
+        
+        # Initialize Anthropic Claude (primary)
+        if anthropic_key:
+            try:
+                anthropic_client = anthropic.Anthropic(api_key=anthropic_key)
+                logger.info("Anthropic Claude client initialized successfully (primary)")
+            except Exception as e:
+                logger.error(f"Failed to initialize Anthropic client: {e}")
+                anthropic_client = None
+        
+        # Initialize OpenAI (fallback)
+        if openai_key:
+            try:
+                openai_client = instructor.patch(OpenAI(api_key=openai_key))
+                logger.info("OpenAI client initialized successfully (fallback)")
+            except Exception as e:
+                logger.error(f"Failed to initialize OpenAI client: {e}")
+                openai_client = None
+        
+        # Try to patch Anthropic client with instructor for Pydantic support
+        if anthropic_client:
+            try:
+                anthropic_client = instructor.patch(anthropic_client)
+                logger.info("Anthropic Claude client patched with instructor for Pydantic support")
+            except Exception as e:
+                logger.warning(f"Could not patch Anthropic client with instructor: {e}, using manual JSON parsing")
+                # anthropic_client remains unpatched - will use manual JSON parsing
+        
+        if not anthropic_client and not openai_client:
+            raise ConfigurationError(
+                "Failed to initialize any AI clients",
+                details={'anthropic_available': bool(anthropic_key), 'openai_available': bool(openai_key)}
+            )
+        
+        logger.info(f"AI clients initialized - Claude: {bool(anthropic_client)}, OpenAI: {bool(openai_client)}")
+        return anthropic_client, openai_client
+        
+    except ConfigurationError:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error initializing AI clients: {e}")
+        raise ConfigurationError(
+            f"Failed to initialize AI clients: {str(e)}",
+            details={'exception_type': type(e).__name__}
+        )
+
+# Initialize clients
 try:
-    # Primary: Anthropic Claude (following project's AI_MODEL_PRIMARY setting)
-    anthropic_client = anthropic.Anthropic(
-        api_key=getattr(settings, 'ANTHROPIC_API_KEY', None)
-    ) if getattr(settings, 'ANTHROPIC_API_KEY', None) else None
-    
-    # Fallback: OpenAI (following project's AI_MODEL_FALLBACK setting)
-    openai_client = instructor.patch(OpenAI(
-        api_key=getattr(settings, 'OPENAI_API_KEY', None)
-    )) if getattr(settings, 'OPENAI_API_KEY', None) else None
-    
-except Exception as e:
-    logger.warning(f"Failed to initialize AI clients: {e}")
+    anthropic_client, openai_client = _initialize_ai_clients()
+except ConfigurationError as e:
+    logger.warning(f"AI client initialization failed: {e}")
     anthropic_client = None
     openai_client = None
 
@@ -77,7 +153,7 @@ class Medication(BaseModel):
 
 class VitalSign(BaseModel):
     """A vital sign measurement."""
-    measurement_type: str = Field(description="Type of vital sign")
+    measurement: str = Field(description="Type of vital sign")
     value: str = Field(description="The measured value")
     unit: Optional[str] = Field(default=None, description="Unit of measurement")
     timestamp: Optional[str] = Field(default=None, description="When measurement was taken")
@@ -168,6 +244,8 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
     """
     Extract structured medical data using Claude (primary) or OpenAI (fallback) with instructor.
     
+    Enhanced with comprehensive error handling, retry logic, and graceful degradation.
+    
     Args:
         text: The medical document text to analyze
         context: Optional context about the document type or source
@@ -176,10 +254,90 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
         StructuredMedicalExtraction object with all extracted data
         
     Raises:
-        Exception: If both AI services fail or response is invalid
+        AIExtractionError: If extraction fails completely
+        AIServiceTimeoutError: If AI service requests timeout
+        AIServiceRateLimitError: If rate limits are exceeded
+        AIResponseParsingError: If response cannot be parsed
+        PydanticModelError: If data validation fails
+        ConfigurationError: If AI services are not configured
     """
-    # Build the extraction prompt
-    system_prompt = """You are MediExtract Pro, an expert medical data extraction AI. 
+    extraction_id = str(time.time())[:10]  # Short unique ID for this extraction
+    logger.info(f"[{extraction_id}] Starting structured medical data extraction")
+    
+    # Validate inputs
+    if not text or not text.strip():
+        raise AIExtractionError(
+            "Cannot extract from empty text",
+            details={'text_length': len(text), 'extraction_id': extraction_id}
+        )
+    
+    if len(text) > 50000:  # Reasonable limit to prevent excessive API costs
+        logger.warning(f"[{extraction_id}] Text is very long ({len(text)} chars), truncating to 50000")
+        text = text[:50000]
+    
+    # Check if any AI clients are available
+    if not anthropic_client and not openai_client:
+        raise ConfigurationError(
+            "No AI services available for extraction",
+            details={'anthropic_available': False, 'openai_available': False}
+        )
+    # Use comprehensive prompts for maximum data capture (90%+ target)
+    # Try to use comprehensive prompts, fall back to basic prompts if not available
+    try:
+        from apps.documents.services.ai_extraction_service import AIExtractionService
+        prompt_service = AIExtractionService()
+        use_comprehensive = True
+    except ImportError:
+        prompt_service = None
+        use_comprehensive = False
+        logger.warning("AIExtractionService not available - using fallback prompts")
+    
+    if use_comprehensive and prompt_service:
+        try:
+            # Use comprehensive prompt from ai_extraction_service.py for maximum data capture
+            comprehensive_prompt = prompt_service._get_comprehensive_extraction_prompt()
+            
+            # Add context-specific instructions if available
+            context_instructions = ""
+            if context:
+                context_specific = prompt_service._get_context_specific_instructions(context)
+                if context_specific:
+                    context_instructions = f"\n\nContext-Specific Instructions:\n{context_specific}"
+            
+            # Build enhanced system prompt with comprehensive extraction targets
+            system_prompt = f"""{comprehensive_prompt}{context_instructions}
+
+CRITICAL REQUIREMENTS FOR STRUCTURED OUTPUT:
+1. Extract EVERY piece of medical information mentioned
+2. Provide source context for each extracted item (use exact text snippets)
+3. Assign accurate confidence scores based on clarity and certainty
+4. Use proper medical terminology and classifications
+5. Include dates, values, and units exactly as written
+
+CONFIDENCE SCORING:
+- 0.9-1.0: Information explicitly and clearly stated
+- 0.7-0.9: Information clearly implied or inferred  
+- 0.5-0.7: Information mentioned but with some ambiguity
+- 0.3-0.5: Information suggested but unclear
+- 0.1-0.3: Information possibly mentioned but very unclear
+
+STRUCTURED OUTPUT PRIORITY:
+- Medications (highest priority): names, dosages, routes, frequencies with source context
+- Conditions: diagnoses, symptoms, clinical findings with source context
+- Vital signs: all measurements with values, units, and source context
+- Lab results: test names, values, reference ranges, dates with source context
+- Procedures: surgical and diagnostic procedures with dates and source context
+- Providers: all healthcare professionals mentioned with source context"""
+            
+            logger.info(f"[{extraction_id}] Using comprehensive extraction prompts (90%+ data capture target)")
+            
+        except Exception as e:
+            logger.warning(f"[{extraction_id}] Error using comprehensive prompts: {e}, falling back to standard prompt")
+            use_comprehensive = False  # Disable for this session
+    
+    if not use_comprehensive:
+        # Fallback to standard prompt
+        system_prompt = """You are MediExtract Pro, an expert medical data extraction AI. 
 
 Your task is to extract ALL medical information from clinical documents with the highest possible accuracy and completeness. 
 
@@ -204,6 +362,8 @@ Focus on:
 - Lab results: test names, values, reference ranges, dates
 - Procedures: surgical and diagnostic procedures with dates
 - Providers: all healthcare professionals mentioned"""
+        
+        logger.info(f"[{extraction_id}] Using standard extraction prompts")
 
     user_prompt = f"""Extract all medical information from this clinical document:
 
@@ -214,14 +374,54 @@ Document context: {context or 'General clinical document'}
 Return structured data with complete source context for each item."""
 
     # Try Claude first (primary AI service)
+    claude_errors = []
     if anthropic_client:
         try:
-            logger.info("Attempting structured extraction with Claude (primary)")
+            logger.info(f"[{extraction_id}] Attempting structured extraction with Claude (primary)")
             
-            # Claude doesn't directly support instructor, so we'll use it conventionally
-            # and parse the JSON response into our Pydantic model
-            # Create a detailed schema prompt for Claude
-            schema_prompt = f"""
+            start_time = time.time()
+            
+            # Try instructor-based approach first (if Claude client was successfully patched)
+            try:
+                # Check if Claude client has instructor capabilities
+                if hasattr(anthropic_client, 'chat') and hasattr(anthropic_client.chat, 'completions'):
+                    logger.info(f"[{extraction_id}] Using instructor-patched Claude for Pydantic extraction")
+                    
+                    extraction = anthropic_client.chat.completions.create(
+                        model=getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620'),
+                        response_model=StructuredMedicalExtraction,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=0.1,
+                        max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096)
+                    )
+                    
+                    api_duration = time.time() - start_time
+                    
+                    # Set extraction timestamp and document type
+                    extraction.extraction_timestamp = datetime.now().isoformat()
+                    extraction.document_type = context
+                    
+                    total_items = (len(extraction.conditions) + len(extraction.medications) + 
+                                 len(extraction.vital_signs) + len(extraction.lab_results) + 
+                                 len(extraction.procedures) + len(extraction.providers))
+                    
+                    logger.info(f"[{extraction_id}] Claude instructor extraction successful: {total_items} items, "
+                               f"confidence {extraction.confidence_average:.3f} in {api_duration:.2f}s")
+                    return extraction
+                
+                else:
+                    # Fall back to manual JSON parsing approach
+                    raise Exception("Claude client not instructor-patched, using manual JSON parsing")
+                    
+            except Exception as instructor_error:
+                logger.info(f"[{extraction_id}] Instructor approach failed: {instructor_error}, falling back to manual JSON parsing")
+                
+                # Fallback: Manual JSON parsing approach (original implementation)
+                # Create a detailed schema prompt for Claude
+                schema_prompt = f"""
 Return valid JSON that exactly matches this schema structure:
 
 {{
@@ -258,71 +458,197 @@ Return valid JSON that exactly matches this schema structure:
 }}
 
 CRITICAL: Every extracted item MUST include a "source" object with the exact text snippet."""
-
-            response = anthropic_client.messages.create(
-                model=getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620'),
-                max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096),
-                temperature=0.1,
-                system=system_prompt,
-                messages=[
-                    {"role": "user", "content": user_prompt + "\n\n" + schema_prompt}
-                ]
-            )
-            
-            # Parse Claude's response
-            response_text = response.content[0].text
-            
-            # Try to extract JSON from the response
-            import re
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if json_match:
-                json_data = json.loads(json_match.group())
                 
-                # Set extraction timestamp and document type
-                json_data['extraction_timestamp'] = datetime.now().isoformat()
-                json_data['document_type'] = context
+                # Reset start time for manual approach
+                start_time = time.time()
                 
-                # Parse into Pydantic model
-                extraction = StructuredMedicalExtraction(**json_data)
+                try:
+                    response = anthropic_client.messages.create(
+                        model=getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620'),
+                        max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096),
+                        temperature=0.1,
+                        system=system_prompt,
+                        messages=[
+                            {"role": "user", "content": user_prompt + "\n\n" + schema_prompt}
+                        ]
+                    )
+                    api_duration = time.time() - start_time
+                    
+                    logger.info(f"[{extraction_id}] Claude manual JSON API call completed in {api_duration:.2f}s")
+                    
+                except anthropic.RateLimitError as e:
+                    raise AIServiceRateLimitError(
+                        f"Claude rate limit exceeded: {str(e)}",
+                        ai_service="anthropic_claude",
+                        details={'extraction_id': extraction_id, 'api_duration': time.time() - start_time}
+                    )
+                except anthropic.APITimeoutError as e:
+                    raise AIServiceTimeoutError(
+                        f"Claude API timeout: {str(e)}",
+                        ai_service="anthropic_claude",
+                        timeout_seconds=time.time() - start_time,
+                        details={'extraction_id': extraction_id}
+                    )
+                except anthropic.APIError as e:
+                    raise ExternalServiceError(
+                        f"Claude API error: {str(e)}",
+                        service_name="anthropic_claude",
+                        details={'extraction_id': extraction_id, 'error_type': type(e).__name__}
+                    )
                 
-                logger.info(f"Claude extraction successful: {len(extraction.conditions)} conditions, "
-                           f"{len(extraction.medications)} medications")
-                return extraction
-            else:
-                raise ValueError("No valid JSON found in Claude response")
+                # Parse Claude's manual JSON response
+                try:
+                    response_text = response.content[0].text
+                    logger.debug(f"[{extraction_id}] Claude manual response length: {len(response_text)} chars")
+                    
+                    # Try to extract JSON from the response
+                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                    if not json_match:
+                        raise AIResponseParsingError(
+                            "No valid JSON found in Claude response",
+                            ai_service="anthropic_claude",
+                            raw_response=response_text,
+                            expected_format="JSON object",
+                            details={'extraction_id': extraction_id}
+                        )
+                    
+                    json_data = json.loads(json_match.group())
+                    
+                    # Set extraction timestamp and document type
+                    json_data['extraction_timestamp'] = datetime.now().isoformat()
+                    json_data['document_type'] = context
+                    
+                    # Parse into Pydantic model with detailed error handling
+                    try:
+                        extraction = StructuredMedicalExtraction(**json_data)
+                    except ValidationError as ve:
+                        raise PydanticModelError(
+                            f"Claude response failed Pydantic validation: {str(ve)}",
+                            model_name="StructuredMedicalExtraction",
+                            validation_errors=ve.errors(),
+                            details={'extraction_id': extraction_id, 'raw_data_keys': list(json_data.keys())}
+                        )
+                    
+                    total_items = (len(extraction.conditions) + len(extraction.medications) + 
+                                 len(extraction.vital_signs) + len(extraction.lab_results) + 
+                                 len(extraction.procedures) + len(extraction.providers))
+                    
+                    logger.info(f"[{extraction_id}] Claude manual extraction successful: {total_items} items, "
+                               f"confidence {extraction.confidence_average:.3f}")
+                    return extraction
+                    
+                except json.JSONDecodeError as je:
+                    raise AIResponseParsingError(
+                        f"Claude response is not valid JSON: {str(je)}",
+                        ai_service="anthropic_claude",
+                        raw_response=response_text[:500],  # Truncated for logging
+                        expected_format="JSON object",
+                        details={'extraction_id': extraction_id}
+                    )
                 
+        except (AIServiceRateLimitError, AIServiceTimeoutError, ExternalServiceError, 
+                AIResponseParsingError, PydanticModelError) as specific_error:
+            # Re-raise specific errors
+            claude_errors.append(str(specific_error))
+            logger.warning(f"[{extraction_id}] Claude extraction failed with specific error: {specific_error}")
+            raise
         except Exception as e:
-            logger.warning(f"Claude extraction failed: {e}, trying OpenAI fallback")
+            claude_errors.append(str(e))
+            logger.warning(f"[{extraction_id}] Claude extraction failed with unexpected error: {e}, trying OpenAI fallback")
     
     # Try OpenAI as fallback
+    openai_errors = []
     if openai_client:
         try:
-            logger.info("Attempting structured extraction with OpenAI (fallback)")
+            logger.info(f"[{extraction_id}] Attempting structured extraction with OpenAI (fallback)")
             
-            extraction = openai_client.chat.completions.create(
-                model=getattr(settings, 'AI_MODEL_FALLBACK', 'gpt-4o-mini'),
-                response_model=StructuredMedicalExtraction,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.1,
-                max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096)
-            )
+            start_time = time.time()
+            try:
+                extraction = openai_client.chat.completions.create(
+                    model=getattr(settings, 'AI_MODEL_FALLBACK', 'gpt-4o-mini'),
+                    response_model=StructuredMedicalExtraction,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096)
+                )
+                api_duration = time.time() - start_time
+                
+                logger.info(f"[{extraction_id}] OpenAI API call completed in {api_duration:.2f}s")
+                
+            except Exception as openai_exc:
+                # Handle various OpenAI-specific errors
+                error_str = str(openai_exc).lower()
+                
+                if 'rate limit' in error_str or 'quota' in error_str:
+                    raise AIServiceRateLimitError(
+                        f"OpenAI rate limit exceeded: {str(openai_exc)}",
+                        ai_service="openai_gpt",
+                        details={'extraction_id': extraction_id, 'api_duration': time.time() - start_time}
+                    )
+                elif 'timeout' in error_str:
+                    raise AIServiceTimeoutError(
+                        f"OpenAI API timeout: {str(openai_exc)}",
+                        ai_service="openai_gpt",
+                        timeout_seconds=time.time() - start_time,
+                        details={'extraction_id': extraction_id}
+                    )
+                else:
+                    raise ExternalServiceError(
+                        f"OpenAI API error: {str(openai_exc)}",
+                        service_name="openai_gpt",
+                        details={'extraction_id': extraction_id, 'error_type': type(openai_exc).__name__}
+                    )
+            
+            # Validate the extraction result
+            if not extraction:
+                raise AIResponseParsingError(
+                    "OpenAI returned empty extraction result",
+                    ai_service="openai_gpt",
+                    expected_format="StructuredMedicalExtraction",
+                    details={'extraction_id': extraction_id}
+                )
             
             # Set extraction timestamp and document type
             extraction.extraction_timestamp = datetime.now().isoformat()
             extraction.document_type = context
             
-            logger.info(f"OpenAI extraction successful: {len(extraction.conditions)} conditions, "
-                       f"{len(extraction.medications)} medications")
+            total_items = (len(extraction.conditions) + len(extraction.medications) + 
+                         len(extraction.vital_signs) + len(extraction.lab_results) + 
+                         len(extraction.procedures) + len(extraction.providers))
+            
+            logger.info(f"[{extraction_id}] OpenAI extraction successful: {total_items} items, "
+                       f"confidence {extraction.confidence_average:.3f}")
             return extraction
             
+        except (AIServiceRateLimitError, AIServiceTimeoutError, ExternalServiceError, 
+                AIResponseParsingError) as specific_error:
+            # Re-raise specific errors
+            openai_errors.append(str(specific_error))
+            logger.error(f"[{extraction_id}] OpenAI extraction failed with specific error: {specific_error}")
+            raise
         except Exception as e:
-            logger.error(f"OpenAI extraction also failed: {e}")
+            openai_errors.append(str(e))
+            logger.error(f"[{extraction_id}] OpenAI extraction failed with unexpected error: {e}")
     
-    # If both services fail, raise an exception
-    raise Exception("Both Claude and OpenAI extraction services failed")
+    # If both services fail, provide comprehensive error information
+    all_errors = claude_errors + openai_errors
+    error_summary = {
+        'claude_available': bool(anthropic_client),
+        'openai_available': bool(openai_client),
+        'claude_errors': claude_errors,
+        'openai_errors': openai_errors,
+        'extraction_id': extraction_id,
+        'text_length': len(text),
+        'context': context
+    }
+    
+    raise AIExtractionError(
+        f"All AI extraction services failed. Errors: {'; '.join(all_errors[:3])}",  # Limit to first 3 errors
+        details=error_summary
+    )
 
 
 def extract_medical_data(text: str, context: Optional[str] = None) -> Dict[str, Any]:
@@ -339,7 +665,7 @@ def extract_medical_data(text: str, context: Optional[str] = None) -> Dict[str, 
         Dictionary with extracted medical data in legacy format
     """
     try:
-        # Use the new structured extraction
+        # Use the new structured extraction with enhanced error tracking
         structured_data = extract_medical_data_structured(text, context)
         
         # Convert to legacy format for backward compatibility
@@ -385,16 +711,32 @@ def extract_medical_data(text: str, context: Optional[str] = None) -> Dict[str, 
                 len(structured_data.lab_results) + 
                 len(structured_data.procedures) + 
                 len(structured_data.providers)
-            )
+            ),
+            "extraction_method": "structured_ai",
+            "error_recovery_used": False
         }
         
         logger.info(f"Converted structured data to legacy format: {legacy_format['total_items_extracted']} total items")
         return legacy_format
         
+    except (AIServiceRateLimitError, AIServiceTimeoutError) as rate_error:
+        # For rate limiting, don't fallback immediately - let caller handle retry
+        logger.warning(f"Rate limiting in legacy extraction: {rate_error}")
+        raise
+    except (AIExtractionError, AIResponseParsingError, PydanticModelError) as ai_error:
+        logger.warning(f"AI extraction failed in legacy method: {ai_error}, falling back to regex extraction")
+        # Fallback to basic extraction for AI-specific errors
+        fallback_result = legacy_extract_medical_data(text, context)
+        fallback_result["error_recovery_used"] = True
+        fallback_result["original_error"] = str(ai_error)
+        return fallback_result
     except Exception as e:
-        logger.error(f"Medical data extraction failed: {e}")
-        # Fallback to basic extraction if structured extraction fails
-        return legacy_extract_medical_data(text, context)
+        logger.error(f"Unexpected error in legacy extraction: {e}")
+        # Fallback to basic extraction for any other errors
+        fallback_result = legacy_extract_medical_data(text, context)
+        fallback_result["error_recovery_used"] = True
+        fallback_result["original_error"] = str(e)
+        return fallback_result
 
 
 def legacy_extract_medical_data(text: str, context: Optional[str] = None) -> Dict[str, Any]:
@@ -457,9 +799,10 @@ __all__ = [
     'StructuredMedicalExtraction',
     'MedicalCondition',
     'Medication',
-    'VitalSign',
+    'VitalSign', 
     'LabResult',
     'Procedure',
     'Provider',
-    'SourceContext'
+    'SourceContext',
+    'COMPREHENSIVE_PROMPTS_AVAILABLE'
 ]

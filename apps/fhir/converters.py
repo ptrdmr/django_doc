@@ -6,9 +6,12 @@ data into FHIR resources. Kept separate for clarity and testability.
 
 This module now includes support for structured medical data from the new
 Pydantic-based AI extraction service (Task 34).
+
+Enhanced with comprehensive error handling and logging for Task 34.5.
 """
 
 import logging
+import time
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from uuid import uuid4
@@ -28,6 +31,14 @@ from .fhir_models import (
     ConditionResource,
     ObservationResource,
     MedicationStatementResource,
+)
+
+# Import custom exceptions for enhanced error handling
+from apps.documents.exceptions import (
+    FHIRConversionError,
+    FHIRValidationError,
+    DataValidationError,
+    PydanticModelError
 )
 
 # Import structured medical data models
@@ -572,6 +583,8 @@ class StructuredDataConverter(BaseFHIRConverter):
         This is the main entry point that bridges AI-extracted Pydantic models
         with the existing FHIR converter infrastructure.
         
+        Enhanced with comprehensive error handling for Task 34.5.
+        
         Args:
             structured_data: StructuredMedicalExtraction from AI service
             metadata: Document metadata (document_id, extraction_timestamp, etc.)
@@ -581,30 +594,123 @@ class StructuredDataConverter(BaseFHIRConverter):
             List of FHIR Resource objects ready for the existing FHIR engine
             
         Raises:
-            ValueError: If structured_data is None or invalid
-            ImportError: If structured data models not available
+            FHIRConversionError: If conversion fails due to invalid data or processing errors
+            DataValidationError: If input validation fails
         """
-        if not structured_data:
-            raise ValueError("structured_data cannot be None")
-            
-        if StructuredMedicalExtraction is None:
-            raise ImportError("Structured medical data models not available")
+        conversion_id = str(time.time())[:10]  # Short unique ID for this conversion
+        self.logger.info(f"[{conversion_id}] Starting structured data to FHIR conversion for patient {patient.id}")
         
-        self.logger.info(f"Converting structured data to FHIR for patient {patient.id}")
-        
+        # Enhanced input validation
         try:
+            if not structured_data:
+                raise DataValidationError(
+                    "structured_data cannot be None",
+                    field_name="structured_data",
+                    details={'conversion_id': conversion_id, 'patient_id': patient.id}
+                )
+                
+            if StructuredMedicalExtraction is None:
+                raise FHIRConversionError(
+                    "Structured medical data models not available - cannot perform conversion",
+                    details={'conversion_id': conversion_id, 'patient_id': patient.id}
+                )
+            
+            if not patient:
+                raise DataValidationError(
+                    "Patient instance is required for FHIR conversion",
+                    field_name="patient",
+                    details={'conversion_id': conversion_id}
+                )
+            
+            if not hasattr(patient, 'id') or not patient.id:
+                raise DataValidationError(
+                    "Patient must have a valid ID",
+                    field_name="patient.id",
+                    details={'conversion_id': conversion_id, 'patient_type': type(patient).__name__}
+                )
+            
+            # Validate metadata
+            if not isinstance(metadata, dict):
+                self.logger.warning(f"[{conversion_id}] Invalid metadata type: {type(metadata)}, using empty dict")
+                metadata = {}
+            
+            # Log structured data summary for debugging
+            total_items = (
+                len(structured_data.conditions) + len(structured_data.medications) + 
+                len(structured_data.vital_signs) + len(structured_data.lab_results) + 
+                len(structured_data.procedures) + len(structured_data.providers)
+            )
+            
+            self.logger.info(f"[{conversion_id}] Processing {total_items} structured items: "
+                           f"{len(structured_data.conditions)} conditions, "
+                           f"{len(structured_data.medications)} medications, "
+                           f"{len(structured_data.vital_signs)} vital signs, "
+                           f"{len(structured_data.lab_results)} lab results, "
+                           f"{len(structured_data.procedures)} procedures, "
+                           f"{len(structured_data.providers)} providers")
+            
+        except (DataValidationError, FHIRConversionError):
+            raise
+        except Exception as e:
+            raise DataValidationError(
+                f"Unexpected validation error: {str(e)}",
+                details={'conversion_id': conversion_id, 'error_type': type(e).__name__}
+            )
+        
+        # Perform conversion with comprehensive error tracking
+        try:
+            start_time = time.time()
+            
             # Convert structured data to dictionary format that existing converters expect
-            converted_data = self._convert_structured_to_dict(structured_data)
+            try:
+                converted_data = self._convert_structured_to_dict(structured_data)
+                conversion_time = time.time() - start_time
+                self.logger.debug(f"[{conversion_id}] Data conversion completed in {conversion_time:.3f}s")
+            except Exception as e:
+                raise FHIRConversionError(
+                    f"Failed to convert structured data to dictionary format: {str(e)}",
+                    data_source="structured_medical_extraction",
+                    details={'conversion_id': conversion_id, 'error_type': type(e).__name__}
+                )
             
             # Use the existing convert method with the converted data
-            resources = self.convert(converted_data, metadata, patient)
+            try:
+                resources = self.convert(converted_data, metadata, patient)
+                total_conversion_time = time.time() - start_time
+                
+                self.logger.info(f"[{conversion_id}] Successfully converted to {len(resources)} FHIR resources "
+                               f"in {total_conversion_time:.3f}s")
+                
+                # Validate that we got reasonable results
+                if total_items > 0 and len(resources) == 0:
+                    self.logger.warning(f"[{conversion_id}] No FHIR resources created from {total_items} input items")
+                
+                return resources
+                
+            except Exception as e:
+                raise FHIRConversionError(
+                    f"Failed to create FHIR resources from converted data: {str(e)}",
+                    data_source="converted_dictionary",
+                    details={
+                        'conversion_id': conversion_id,
+                        'error_type': type(e).__name__,
+                        'input_item_count': total_items,
+                        'conversion_time': time.time() - start_time
+                    }
+                )
             
-            self.logger.info(f"Successfully converted structured data to {len(resources)} FHIR resources")
-            return resources
-            
-        except Exception as e:
-            self.logger.error(f"Failed to convert structured data: {e}", exc_info=True)
+        except (DataValidationError, FHIRConversionError):
             raise
+        except Exception as e:
+            raise FHIRConversionError(
+                f"Unexpected error during structured data conversion: {str(e)}",
+                details={
+                    'conversion_id': conversion_id,
+                    'error_type': type(e).__name__,
+                    'patient_id': patient.id,
+                    'input_item_count': total_items if 'total_items' in locals() else 0
+                }
+            )
 
     def convert(self, data: Dict[str, Any], metadata: Dict[str, Any], patient) -> List[Resource]:
         """
@@ -613,6 +719,8 @@ class StructuredDataConverter(BaseFHIRConverter):
         This method handles the converted dictionary format and creates FHIR resources
         using the existing converter patterns and resource creation methods.
         
+        Enhanced with comprehensive error handling for Task 34.5.
+        
         Args:
             data: Converted structured data in dictionary format
             metadata: Document metadata
@@ -620,59 +728,179 @@ class StructuredDataConverter(BaseFHIRConverter):
             
         Returns:
             List of FHIR Resource objects
+            
+        Raises:
+            FHIRConversionError: If resource creation fails
         """
         resources: List[Resource] = []
+        conversion_errors = []
         patient_id = self._get_patient_id(patient)
         
+        self.logger.debug(f"Converting dictionary data to FHIR resources for patient {patient_id}")
+        
+        # Track conversion statistics
+        conversion_stats = {
+            'conditions_attempted': 0,
+            'conditions_successful': 0,
+            'medications_attempted': 0,
+            'medications_successful': 0,
+            'vital_signs_attempted': 0,
+            'vital_signs_successful': 0,
+            'lab_results_attempted': 0,
+            'lab_results_successful': 0,
+            'procedures_attempted': 0,
+            'procedures_successful': 0,
+            'providers_attempted': 0,
+            'providers_successful': 0
+        }
+        
         try:
-            # Handle conditions/diagnoses
+            # Handle conditions/diagnoses with individual error tracking
             if "conditions" in data and isinstance(data["conditions"], list):
-                for condition_data in data["conditions"]:
-                    condition = self._create_condition_from_structured(condition_data, patient_id, metadata)
-                    if condition:
-                        resources.append(condition)
+                for i, condition_data in enumerate(data["conditions"]):
+                    conversion_stats['conditions_attempted'] += 1
+                    try:
+                        condition = self._create_condition_from_structured(condition_data, patient_id, metadata)
+                        if condition:
+                            resources.append(condition)
+                            conversion_stats['conditions_successful'] += 1
+                        else:
+                            self.logger.warning(f"Condition {i} conversion returned None")
+                    except Exception as e:
+                        error_msg = f"Failed to create condition {i}: {str(e)}"
+                        conversion_errors.append(error_msg)
+                        self.logger.error(error_msg, exc_info=True)
             
-            # Handle medications
+            # Handle medications with individual error tracking
             if "medications" in data and isinstance(data["medications"], list):
-                for medication_data in data["medications"]:
-                    medication = self._create_medication_from_structured(medication_data, patient_id, metadata)
-                    if medication:
-                        resources.append(medication)
+                for i, medication_data in enumerate(data["medications"]):
+                    conversion_stats['medications_attempted'] += 1
+                    try:
+                        medication = self._create_medication_from_structured(medication_data, patient_id, metadata)
+                        if medication:
+                            resources.append(medication)
+                            conversion_stats['medications_successful'] += 1
+                        else:
+                            self.logger.warning(f"Medication {i} conversion returned None")
+                    except Exception as e:
+                        error_msg = f"Failed to create medication {i}: {str(e)}"
+                        conversion_errors.append(error_msg)
+                        self.logger.error(error_msg, exc_info=True)
             
-            # Handle vital signs
+            # Handle vital signs with individual error tracking
             if "vital_signs" in data and isinstance(data["vital_signs"], list):
-                for vital_data in data["vital_signs"]:
-                    observation = self._create_vital_sign_observation(vital_data, patient_id, metadata)
-                    if observation:
-                        resources.append(observation)
+                for i, vital_data in enumerate(data["vital_signs"]):
+                    conversion_stats['vital_signs_attempted'] += 1
+                    try:
+                        observation = self._create_vital_sign_observation(vital_data, patient_id, metadata)
+                        if observation:
+                            resources.append(observation)
+                            conversion_stats['vital_signs_successful'] += 1
+                        else:
+                            self.logger.warning(f"Vital sign {i} conversion returned None")
+                    except Exception as e:
+                        error_msg = f"Failed to create vital sign {i}: {str(e)}"
+                        conversion_errors.append(error_msg)
+                        self.logger.error(error_msg, exc_info=True)
             
-            # Handle lab results
+            # Handle lab results with individual error tracking
             if "lab_results" in data and isinstance(data["lab_results"], list):
-                for lab_data in data["lab_results"]:
-                    observation = self._create_lab_observation(lab_data, patient_id, metadata)
-                    if observation:
-                        resources.append(observation)
+                for i, lab_data in enumerate(data["lab_results"]):
+                    conversion_stats['lab_results_attempted'] += 1
+                    try:
+                        observation = self._create_lab_observation(lab_data, patient_id, metadata)
+                        if observation:
+                            resources.append(observation)
+                            conversion_stats['lab_results_successful'] += 1
+                        else:
+                            self.logger.warning(f"Lab result {i} conversion returned None")
+                    except Exception as e:
+                        error_msg = f"Failed to create lab result {i}: {str(e)}"
+                        conversion_errors.append(error_msg)
+                        self.logger.error(error_msg, exc_info=True)
             
-            # Handle procedures
+            # Handle procedures with individual error tracking
             if "procedures" in data and isinstance(data["procedures"], list):
-                for procedure_data in data["procedures"]:
-                    observation = self._create_procedure_observation_structured(procedure_data, patient_id, metadata)
-                    if observation:
-                        resources.append(observation)
+                for i, procedure_data in enumerate(data["procedures"]):
+                    conversion_stats['procedures_attempted'] += 1
+                    try:
+                        observation = self._create_procedure_observation_structured(procedure_data, patient_id, metadata)
+                        if observation:
+                            resources.append(observation)
+                            conversion_stats['procedures_successful'] += 1
+                        else:
+                            self.logger.warning(f"Procedure {i} conversion returned None")
+                    except Exception as e:
+                        error_msg = f"Failed to create procedure {i}: {str(e)}"
+                        conversion_errors.append(error_msg)
+                        self.logger.error(error_msg, exc_info=True)
             
-            # Handle providers
+            # Handle providers with individual error tracking
             if "providers" in data and isinstance(data["providers"], list):
-                for provider_data in data["providers"]:
-                    practitioner = self._create_provider_from_structured(provider_data)
-                    if practitioner:
-                        resources.append(practitioner)
+                for i, provider_data in enumerate(data["providers"]):
+                    conversion_stats['providers_attempted'] += 1
+                    try:
+                        practitioner = self._create_provider_from_structured(provider_data)
+                        if practitioner:
+                            resources.append(practitioner)
+                            conversion_stats['providers_successful'] += 1
+                        else:
+                            self.logger.warning(f"Provider {i} conversion returned None")
+                    except Exception as e:
+                        error_msg = f"Failed to create provider {i}: {str(e)}"
+                        conversion_errors.append(error_msg)
+                        self.logger.error(error_msg, exc_info=True)
             
-            self.logger.info(f"Structured data converter created {len(resources)} resources")
+            # Log conversion summary
+            total_attempted = sum(v for k, v in conversion_stats.items() if k.endswith('_attempted'))
+            total_successful = sum(v for k, v in conversion_stats.items() if k.endswith('_successful'))
+            success_rate = (total_successful / total_attempted) if total_attempted > 0 else 0
+            
+            self.logger.info(f"Conversion summary: {total_successful}/{total_attempted} resources created "
+                           f"({success_rate:.1%} success rate)")
+            
+            # Log detailed breakdown
+            self.logger.debug(f"Conversion breakdown: {conversion_stats}")
+            
+            # Handle conversion errors
+            if conversion_errors:
+                self.logger.warning(f"Encountered {len(conversion_errors)} conversion errors")
+                if len(conversion_errors) > 5:  # Log first 5 errors to avoid spam
+                    self.logger.warning(f"First 5 errors: {conversion_errors[:5]}")
+                else:
+                    self.logger.warning(f"All errors: {conversion_errors}")
+                
+                # Decide whether to raise exception based on error severity
+                if total_successful == 0 and total_attempted > 0:
+                    # Complete failure - raise exception
+                    raise FHIRConversionError(
+                        f"Failed to create any FHIR resources from {total_attempted} input items",
+                        details={
+                            'patient_id': patient_id,
+                            'total_attempted': total_attempted,
+                            'total_successful': total_successful,
+                            'conversion_errors': conversion_errors[:10],  # Limit to 10 errors
+                            'conversion_stats': conversion_stats
+                        }
+                    )
+                elif success_rate < 0.5:
+                    # Low success rate - log warning but continue
+                    self.logger.warning(f"Low conversion success rate: {success_rate:.1%}")
+            
             return resources
             
+        except FHIRConversionError:
+            raise
         except Exception as exc:
-            self.logger.error(f"Structured data conversion failed: {exc}", exc_info=True)
-            return []
+            raise FHIRConversionError(
+                f"Unexpected error during FHIR resource conversion: {str(exc)}",
+                details={
+                    'patient_id': patient_id,
+                    'error_type': type(exc).__name__,
+                    'conversion_stats': conversion_stats,
+                    'conversion_errors': conversion_errors
+                }
+            )
 
     def _convert_structured_to_dict(self, structured_data: 'StructuredMedicalExtraction') -> Dict[str, Any]:
         """
