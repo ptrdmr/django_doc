@@ -441,8 +441,14 @@ def process_document_async(self, document_id: int):
                         try:
                             from apps.fhir.services import FHIRProcessor, FHIRMetricsService
                             
+                            # Pass structured data in format FHIRProcessor already supports
+                            extracted_data = {
+                                'fields': ai_result['fields'],
+                                'patient_id': patient_id
+                            }
+                            
                             fhir_processor = FHIRProcessor()
-                            fhir_resources = fhir_processor.process_extracted_data(ai_result['fields'], patient_id)
+                            fhir_resources = fhir_processor.process_extracted_data(extracted_data, patient_id)
                             
                             logger.info(f"Legacy FHIRProcessor created {len(fhir_resources)} resources from extracted data")
                             
