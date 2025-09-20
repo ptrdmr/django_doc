@@ -1108,6 +1108,290 @@ Implement caching strategies, database query optimizations, and consider paralle
 ### Description: Modify the FHIR bundle creation to work with the new structured data and individual resources.
 ### Details:
 Update the create_fhir_bundle function to use the new structured data format and include individual FHIR resources in the bundle.
+<info added on 2025-09-20T19:28:16.846Z>
+Update the create_fhir_bundle function to implement a comprehensive fix for FHIR resource processing based on the detailed engine analysis. Create new service files for condition and observation processing, and update the FHIRProcessor to handle all resource types. Specifically:
+
+1. Create condition_service.py to process diagnosis fields into Condition resources
+2. Create observation_service.py to process vital sign fields into Observation resources
+3. Update fhir_processor.py to activate commented TODO methods for processing conditions and observations
+4. Ensure each service handles the appropriate field naming patterns:
+   - diagnosis_* fields → Condition resources
+   - vital_* fields → Observation resources
+   - medication_* fields → MedicationStatement resources (already working)
+5. Implement proper integration flows between document tasks and all FHIR services
+6. Target improvement from current 23.8% capture rate to 95%+ by ensuring all 21 extracted fields become FHIR resources
+
+Test implementation using document ID 35 to verify complete data capture across all medical data types.
+</info added on 2025-09-20T19:28:16.846Z>
+<info added on 2025-09-20T19:30:52.859Z>
+# DETAILED IMPLEMENTATION SPECIFICATIONS
+
+## STEP 1: Create apps/fhir/services/condition_service.py
+```python
+from typing import Dict, Any, List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+class ConditionService:
+    def process_conditions(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        conditions = []
+        patient_id = extracted_data.get('patient_id')
+        
+        # Handle fields list format (from structured extraction)
+        if 'fields' in extracted_data:
+            for field in extracted_data['fields']:
+                if isinstance(field, dict):
+                    label = field.get('label', '').lower()
+                    if 'diagnosis' in label:
+                        condition_resource = self._create_condition_resource(field, patient_id)
+                        if condition_resource:
+                            conditions.append(condition_resource)
+        
+        return conditions
+    
+    def _create_condition_resource(self, field: Dict[str, Any], patient_id: str) -> Optional[Dict[str, Any]]:
+        value = field.get('value')
+        if not value:
+            return None
+            
+        # Create FHIR Condition resource from diagnosis field
+        condition = {
+            "resourceType": "Condition",
+            "clinicalStatus": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                    "code": "active",
+                    "display": "Active"
+                }]
+            },
+            "verificationStatus": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+                    "code": "confirmed",
+                    "display": "Confirmed"
+                }]
+            },
+            "code": {
+                "text": value
+            },
+            "subject": {
+                "reference": f"Patient/{patient_id}"
+            },
+            "meta": {
+                "source": field.get('source_context', 'Document extraction'),
+                "confidence": field.get('confidence', 0.9)
+            }
+        }
+        
+        return condition
+```
+
+## STEP 2: Create apps/fhir/services/observation_service.py
+```python
+from typing import Dict, Any, List, Optional
+import logging
+import re
+
+logger = logging.getLogger(__name__)
+
+class ObservationService:
+    # LOINC code mapping for common vital signs
+    VITAL_LOINC_MAPPING = {
+        "blood pressure": "85354-9",
+        "systolic": "8480-6",
+        "diastolic": "8462-4",
+        "heart rate": "8867-4",
+        "pulse": "8867-4",
+        "temperature": "8310-5",
+        "respiratory rate": "9279-1",
+        "oxygen saturation": "59408-5",
+        "height": "8302-2",
+        "weight": "29463-7",
+        "bmi": "39156-5"
+    }
+    
+    def process_observations(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        observations = []
+        patient_id = extracted_data.get('patient_id')
+        
+        # Handle fields list format (from structured extraction)
+        if 'fields' in extracted_data:
+            for field in extracted_data['fields']:
+                if isinstance(field, dict):
+                    label = field.get('label', '').lower()
+                    if 'vital' in label:
+                        observation_resource = self._create_observation_resource(field, patient_id)
+                        if observation_resource:
+                            observations.append(observation_resource)
+        
+        return observations
+    
+    def _create_observation_resource(self, field: Dict[str, Any], patient_id: str) -> Optional[Dict[str, Any]]:
+        value = field.get('value')
+        if not value:
+            return None
+            
+        # Determine vital type from label
+        label = field.get('label', '').lower()
+        vital_type = None
+        loinc_code = None
+        
+        for key, code in self.VITAL_LOINC_MAPPING.items():
+            if key in label:
+                vital_type = key
+                loinc_code = code
+                break
+        
+        if not vital_type:
+            vital_type = "vital sign"
+            loinc_code = None
+        
+        # Extract numeric value and unit if possible
+        numeric_value = None
+        unit = None
+        
+        # Try to parse numeric value and unit (e.g., "120 mmHg")
+        match = re.search(r'(\d+\.?\d*)\s*([a-zA-Z%]+)?', str(value))
+        if match:
+            numeric_value = float(match.group(1))
+            unit = match.group(2) if match.group(2) else None
+        
+        # Create FHIR Observation resource
+        observation = {
+            "resourceType": "Observation",
+            "status": "final",
+            "code": {
+                "text": vital_type
+            },
+            "subject": {
+                "reference": f"Patient/{patient_id}"
+            },
+            "meta": {
+                "source": field.get('source_context', 'Document extraction'),
+                "confidence": field.get('confidence', 0.9)
+            }
+        }
+        
+        # Add LOINC code if available
+        if loinc_code:
+            observation["code"]["coding"] = [{
+                "system": "http://loinc.org",
+                "code": loinc_code,
+                "display": vital_type
+            }]
+        
+        # Add value based on parsed data
+        if numeric_value is not None:
+            if unit:
+                observation["valueQuantity"] = {
+                    "value": numeric_value,
+                    "unit": unit,
+                    "system": "http://unitsofmeasure.org"
+                }
+            else:
+                observation["valueQuantity"] = {
+                    "value": numeric_value
+                }
+        else:
+            observation["valueString"] = value
+            
+        return observation
+```
+
+## STEP 3: Update apps/fhir/services/fhir_processor.py
+```python
+# Add imports at the top
+from .condition_service import ConditionService
+from .observation_service import ObservationService
+
+# Update __init__ method
+def __init__(self):
+    # Existing services initialization
+    self.medication_service = MedicationService()
+    self.encounter_service = EncounterService()
+    # Add new services
+    self.condition_service = ConditionService()
+    self.observation_service = ObservationService()
+
+# Add to process_resources method (around lines 75-101)
+# After medications processing, add:
+conditions = self._process_conditions(extracted_data)
+if conditions:
+    fhir_resources.extend(conditions)
+    logger.info(f"Processed {len(conditions)} condition resources")
+
+observations = self._process_observations(extracted_data)  
+if observations:
+    fhir_resources.extend(observations)
+    logger.info(f"Processed {len(observations)} observation resources")
+
+# Uncomment and implement methods around lines 104-108
+def _process_conditions(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return self.condition_service.process_conditions(extracted_data)
+
+def _process_observations(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return self.observation_service.process_observations(extracted_data)
+```
+
+## VERIFICATION STEPS
+1. Create the two new service files in the apps/fhir/services directory
+2. Update the fhir_processor.py file with the changes above
+3. Test with Document ID 35 to verify the capture rate improvement
+4. Check logs to confirm all 21 extracted fields are being processed into FHIR resources
+5. Verify the FHIR bundle contains all expected resource types (MedicationStatement, Condition, Observation)
+
+Expected outcome: Improvement from 23.8% capture rate to 95%+ by ensuring all diagnosis_* fields become Condition resources and all vital_* fields become Observation resources, alongside the already working medication_* fields.
+</info added on 2025-09-20T19:30:52.859Z>
+<info added on 2025-09-20T19:39:36.900Z>
+# CRITICAL IMPLEMENTATION CONTEXT - ARCHITECTURAL ISSUES
+
+Based on debugging findings, there are several critical architectural issues that must be addressed when implementing the FHIR resource processing:
+
+## ARCHITECTURAL GOTCHAS
+
+### IMPORT ISSUES (CRITICAL):
+- Two different DocumentAnalyzer classes exist:
+  - `apps/documents/services.py` - Has `convert_to_fhir()` but NO `analyze_document_structured()`
+  - `apps/documents/analyzers.py` - Has `analyze_document_structured()` but NO `convert_to_fhir()`
+- Always import DocumentAnalyzer from analyzers.py to avoid "no attribute analyze_document_structured" errors
+
+### SERVICES PACKAGE STRUCTURE (CRITICAL):
+- Python import priority conflict between `services.py` (file) and `services/` (package directory)
+- Use absolute imports instead of relative imports to avoid failures in Celery context
+
+### ACTUAL DATA FLOW:
+1. PDF extraction → `original_text`
+2. AI structured extraction → `StructuredMedicalExtraction` (Pydantic)
+3. Conversion to legacy format → `ai_result['fields']` (list of dicts)
+4. FHIR processing → FHIRProcessor expects specific format
+5. ParsedData storage → `fhir_delta_json` populated
+6. User approval → merge_to_patient_record task
+7. Patient FHIR bundle → encrypted_fhir_bundle updated
+
+## FIELD LABEL PATTERNS:
+- Conditions: `{"label": "diagnosis_1", "value": "Seasonal allergies", "confidence": 0.9}`
+- Vital signs: `{"label": "vital_blood_pressure", "value": "157/104 mm Hg", "confidence": 0.95}`
+- Medications: `{"label": "medication_1", "value": "Lisinopril 10mg", "confidence": 0.9}`
+
+## IMPLEMENTATION REQUIREMENTS:
+- New services must follow the same pattern as medication_service.py
+- FHIRProcessor calls services with format: `{'fields': [list_of_field_dicts], 'patient_id': 'uuid'}`
+- Services must iterate through extracted_data['fields'] looking for specific label patterns
+- Always restart celery worker after making changes: `docker-compose restart celery_worker`
+
+## VERIFICATION METHODOLOGY:
+Use the provided verification script to test FHIR conversion after implementation.
+
+## SUCCESS CRITERIA:
+- Before: 6 FHIR resources (1 Encounter + 5 MedicationStatements)
+- After: 22+ FHIR resources (1 Encounter + 5 Medications + 10 Conditions + 6 Observations)
+- Capture Rate: 23.8% → 95%+
+
+## IMPLEMENTATION PRIORITY:
+1. condition_service.py first (10 missing resources)
+2. observation_service.py (6 missing resources)
+</info added on 2025-09-20T19:39:36.900Z>
 
 ## 12. Implement comprehensive testing suite [pending]
 ### Dependencies: 34.1, 34.2, 34.3, 34.4, 34.5, 34.6, 34.7, 34.8, 34.9, 34.10, 34.11

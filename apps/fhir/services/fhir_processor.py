@@ -13,6 +13,8 @@ from .medication_service import MedicationService
 from .diagnostic_report_service import DiagnosticReportService
 from .service_request_service import ServiceRequestService
 from .encounter_service import EncounterService
+from .condition_service import ConditionService
+from .observation_service import ObservationService
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,8 @@ class FHIRProcessor:
         self.diagnostic_report_service = DiagnosticReportService()
         self.service_request_service = ServiceRequestService()
         self.encounter_service = EncounterService()
+        self.condition_service = ConditionService()
+        self.observation_service = ObservationService()
         
         # TODO: Initialize additional services when implemented
         # self.care_plan_service = CarePlanService()
@@ -100,6 +104,20 @@ class FHIRProcessor:
                 processing_stats['processed_categories'] += 1
                 logger.info("Processed encounter resource")
             
+            # Process conditions (diagnosis fields)
+            conditions = self._process_conditions(extracted_data)
+            if conditions:
+                fhir_resources.extend(conditions)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(conditions)} condition resources")
+            
+            # Process observations (vital sign fields)
+            observations = self._process_observations(extracted_data)
+            if observations:
+                fhir_resources.extend(observations)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(observations)} observation resources")
+            
             # TODO: Process additional resource types when services are implemented
             # care_plans = self._process_care_plans(extracted_data)
             # organizations = self._process_organizations(extracted_data)
@@ -155,6 +173,22 @@ class FHIRProcessor:
         except Exception as e:
             logger.error(f"Error processing encounter: {e}")
             return None
+    
+    def _process_conditions(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Process condition data using ConditionService."""
+        try:
+            return self.condition_service.process_conditions(extracted_data)
+        except Exception as e:
+            logger.error(f"Error processing conditions: {e}")
+            return []
+    
+    def _process_observations(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Process observation data using ObservationService."""
+        try:
+            return self.observation_service.process_observations(extracted_data)
+        except Exception as e:
+            logger.error(f"Error processing observations: {e}")
+            return []
     
     # TODO: Implement additional processing methods when services are available
     # def _process_care_plans(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
