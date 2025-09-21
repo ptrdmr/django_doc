@@ -1,0 +1,1152 @@
+{
+  "document_id": 43,
+  "timestamp": "2025-09-20T20:56:39.152785",
+  "stage": "fhir_conversion",
+  "patient_id": "1a938afa-06f1-442b-af79-3a2a5e950fec",
+  "resource_count": 20,
+  "fhir_resources": [
+    {
+      "resourceType": "MedicationStatement",
+      "id": "5d1afee4-411a-4a72-a193-78660ad4f604",
+      "status": "active",
+      "medicationCodeableConcept": {
+        "text": "Lisinopril"
+      },
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "source": "FHIRProcessor",
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "dosage": [
+        {
+          "text": "10mg"
+        }
+      ],
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
+          "valueDecimal": 0.9
+        },
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "9ff1db1d-6d10-4d5b-8a05-d33e06db55d6",
+      "status": "active",
+      "medicationCodeableConcept": {
+        "text": "Metformin"
+      },
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "source": "FHIRProcessor",
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "dosage": [
+        {
+          "text": "500mg"
+        }
+      ],
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
+          "valueDecimal": 0.9
+        },
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "454dc571-f360-4846-87a6-be68f715a0df",
+      "status": "active",
+      "medicationCodeableConcept": {
+        "text": "Atorvastatin"
+      },
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "source": "FHIRProcessor",
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "dosage": [
+        {
+          "text": "20mg"
+        }
+      ],
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
+          "valueDecimal": 0.9
+        },
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "bd03fef2-ceac-4cac-ba0d-f3a6eef39841",
+      "status": "active",
+      "medicationCodeableConcept": {
+        "text": "Albuterol inhaler 2 puffs"
+      },
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "source": "FHIRProcessor",
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
+          "valueDecimal": 0.9
+        },
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "a027769c-42d4-4eb1-8367-947028763bc2",
+      "status": "active",
+      "medicationCodeableConcept": {
+        "text": "Omeprazole"
+      },
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "source": "FHIRProcessor",
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "dosage": [
+        {
+          "text": "20mg"
+        }
+      ],
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
+          "valueDecimal": 0.9
+        },
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Encounter",
+      "id": "ca805767-8670-414c-a662-c0fca1896eae",
+      "status": "finished",
+      "class": {
+        "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+        "code": "AMB",
+        "display": "Ambulatory"
+      },
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "source": "FHIRProcessor",
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "serviceType": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/service-type",
+            "code": "124",
+            "display": "General Practice"
+          }
+        ]
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Condition",
+      "id": "48632f52-c2ca-4400-b923-cc80e29a4237",
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+          }
+        ]
+      },
+      "verificationStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+          }
+        ]
+      },
+      "code": {
+        "text": "Seasonal allergies"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "recordedDate": "2025-09-20T20:56:39.151736",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Condition"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Condition",
+      "id": "c84ce453-2ab1-4dbb-a4b4-64cf45459e4f",
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+          }
+        ]
+      },
+      "verificationStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+          }
+        ]
+      },
+      "code": {
+        "text": "Depression"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "recordedDate": "2025-09-20T20:56:39.151744",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Condition"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Condition",
+      "id": "b542bd0c-b038-4023-8635-3f191f9566ca",
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+          }
+        ]
+      },
+      "verificationStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+          }
+        ]
+      },
+      "code": {
+        "text": "Hypothyroidism"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "recordedDate": "2025-09-20T20:56:39.151750",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Condition"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Condition",
+      "id": "94898f05-f49c-47b6-b844-266533bf9a1e",
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+          }
+        ]
+      },
+      "verificationStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+          }
+        ]
+      },
+      "code": {
+        "text": "Hypertension, controlled"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "recordedDate": "2025-09-20T20:56:39.151755",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Condition"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Condition",
+      "id": "731f8984-560e-4b36-877f-6f01b21ad933",
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+          }
+        ]
+      },
+      "verificationStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+          }
+        ]
+      },
+      "code": {
+        "text": "Type II Diabetes, fair control"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "recordedDate": "2025-09-20T20:56:39.151761",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Condition"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Condition",
+      "id": "a83feffc-15f7-4d5e-8ccc-752fb905372b",
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+          }
+        ]
+      },
+      "verificationStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+          }
+        ]
+      },
+      "code": {
+        "text": "Hyperlipidemia, on therapy"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "recordedDate": "2025-09-20T20:56:39.151766",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Condition"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Condition",
+      "id": "6e7c38ba-7c29-4af4-8bcf-df871f5d1a96",
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+          }
+        ]
+      },
+      "verificationStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+          }
+        ]
+      },
+      "code": {
+        "text": "Asthma"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "recordedDate": "2025-09-20T20:56:39.151773",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Condition"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Condition",
+      "id": "3fa06b6b-628b-4cde-a112-46ad1e17013a",
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+          }
+        ]
+      },
+      "verificationStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+          }
+        ]
+      },
+      "code": {
+        "text": "GERD"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "recordedDate": "2025-09-20T20:56:39.151778",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Condition"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Observation",
+      "id": "7b1057a3-b584-41e0-bd8f-5b741b267cfa",
+      "status": "final",
+      "code": {
+        "text": "Vital Sign"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "effectiveDateTime": "2025-09-20T20:56:39.151885",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Observation"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "valueQuantity": {
+        "value": 157.0,
+        "unit": "/",
+        "system": "http://unitsofmeasure.org",
+        "code": "/"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Observation",
+      "id": "65981454-a8ae-4c58-aa85-c3ea870b0c74",
+      "status": "final",
+      "code": {
+        "text": "Vital Sign"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "effectiveDateTime": "2025-09-20T20:56:39.151895",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Observation"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "valueQuantity": {
+        "value": 101.0,
+        "unit": "bpm",
+        "system": "http://unitsofmeasure.org",
+        "code": "bpm"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Observation",
+      "id": "aa78bb97-072c-4b27-b888-56c0ec2576ca",
+      "status": "final",
+      "code": {
+        "text": "Temperature",
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "8310-5",
+            "display": "Temperature"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "effectiveDateTime": "2025-09-20T20:56:39.151903",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Observation"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "valueQuantity": {
+        "value": 98.8
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Observation",
+      "id": "f72d0b7c-a186-4747-9cce-4054f3f80e88",
+      "status": "final",
+      "code": {
+        "text": "Vital Sign"
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "effectiveDateTime": "2025-09-20T20:56:39.151914",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Observation"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "valueQuantity": {
+        "value": 94.0,
+        "unit": "%",
+        "system": "http://unitsofmeasure.org",
+        "code": "%"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Observation",
+      "id": "18ac0270-2c93-464b-a8d2-4dbd1a2b59bc",
+      "status": "final",
+      "code": {
+        "text": "Weight",
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "29463-7",
+            "display": "Weight"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "effectiveDateTime": "2025-09-20T20:56:39.151922",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Observation"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "valueQuantity": {
+        "value": 73.5,
+        "unit": "kg",
+        "system": "http://unitsofmeasure.org",
+        "code": "kg"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Observation",
+      "id": "b6631deb-8dfc-4ced-841d-b4b3dee7a21b",
+      "status": "final",
+      "code": {
+        "text": "Height",
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "8302-2",
+            "display": "Height"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/1a938afa-06f1-442b-af79-3a2a5e950fec"
+      },
+      "effectiveDateTime": "2025-09-20T20:56:39.151931",
+      "meta": {
+        "source": "FHIRProcessor",
+        "profile": [
+          "http://hl7.org/fhir/StructureDefinition/Observation"
+        ],
+        "tag": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+            "code": "TREAT",
+            "display": "Treatment"
+          }
+        ],
+        "lastUpdated": "2025-09-21T00:56:39.152026Z",
+        "versionId": "1"
+      },
+      "valueQuantity": {
+        "value": 162.0,
+        "unit": "cm",
+        "system": "http://unitsofmeasure.org",
+        "code": "cm"
+      },
+      "extension": [
+        {
+          "url": "http://meddocparser.local/fhir/StructureDefinition/processing-metadata",
+          "extension": [
+            {
+              "url": "processingTimestamp",
+              "valueDateTime": "2025-09-21T00:56:39.152026Z"
+            },
+            {
+              "url": "totalResourcesProcessed",
+              "valueInteger": 20
+            },
+            {
+              "url": "processingVersion",
+              "valueString": "1.0.0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "resource_types": {
+    "MedicationStatement": 5,
+    "Encounter": 1,
+    "Condition": 8,
+    "Observation": 6
+  }
+}
