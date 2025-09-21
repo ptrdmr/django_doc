@@ -1,0 +1,243 @@
+# Task ID: 35
+# Title: Implement Clinical Date Extraction and Manual Entry System
+# Status: pending
+# Dependencies: 5, 6, 14, 20, 30, 31
+# Priority: high
+# Description: Create a comprehensive system to handle clinical dates in FHIR resources while maintaining HIPAA audit compliance, including date extraction, manual entry, and clear distinction between processing metadata and clinical data.
+# Details:
+Implement the Clinical Date Extraction and Manual Entry System with the following components:
+
+1. Update FHIR services (condition_service.py, observation_service.py):
+   - Remove datetime.now() usage for clinical dates
+   - Add support for optional clinical date parameters
+
+```python
+def create_condition(patient, code, clinical_date=None):
+    condition = Condition()
+    condition.subject = FHIRReference(reference=f"Patient/{patient.id}")
+    condition.code = CodeableConcept(coding=[Coding(system="http://snomed.info/sct", code=code)])
+    if clinical_date:
+        condition.onsetDateTime = FHIRDate(clinical_date)
+    # Add processing metadata
+    condition.extension = [
+        Extension(
+            url="http://example.com/fhir/StructureDefinition/processing-timestamp",
+            valueDateTime=FHIRDate(datetime.now(timezone.utc))
+        )
+    ]
+    return condition
+```
+
+2. Create ClinicalDateParser utility:
+```python
+import dateparser
+from dateutil.parser import parse
+
+class ClinicalDateParser:
+    @staticmethod
+    def extract_dates(text):
+        # Use NLP techniques to identify and extract dates from text
+        # Return a list of potential clinical dates
+        pass
+
+    @staticmethod
+    def parse_date(date_string):
+        try:
+            return parse(date_string, fuzzy=True).date()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def validate_date(date):
+        # Implement date validation logic (e.g., not in the future, within reasonable range)
+        pass
+```
+
+3. Enhance document processing workflow:
+   - Integrate ClinicalDateParser into the document processing pipeline
+   - Update AI extraction prompt to specifically request clinical dates
+   - Store extracted dates in ParsedData model
+
+4. Update review interface for manual date entry:
+   - Add date input fields to the review form for each extracted data point
+   - Implement client-side date validation
+
+5. Add API endpoints for manual date submission:
+```python
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+class ParsedDataViewSet(viewsets.ModelViewSet):
+    # ... existing viewset code ...
+
+    @action(detail=True, methods=['post'])
+    def update_clinical_date(self, request, pk=None):
+        parsed_data = self.get_object()
+        clinical_date = request.data.get('clinical_date')
+        
+        if clinical_date:
+            validated_date = ClinicalDateParser.parse_date(clinical_date)
+            if validated_date and ClinicalDateParser.validate_date(validated_date):
+                parsed_data.clinical_date = validated_date
+                parsed_data.save()
+                return Response({'status': 'clinical date updated'})
+        
+        return Response({'error': 'Invalid clinical date'}, status=400)
+```
+
+6. Implement HIPAA audit logging for clinical date changes:
+   - Extend the existing AuditLog model to include clinical date modifications
+   - Add logging to the update_clinical_date API endpoint
+
+7. Update FHIR resource creation to use extracted or manually entered clinical dates:
+   - Modify the document finalization process to incorporate clinical dates into FHIR resources
+
+8. Implement a background task to identify missing clinical dates:
+   - Create a Celery task to scan ParsedData entries for missing clinical dates
+   - Generate notifications for review staff to manually enter missing dates
+
+9. Update the patient timeline view to clearly distinguish between clinical dates and processing dates:
+   - Modify the timeline rendering to prioritize display of clinical dates
+   - Add visual indicators for entries with missing clinical dates
+
+10. Implement date range filtering in the patient search functionality:
+    - Add date range parameters to the patient search API
+    - Update the search logic to filter based on clinical dates when available
+
+# Test Strategy:
+To verify the correct implementation of the Clinical Date Extraction and Manual Entry System:
+
+1. Unit test the ClinicalDateParser utility:
+```python
+def test_clinical_date_parser():
+    parser = ClinicalDateParser()
+    
+    # Test date extraction
+    text = "Patient was admitted on 04/23/2024 and discharged on May 1, 2024"
+    dates = parser.extract_dates(text)
+    assert len(dates) == 2
+    assert "04/23/2024" in dates
+    assert "May 1, 2024" in dates
+
+    # Test date parsing
+    assert parser.parse_date("04/23/2024") == date(2024, 4, 23)
+    assert parser.parse_date("invalid date") is None
+
+    # Test date validation
+    assert parser.validate_date(date(2024, 4, 23)) is True
+    assert parser.validate_date(date(2030, 1, 1)) is False  # Future date
+```
+
+2. Integration test the document processing pipeline:
+   - Create a test document with known clinical dates
+   - Run the document through the processing pipeline
+   - Verify that the correct dates are extracted and stored in ParsedData
+
+3. Test the review interface for manual date entry:
+   - Use Selenium or a similar tool to simulate user interactions
+   - Verify that date input fields are present and functional
+   - Test client-side date validation
+
+4. API endpoint tests:
+```python
+def test_update_clinical_date_api():
+    client = APIClient()
+    user = User.objects.create_user(username='testuser', password='testpass')
+    client.force_authenticate(user=user)
+
+    parsed_data = ParsedData.objects.create(field_name='test', field_value='value')
+    url = reverse('parseddata-update-clinical-date', kwargs={'pk': parsed_data.pk})
+
+    # Test valid date
+    response = client.post(url, {'clinical_date': '2024-04-23'})
+    assert response.status_code == 200
+    parsed_data.refresh_from_db()
+    assert parsed_data.clinical_date == date(2024, 4, 23)
+
+    # Test invalid date
+    response = client.post(url, {'clinical_date': 'invalid date'})
+    assert response.status_code == 400
+```
+
+5. Verify HIPAA audit logging:
+   - Perform various operations that modify clinical dates
+   - Check the AuditLog entries to ensure all changes are properly logged
+
+6. Test FHIR resource creation with clinical dates:
+   - Create test cases with various scenarios (extracted dates, manually entered dates, missing dates)
+   - Verify that the resulting FHIR resources contain the correct clinical dates and processing metadata
+
+7. Background task testing:
+   - Create a set of ParsedData entries with missing clinical dates
+   - Run the background task to identify missing dates
+   - Verify that notifications are generated correctly
+
+8. User interface testing:
+   - Create a test dataset with a mix of clinical and processing dates
+   - Render the patient timeline view
+   - Verify that clinical dates are displayed correctly and prioritized
+   - Check for proper visual indicators for missing clinical dates
+
+9. Search functionality testing:
+   - Implement test cases for date range filtering
+   - Verify that search results are correctly filtered based on clinical dates when available
+
+10. Performance testing:
+    - Create a large dataset with numerous documents and extracted data points
+    - Measure the performance of date extraction, parsing, and FHIR resource creation
+    - Optimize any bottlenecks identified during testing
+
+11. Compliance testing:
+    - Review all implemented features against HIPAA requirements
+    - Verify that there is a clear distinction between processing metadata and clinical data in all relevant systems and interfaces
+
+# Subtasks:
+## 1. Implement ClinicalDateParser utility [pending]
+### Dependencies: None
+### Description: Create a utility class for extracting and parsing clinical dates from structured data and document text.
+### Details:
+Develop the ClinicalDateParser class with methods for date extraction, parsing, and validation. Include NLP techniques for identifying dates in text and handling various date formats.
+
+## 2. Update FHIR services for clinical date support [pending]
+### Dependencies: 35.1
+### Description: Modify FHIR services to use clinical dates instead of processing timestamps and add support for optional clinical date parameters.
+### Details:
+Update condition_service.py and observation_service.py to remove datetime.now() usage for clinical dates. Add support for optional clinical_date parameter in create methods. Implement clear separation between clinical dates and processing metadata.
+
+## 3. Enhance document processing workflow for date extraction [pending]
+### Dependencies: 35.1, 35.2
+### Description: Integrate ClinicalDateParser into the document processing pipeline and update AI extraction prompt for clinical dates.
+### Details:
+Modify the document processing workflow to use ClinicalDateParser for extracting dates. Update the AI extraction prompt to specifically request clinical dates. Store extracted dates in the ParsedData model.
+
+## 4. Update database models for date entry status [pending]
+### Dependencies: 35.3
+### Description: Enhance existing models to track the status of clinical date entries and their sources.
+### Details:
+Modify the ParsedData model to include fields for clinical_date, date_source (extracted/manual), and date_status (pending/verified). Update related models as necessary to support these changes.
+
+## 5. Implement review interface for manual date entry [pending]
+### Dependencies: 35.4
+### Description: Update the review interface to allow manual entry and editing of clinical dates.
+### Details:
+Add date input fields to the review form for each extracted data point. Implement client-side date validation and user-friendly date selection widgets. Ensure clear distinction between extracted and manually entered dates.
+
+## 6. Create API endpoints for date submission and validation [pending]
+### Dependencies: 35.4, 35.5
+### Description: Implement API endpoints for submitting and validating clinical dates, with HIPAA-compliant audit logging.
+### Details:
+Develop RESTful API endpoints for updating clinical dates, including validation using ClinicalDateParser. Implement HIPAA-compliant audit logging for all clinical date changes. Extend the existing AuditLog model to include clinical date modifications.
+
+## 7. Update FHIR resource creation process [pending]
+### Dependencies: 35.2, 35.6
+### Description: Modify the document finalization process to incorporate extracted or manually entered clinical dates into FHIR resources.
+### Details:
+Update the FHIR resource creation logic to use the clinical dates stored in ParsedData when available. Implement fallback logic for cases where clinical dates are missing. Ensure clear distinction between clinical dates and processing metadata in the resulting FHIR resources.
+
+## 8. Implement comprehensive testing and HIPAA compliance validation [pending]
+### Dependencies: 35.1, 35.2, 35.3, 35.4, 35.5, 35.6, 35.7
+### Description: Conduct thorough testing of the entire clinical date system and validate HIPAA compliance across all components.
+### Details:
+Develop a comprehensive test suite covering all aspects of the clinical date extraction and manual entry system. Include unit tests, integration tests, and end-to-end tests. Perform HIPAA compliance audits on all components, especially focusing on data handling, storage, and audit logging.
+

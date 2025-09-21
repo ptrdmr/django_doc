@@ -501,6 +501,20 @@ CRITICAL: Every extracted item MUST include a "source" object with the exact tex
                     response_text = response.content[0].text
                     logger.debug(f"[{extraction_id}] Claude manual response length: {len(response_text)} chars")
                     
+                    # PORTHOLE: Capture raw Claude response for debugging
+                    try:
+                        from apps.core.porthole import capture_raw_llm_response
+                        # Extract document ID from extraction_id if possible
+                        doc_id = extraction_id.split('_')[-1] if '_' in extraction_id else extraction_id
+                        capture_raw_llm_response(
+                            document_id=doc_id,
+                            raw_response=response_text,
+                            llm_type="claude_manual_json",
+                            parsing_successful=False  # Will update if parsing succeeds
+                        )
+                    except Exception as porthole_error:
+                        logger.warning(f"[{extraction_id}] Porthole capture failed: {porthole_error}")
+                    
                     # Try to extract JSON from the response
                     json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                     if not json_match:

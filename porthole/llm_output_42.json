@@ -1,0 +1,535 @@
+{
+  "document_id": 42,
+  "timestamp": "2025-09-20T20:54:28.510351",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "AA (aortic aneurysm)",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "111949011",
+        "source": {
+          "text": "Problem Name: AA (aortic aneurysm)\nLife Cycle Status: Active\nLast Updated: 12/27/2023 08:34 MST\nCode: 111949011; Confirmation: Confirmed",
+          "start_index": 0,
+          "end_index": 150
+        }
+      },
+      {
+        "name": "Heart murmur",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "146919019",
+        "source": {
+          "text": "Problem Name: Heart murmur\nLife Cycle Status: Active\nLast Updated: 12/27/2023 08:35 MST\nCode: 146919019; Confirmation: Confirmed",
+          "start_index": 0,
+          "end_index": 130
+        }
+      },
+      {
+        "name": "Hematuria",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "485846015",
+        "source": {
+          "text": "Problem Name: Hematuria\nLife Cycle Status: Active\nLast Updated: 12/27/2023 08:26 MST\nCode: 485846015; Confirmation: Confirmed",
+          "start_index": 0,
+          "end_index": 125
+        }
+      },
+      {
+        "name": "Hypertension",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "1215744012",
+        "source": {
+          "text": "Problem Name: Hypertension\nLife Cycle Status: Active\nLast Updated: 12/27/2023 08:34 MST\nCode: 1215744012; Confirmation: Confirmed",
+          "start_index": 0,
+          "end_index": 130
+        }
+      },
+      {
+        "name": "Prostate cancer",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "1774579013",
+        "source": {
+          "text": "Problem Name: Prostate cancer\nLife Cycle Status: Active\nLast Updated: 12/27/2023 08:26 MST\nCode: 1774579013; Confirmation: Confirmed",
+          "start_index": 0,
+          "end_index": 135
+        }
+      },
+      {
+        "name": "Gross Hematuria",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "ACTIVE PROBLEMS & CONDITIONS\n• Gross Hematuria",
+          "start_index": 0,
+          "end_index": 50
+        }
+      },
+      {
+        "name": "History of Prostate Gland Neoplasm Malignant",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": "2018-02",
+        "icd_code": null,
+        "source": {
+          "text": "• History of Prostate Gland Neoplasm Malignant\nMalignant neoplasm of prostate - Gleason 3+3 in 1/12 cores at the right apex",
+          "start_index": 0,
+          "end_index": 120
+        }
+      },
+      {
+        "name": "Clot retention of urine with gross hematuria",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "PREOPERATIVE DIAGNOSIS:\nClot retention of urine with gross hematuria and a personal history of prostate cancer.",
+          "start_index": 0,
+          "end_index": 110
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "chlorhexidine topical (Peridex)",
+        "dosage": "0.018 Gm 15 mL",
+        "route": "topical",
+        "frequency": "once",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: chlorhexidine topical (Peridex) Charted Date/Time: 12/28/2023 10:22 MST\nIngredients: CHLOUDQ15 0.018 Gm 15 m L\nAdmin Details: (Auth) Swish and Spit",
+          "start_index": 0,
+          "end_index": 180
+        }
+      },
+      {
+        "name": "fentaNYL",
+        "dosage": "100 mcg 2 mL",
+        "route": "IV Push",
+        "frequency": "once",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: fenta NYL\nCharted Date/Time: 12/28/2023 10:58 MST\nIngredients: FENTI2 100 mcg 2 m L\nAdmin Details: (Auth) IV Push",
+          "start_index": 0,
+          "end_index": 150
+        }
+      },
+      {
+        "name": "propofol",
+        "dosage": "150 mg 15 mL",
+        "route": "IV Push",
+        "frequency": "once",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: propofol\nCharted Date/Time: 12/28/2023 11:08 MST\nIngredients: PROPI20SDV 150 mg 15 m L\nAdmin Details: (Auth) IV Push",
+          "start_index": 0,
+          "end_index": 150
+        }
+      },
+      {
+        "name": "lidocaine",
+        "dosage": "50 mg 2.5 mL",
+        "route": "IV Push",
+        "frequency": "once",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: lidocaine\nCharted Date/Time: 12/28/2023 11:08 MST\nIngredients: LI20SYS 50 mg 2.5 m L\nAdmin Details: (Auth) IV Push",
+          "start_index": 0,
+          "end_index": 140
+        }
+      },
+      {
+        "name": "ondansetron",
+        "dosage": "4 mg 2 mL",
+        "route": "IV Push",
+        "frequency": "once",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: ondansetron\nCharted Date/Time: 12/28/2023 11:08 MST\nIngredients: ONDA212PFSDV 4 mg 2 m L\nAdmin Details: (Auth) IV Push",
+          "start_index": 0,
+          "end_index": 150
+        }
+      },
+      {
+        "name": "dexAMETHasone",
+        "dosage": "4 mg 1 mL",
+        "route": "IV Push",
+        "frequency": "once",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: dex AMETHasone\nCharted Date/Time: 12/28/2023 11:08 MST\nIngredients: DEXA415MDV 4 mg 1 m L\nAdmin Details: (Auth) IV Push",
+          "start_index": 0,
+          "end_index": 150
+        }
+      },
+      {
+        "name": "cefTRIAXone (Rocephin)",
+        "dosage": "1 Gm",
+        "route": "IV Piggyback",
+        "frequency": "once",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: cef TRIAXone (Rocephin) Charted Date/Time: 12/28/2023 11:01 MST Ingredients: NS50MBP 50 m L; ceftri1000 1 Gm\nAdmin Details: (Auth) IV Piggyback, Arm, Right",
+          "start_index": 0,
+          "end_index": 180
+        }
+      },
+      {
+        "name": "morphine",
+        "dosage": "4 mg 1 mL",
+        "route": "IV Push",
+        "frequency": "once",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: morphine\nCharted Date/Time: 12/28/2023 11:23 MST\nIngredients: MS4SY 4 mg 1 m L\nAdmin Details: (Auth) IV Push",
+          "start_index": 0,
+          "end_index": 140
+        }
+      },
+      {
+        "name": "Lactated Ringers Injection",
+        "dosage": "900 mL",
+        "route": "IV Cont Infusion",
+        "frequency": "continuous",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: Lactated Ringers Injection intravenous solution\nCharted Date/Time: 12/28/2023 11:46 MST\nIngredients: LR1000 900 m L 900 m L\nAdmin Details: (Auth) IV Cont Infusion",
+          "start_index": 0,
+          "end_index": 200
+        }
+      },
+      {
+        "name": "HYDROmorphone",
+        "dosage": "0.5 mg 0.5 mL",
+        "route": "IV Push",
+        "frequency": "PRN",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: HYDROmorphone\nCharted Date/Time: 12/28/2023 12:13 MST\nIngredients: HYDR1SY 0.5 mg 0.5 m L\nAdmin Details: (Auth) IV Push, Hand, Left",
+          "start_index": 0,
+          "end_index": 160
+        }
+      },
+      {
+        "name": "phenazopyridine (Pyridium)",
+        "dosage": "100 mg 1 tab",
+        "route": "Oral",
+        "frequency": "once",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: phenazopyridine (Pyridium) Charted Date/Time: 12/28/2023 12:17 MST\nIngredients: PHENAZO100T 100 mg 1 tab\nAdmin Details: (Auth) Oral",
+          "start_index": 0,
+          "end_index": 160
+        }
+      },
+      {
+        "name": "meperidine (Demerol HCI)",
+        "dosage": "12.5 mg 0.5 mL",
+        "route": "IV Push",
+        "frequency": "PRN",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: meperidine (Demerol HCI)\nCharted Date/Time: 12/28/2023 12:22 MST\nIngredients: MEPE25SY 12.5 mg 0.5 m L\nAdmin Details: (Auth) IV Push, Hand, Left",
+          "start_index": 0,
+          "end_index": 170
+        }
+      },
+      {
+        "name": "Sodium Chloride 0.9%",
+        "dosage": "1000 mL",
+        "route": "IV",
+        "frequency": "100 mL/hr",
+        "status": "administered",
+        "confidence": 0.95,
+        "start_date": "2023-12-28",
+        "stop_date": null,
+        "source": {
+          "text": "Medication Name: Sodium Chloride 0.9% Intravenous solution 1,000 m L\nCharted Date/Time: 12/28/2023 10:21 MST\nIngredients: NS1000LVP 1000 m L\nAdmin Details: (Begin Bag) (Auth) 1000 m L, 100 m L/hr, Arm, Left",
+          "start_index": 0,
+          "end_index": 220
+        }
+      },
+      {
+        "name": "AmLODIPine Besylate",
+        "dosage": "10 MG",
+        "route": "Oral",
+        "frequency": "daily",
+        "status": "current",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Am LODIPine Besylate 10MG Oral Tablet 10 MG 0 days, 0 refills",
+          "start_index": 0,
+          "end_index": 65
+        }
+      },
+      {
+        "name": "Losartan Potassium",
+        "dosage": "100 MG",
+        "route": "Oral",
+        "frequency": "daily",
+        "status": "current",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Losartan Potassium 100 MG Oval Tablet 0 days, 0 refills",
+          "start_index": 0,
+          "end_index": 55
+        }
+      },
+      {
+        "name": "Tamsulosin HCI",
+        "dosage": "0.4 MG",
+        "route": "Oral",
+        "frequency": "twice a day",
+        "status": "current",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Tamsulosin HCI 0.4MG Oral Capsule 0,4 MG twice a day sig i tab PO BID, 90 days, 3 refills",
+          "start_index": 0,
+          "end_index": 90
+        }
+      },
+      {
+        "name": "Finasteride",
+        "dosage": "5 MG",
+        "route": "Oral",
+        "frequency": "daily",
+        "status": "prescribed",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Finasteride 5 MG tablet 1 tab daily, 30 days, 0 refills",
+          "start_index": 0,
+          "end_index": 55
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Pain Scale",
+        "value": "3",
+        "unit": "Mild pain",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Numeric Rating Pain Scale: 3 = Mild pain; Pasero Opioid Induced Sedation Scale: 1 = Awake and alert",
+          "start_index": 0,
+          "end_index": 100
+        }
+      },
+      {
+        "measurement": "Pain Scale",
+        "value": "6",
+        "unit": "Moderate pain",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Numeric Rating Pain Scale: 6 = Moderate pain; Pasero Opioid Induced Sedation Scale: 1 = Awake and alert",
+          "start_index": 0,
+          "end_index": 105
+        }
+      },
+      {
+        "measurement": "Pain Scale",
+        "value": "10",
+        "unit": "Severe pain",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Numeric Rating Pain Scale: 10 = Severe pain; Pasero Opioid Induced Sedation Scale: 1 = Awake and alert",
+          "start_index": 0,
+          "end_index": 105
+        }
+      },
+      {
+        "measurement": "Pain Scale",
+        "value": "8",
+        "unit": "Severe pain",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Numeric Rating Pain Scale: 8 = Severe pain; Pasero Opioid Induced Sedation Scale: 1 = Awake and alert",
+          "start_index": 0,
+          "end_index": 105
+        }
+      }
+    ],
+    "lab_results": [
+      {
+        "test_name": "Glucose POC",
+        "value": "108",
+        "unit": "mg/dL",
+        "reference_range": "70-115",
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Glucose POC\nCollected Date 12/28/2023\nCollected Time 11:44 MST\nProcedure Units 108 Bedside Glucose mg/d L\nReference Range [70-115]\nSpecimen Type Capillary",
+          "start_index": 0,
+          "end_index": 150
+        }
+      },
+      {
+        "test_name": "Glucose POC",
+        "value": "100",
+        "unit": "mg/dL",
+        "reference_range": "70-115",
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Collected Date 12/28/2023\nCollected Time 10:01 MST\nProcedure 100 Bedside Glucose\nSpecimen Type Capillary",
+          "start_index": 0,
+          "end_index": 100
+        }
+      }
+    ],
+    "procedures": [
+      {
+        "name": "Cystoscopy with clot evacuation and fulguration of bleeding",
+        "procedure_date": null,
+        "provider": "Vincent Chehval, DO",
+        "outcome": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "PROCEDURE PERFORMED:\nCystoscopy with clot evacuation and fulguration of bleeding.\nSURGEON:\nVincent Chehval, DO.",
+          "start_index": 0,
+          "end_index": 120
+        }
+      },
+      {
+        "name": "Cysto, bladder biopsy, bilateral RPG",
+        "procedure_date": null,
+        "provider": "Chehval, Vincent A. DO",
+        "outcome": null,
+        "confidence": 0.85,
+        "source": {
+          "text": "Surgery/Adult Urology: Cysto, bladder biopsy, bilateral RPG",
+          "start_index": 0,
+          "end_index": 60
+        }
+      }
+    ],
+    "providers": [
+      {
+        "name": "CHEHVAL DO,VINCENT ANDREW",
+        "specialty": "Urology",
+        "role": "Attending Physician",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Attending Physician: CHEHVAL DO,VINCENT ANDREW",
+          "start_index": 0,
+          "end_index": 45
+        }
+      },
+      {
+        "name": "SCHLOSSER MD,RANDAL RAY",
+        "specialty": "Anesthesiology",
+        "role": "Anesthesiologist",
+        "contact_info": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Order: SCHLOSSER MD,RANDAL RAY 12/28/2023 10:49 MST; Perform: SCHLOSSER MD,RANDAL RAY",
+          "start_index": 0,
+          "end_index": 85
+        }
+      },
+      {
+        "name": "De Leon RN,Girlyn L",
+        "specialty": "Nursing",
+        "role": "Registered Nurse",
+        "contact_info": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Reviewed By: De Leon RN,Girlyn L",
+          "start_index": 0,
+          "end_index": 35
+        }
+      },
+      {
+        "name": "Nelson RN,Adrienne",
+        "specialty": "Nursing",
+        "role": "Registered Nurse",
+        "contact_info": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Perform: Nelson RN,Adrienne 12/28/2023 11:54 MST",
+          "start_index": 0,
+          "end_index": 50
+        }
+      },
+      {
+        "name": "Ith RN,Gina",
+        "specialty": "Nursing",
+        "role": "Registered Nurse",
+        "contact_info": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Perform: Ith RN,Gina 12/28/2023 10:22 MST",
+          "start_index": 0,
+          "end_index": 45
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-09-20T20:54:28.509257",
+    "document_type": "Da Doctor - Family Medicine",
+    "confidence_average": 0.937
+  }
+}

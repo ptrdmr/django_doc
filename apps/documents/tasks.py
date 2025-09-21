@@ -90,6 +90,7 @@ def process_document_async(self, document_id: int):
     from apps.documents.services import PDFTextExtractor, APIRateLimitError
     from apps.documents.analyzers import DocumentAnalyzer
     from apps.fhir.converters import StructuredDataConverter
+    from apps.core.porthole import capture_pdf_text, capture_llm_output, capture_fhir_data, capture_raw_llm_response, capture_pipeline_error
     
     # Initialize task tracking
     task_id = self.request.id
@@ -272,6 +273,17 @@ def process_document_async(self, document_id: int):
         document.original_text = extraction_result['text']
         document.save()
         
+        # PORTHOLE: Capture PDF text extraction
+        capture_pdf_text(
+            document_id=document_id,
+            extracted_text=extraction_result['text'],
+            metadata={
+                'page_count': extraction_result['page_count'],
+                'file_size_mb': extraction_result['file_size'],
+                'pdf_metadata': extraction_result.get('metadata', {})
+            }
+        )
+        
         logger.info(f"PDF extraction successful: {extraction_result['page_count']} pages, "
                    f"{len(extraction_result['text'])} characters")
         
@@ -300,6 +312,14 @@ def process_document_async(self, document_id: int):
                     structured_extraction = ai_analyzer.analyze_document_structured(
                         document_content=extraction_result['text'],
                         context=context
+                    )
+                    
+                    # PORTHOLE: Capture LLM structured output
+                    capture_llm_output(
+                        document_id=document_id,
+                        llm_response=structured_extraction,
+                        llm_type="structured_extraction_claude",
+                        success=bool(structured_extraction)
                     )
                     
                     if structured_extraction:
@@ -356,6 +376,18 @@ def process_document_async(self, document_id: int):
                     
                 except Exception as structured_exc:
                     logger.error(f"Structured extraction failed for document {document_id}: {structured_exc}")
+                    
+                    # PORTHOLE: Capture extraction error
+                    capture_pipeline_error(
+                        document_id=document_id,
+                        stage="structured_extraction",
+                        error_message=str(structured_exc),
+                        error_data={
+                            'context': context,
+                            'text_length': len(extraction_result['text'])
+                        }
+                    )
+                    
                     structured_extraction = None
                     # Create a failure ai_result instead of None
                     ai_result = {
@@ -449,6 +481,14 @@ def process_document_async(self, document_id: int):
                             
                             fhir_processor = FHIRProcessor()
                             fhir_resources = fhir_processor.process_extracted_data(extracted_data, patient_id)
+                            
+                            # PORTHOLE: Capture FHIR conversion output
+                            capture_fhir_data(
+                                document_id=document_id,
+                                fhir_resources=fhir_resources,
+                                patient_id=patient_id,
+                                stage="fhir_conversion"
+                            )
                             
                             logger.info(f"Legacy FHIRProcessor created {len(fhir_resources)} resources from extracted data")
                             

@@ -435,8 +435,8 @@ AI_MODEL_PRIMARY = config('AI_MODEL_PRIMARY', default='claude-3-5-sonnet-2024062
 AI_MODEL_FALLBACK = config('AI_MODEL_FALLBACK', default='gpt-4o-mini')
 
 # Token Limits and Cost Controls
-AI_MAX_TOKENS_PER_REQUEST = config('AI_MAX_TOKENS_PER_REQUEST', default=4096, cast=int)
-AI_TOKEN_THRESHOLD_FOR_CHUNKING = config('AI_TOKEN_THRESHOLD_FOR_CHUNKING', default=30000, cast=int)  # More reasonable threshold
+AI_MAX_TOKENS_PER_REQUEST = config('AI_MAX_TOKENS_PER_REQUEST', default=8192, cast=int)
+AI_TOKEN_THRESHOLD_FOR_CHUNKING = config('AI_TOKEN_THRESHOLD_FOR_CHUNKING', default=20000, cast=int)  # Lower threshold for better chunking
 AI_DAILY_COST_LIMIT = config('AI_DAILY_COST_LIMIT', default=100.00, cast=float)
 
 # Request Timeouts and Retry Configuration
