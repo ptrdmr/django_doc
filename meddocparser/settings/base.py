@@ -70,6 +70,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'allauth.account.middleware.AccountMiddleware',    # Allauth middleware
     'axes.middleware.AxesMiddleware',                   # Failed login monitoring
+    'apps.documents.middleware.StructuredDataValidationMiddleware',  # Document validation middleware
     'apps.core.middleware.AuditLoggingMiddleware',     # HIPAA audit logging
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -362,15 +363,36 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 50  # Restart worker after 50 tasks
 CELERY_TASK_TIME_LIMIT = 600  # 10 minutes
 CELERY_TASK_SOFT_TIME_LIMIT = 540  # 9 minutes
 
-# Cache backend configuration - using locmem for development (works with django-ratelimit)
+# Cache backend configuration - using Redis for performance and persistence
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'meddocparser-cache',
-        'TIMEOUT': 300,  # 5 minutes default timeout
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': REDIS_URL,
+        'TIMEOUT': 3600,  # 1 hour default timeout for AI extraction results
         'OPTIONS': {
-            'MAX_ENTRIES': 1000,
-        }
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 20,
+                'retry_on_timeout': True,
+            }
+        },
+        'KEY_PREFIX': 'meddocparser',
+        'VERSION': 1,
+    },
+    # Separate cache for AI extraction results with longer timeout
+    'ai_extraction': {
+        'BACKEND': 'django_redis.cache.RedisCache', 
+        'LOCATION': REDIS_URL + '/1',  # Use database 1 for AI cache
+        'TIMEOUT': 86400,  # 24 hours for AI extraction results
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+        },
+        'KEY_PREFIX': 'ai_extract',
+        'VERSION': 1,
     }
 }
 

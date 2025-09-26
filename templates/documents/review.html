@@ -1207,47 +1207,59 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Handle save edit button clicks
-    document.querySelectorAll('.save-edit').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const card = this.closest('.field-review-card');
-            const fieldId = card.dataset.fieldId;
-            const input = card.querySelector('.edit-field-value');
-            const newValue = input.value.trim();
-            
-            if (!newValue) {
-                alert('Value cannot be empty');
-                return;
-            }
-            
-            // Prepare form data for the endpoint
-            const formData = new FormData();
-            formData.append('value', newValue);
-            formData.append('document_id', '{{ document.id }}');
-            formData.append('field_name', card.querySelector('.field-name').textContent);
-            formData.append('confidence', card.querySelector('.confidence-indicator').dataset.confidence || '0.5');
-            formData.append('snippet', card.querySelector('.snippet-text')?.textContent || '');
-            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
-            
-            // Make AJAX request to update field
-            fetch(`/documents/field/${fieldId}/update/`, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
+        // Handle save edit button clicks
+        document.querySelectorAll('.save-edit').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const card = this.closest('.field-review-card');
+                const fieldId = card.dataset.fieldId;
+                const input = card.querySelector('.edit-field-value');
+                const newValue = input.value.trim();
+                
+                if (!newValue) {
+                    alert('Value cannot be empty');
+                    return;
                 }
-            })
-            .then(response => response.text())
-            .then(html => {
-                // Replace the entire card with updated HTML
-                card.outerHTML = html;
-            })
-            .catch(error => {
-                console.error('Error updating field:', error);
-                alert('Error updating field. Please try again.');
+                
+                // Prepare form data for the endpoint
+                const formData = new FormData();
+                formData.append('value', newValue);
+                formData.append('document_id', '{{ document.id }}');
+                formData.append('field_name', card.querySelector('.field-name').textContent);
+                formData.append('confidence', card.querySelector('.confidence-indicator').dataset.confidence || '0.5');
+                formData.append('snippet', card.querySelector('.snippet-text')?.textContent || '');
+                
+                // Add structured data fields if available
+                if (card.dataset.fieldPath) {
+                    formData.append('field_path', card.dataset.fieldPath);
+                }
+                if (card.dataset.resourceType) {
+                    formData.append('resource_type', card.dataset.resourceType);
+                }
+                if (card.dataset.resourceIndex) {
+                    formData.append('resource_index', card.dataset.resourceIndex);
+                }
+                
+                formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+                
+                // Make AJAX request to update field
+                fetch(`/documents/field/${fieldId}/update/`, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(response => response.text())
+                .then(html => {
+                    // Replace the entire card with updated HTML
+                    card.outerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error updating field:', error);
+                    alert('Error updating field. Please try again.');
+                });
             });
         });
-    });
     
     // Handle approve button clicks with HTMX-style functionality
     document.querySelectorAll('.approve-btn').forEach(btn => {
@@ -1266,6 +1278,18 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('field_value', card.querySelector('.value-display').textContent.trim());
             formData.append('confidence', card.querySelector('.confidence-indicator').dataset.confidence || '0.5');
             formData.append('snippet', card.querySelector('.snippet-text')?.textContent || '');
+            
+            // Add structured data fields if available
+            if (card.dataset.fieldPath) {
+                formData.append('field_path', card.dataset.fieldPath);
+            }
+            if (card.dataset.resourceType) {
+                formData.append('resource_type', card.dataset.resourceType);
+            }
+            if (card.dataset.resourceIndex) {
+                formData.append('resource_index', card.dataset.resourceIndex);
+            }
+            
             formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
             
             // Make AJAX request to approve field
@@ -1307,6 +1331,18 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('confidence', card.querySelector('.confidence-indicator').dataset.confidence || '0.5');
             formData.append('snippet', card.querySelector('.snippet-text')?.textContent || '');
             formData.append('reason', reason.trim());
+            
+            // Add structured data fields if available
+            if (card.dataset.fieldPath) {
+                formData.append('field_path', card.dataset.fieldPath);
+            }
+            if (card.dataset.resourceType) {
+                formData.append('resource_type', card.dataset.resourceType);
+            }
+            if (card.dataset.resourceIndex) {
+                formData.append('resource_index', card.dataset.resourceIndex);
+            }
+            
             formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
             
             // Make AJAX request to flag field

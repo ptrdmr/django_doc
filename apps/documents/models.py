@@ -220,6 +220,11 @@ class Document(BaseModel):
             models.Index(fields=['patient', 'status']),
             models.Index(fields=['status', 'uploaded_at']),
             models.Index(fields=['uploaded_at']),
+            # Performance optimization indexes for document processing
+            models.Index(fields=['status', 'processing_attempts'], name='doc_status_attempts_idx'),
+            models.Index(fields=['file_size', 'status'], name='doc_size_status_idx'),
+            models.Index(fields=['processed_at'], name='doc_processed_at_idx'),
+            models.Index(fields=['patient', 'processed_at'], name='doc_patient_processed_idx'),
         ]
     
     def __str__(self):

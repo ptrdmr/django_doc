@@ -7,190 +7,414 @@
 # Details:
 Implement the Clinical Date Extraction and Manual Entry System with the following components:
 
-1. Update FHIR services (condition_service.py, observation_service.py):
-   - Remove datetime.now() usage for clinical dates
-   - Add support for optional clinical date parameters
-
+1. ClinicalDateParser utility:
 ```python
-def create_condition(patient, code, clinical_date=None):
-    condition = Condition()
-    condition.subject = FHIRReference(reference=f"Patient/{patient.id}")
-    condition.code = CodeableConcept(coding=[Coding(system="http://snomed.info/sct", code=code)])
-    if clinical_date:
-        condition.onsetDateTime = FHIRDate(clinical_date)
-    # Add processing metadata
-    condition.extension = [
-        Extension(
-            url="http://example.com/fhir/StructureDefinition/processing-timestamp",
-            valueDateTime=FHIRDate(datetime.now(timezone.utc))
-        )
-    ]
-    return condition
-```
-
-2. Create ClinicalDateParser utility:
-```python
-import dateparser
-from dateutil.parser import parse
+import re
+from dateutil import parser
+from transformers import pipeline
 
 class ClinicalDateParser:
-    @staticmethod
-    def extract_dates(text):
-        # Use NLP techniques to identify and extract dates from text
-        # Return a list of potential clinical dates
-        pass
+    def __init__(self):
+        self.nlp_pipeline = pipeline("ner", model="emilyalsentzer/Bio_ClinicalBERT")
 
-    @staticmethod
-    def parse_date(date_string):
-        try:
-            return parse(date_string, fuzzy=True).date()
-        except ValueError:
-            return None
+    def extract_dates(self, text):
+        # Use regex for initial date extraction
+        date_patterns = [
+            r'\d{1,2}/\d{1,2}/\d{2,4}',
+            r'\d{4}-\d{2}-\d{2}',
+            r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b'
+        ]
+        extracted_dates = []
+        for pattern in date_patterns:
+            extracted_dates.extend(re.findall(pattern, text))
 
-    @staticmethod
-    def validate_date(date):
-        # Implement date validation logic (e.g., not in the future, within reasonable range)
-        pass
+        # Use NLP for more complex date expressions
+        entities = self.nlp_pipeline(text)
+        for entity in entities:
+            if entity['entity'] == 'DATE':
+                extracted_dates.append(entity['word'])
+
+        # Parse and standardize dates
+        standardized_dates = []
+        for date_str in extracted_dates:
+            try:
+                parsed_date = parser.parse(date_str)
+                standardized_dates.append(parsed_date.strftime('%Y-%m-%d'))
+            except ValueError:
+                pass  # Skip unparseable dates
+
+        return standardized_dates
+
+# Usage
+parser = ClinicalDateParser()
+dates = parser.extract_dates("Patient was admitted on 05/15/2023 and discharged last Friday.")
 ```
 
-3. Enhance document processing workflow:
-   - Integrate ClinicalDateParser into the document processing pipeline
-   - Update AI extraction prompt to specifically request clinical dates
-   - Store extracted dates in ParsedData model
-
-4. Update review interface for manual date entry:
-   - Add date input fields to the review form for each extracted data point
-   - Implement client-side date validation
-
-5. Add API endpoints for manual date submission:
+2. Update FHIR services:
 ```python
-from rest_framework import viewsets
-from rest_framework.decorators import action
-from rest_framework.response import Response
+# condition_service.py
+from datetime import datetime
+from .clinical_date_parser import ClinicalDateParser
 
-class ParsedDataViewSet(viewsets.ModelViewSet):
-    # ... existing viewset code ...
+class ConditionService:
+    def __init__(self):
+        self.date_parser = ClinicalDateParser()
 
-    @action(detail=True, methods=['post'])
-    def update_clinical_date(self, request, pk=None):
-        parsed_data = self.get_object()
-        clinical_date = request.data.get('clinical_date')
-        
-        if clinical_date:
-            validated_date = ClinicalDateParser.parse_date(clinical_date)
-            if validated_date and ClinicalDateParser.validate_date(validated_date):
-                parsed_data.clinical_date = validated_date
-                parsed_data.save()
-                return Response({'status': 'clinical date updated'})
-        
-        return Response({'error': 'Invalid clinical date'}, status=400)
+    def create_condition(self, patient, condition_data):
+        extracted_dates = self.date_parser.extract_dates(condition_data['description'])
+        onset_date = extracted_dates[0] if extracted_dates else None
+
+        condition = Condition(
+            patient=patient,
+            code=condition_data['code'],
+            description=condition_data['description'],
+            onset_date=onset_date,
+            recorded_date=datetime.now()  # This is metadata, not clinical data
+        )
+        condition.save()
+        return condition
+
+# Similar updates for observation_service.py
 ```
 
-6. Implement HIPAA audit logging for clinical date changes:
-   - Extend the existing AuditLog model to include clinical date modifications
-   - Add logging to the update_clinical_date API endpoint
+3. Enhance ParsedData model:
+```python
+# documents/models.py
+class ParsedData(models.Model):
+    document = models.ForeignKey(Document, on_delete=models.CASCADE)
+    field_name = models.CharField(max_length=100)
+    field_value = models.TextField()
+    confidence_score = models.FloatField()
+    extracted_date = models.DateField(null=True, blank=True)
+    is_clinical_date = models.BooleanField(default=False)
+    manual_review_required = models.BooleanField(default=False)
+```
 
-7. Update FHIR resource creation to use extracted or manually entered clinical dates:
-   - Modify the document finalization process to incorporate clinical dates into FHIR resources
+4. Manual date entry interface:
+```javascript
+// date_entry.js
+function validateDate(dateString) {
+    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!regex.test(dateString)) return false;
+    const date = new Date(dateString);
+    return date instanceof Date && !isNaN(date);
+}
 
-8. Implement a background task to identify missing clinical dates:
-   - Create a Celery task to scan ParsedData entries for missing clinical dates
-   - Generate notifications for review staff to manually enter missing dates
+document.getElementById('dateForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const dateInput = document.getElementById('clinicalDate');
+    if (validateDate(dateInput.value)) {
+        // Submit date to server
+        fetch('/api/submit-clinical-date', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({date: dateInput.value, parsedDataId: parsedDataId}),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showSuccessMessage('Date submitted successfully');
+            } else {
+                showErrorMessage('Error submitting date');
+            }
+        });
+    } else {
+        showErrorMessage('Invalid date format. Please use YYYY-MM-DD.');
+    }
+});
+```
 
-9. Update the patient timeline view to clearly distinguish between clinical dates and processing dates:
-   - Modify the timeline rendering to prioritize display of clinical dates
-   - Add visual indicators for entries with missing clinical dates
+5. API endpoints with HIPAA audit logging:
+```python
+# views.py
+from .models import ParsedData
+from .audit_log import log_audit_event
 
-10. Implement date range filtering in the patient search functionality:
-    - Add date range parameters to the patient search API
-    - Update the search logic to filter based on clinical dates when available
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_clinical_date(request):
+    parsed_data_id = request.data.get('parsedDataId')
+    clinical_date = request.data.get('date')
+
+    parsed_data = ParsedData.objects.get(id=parsed_data_id)
+    parsed_data.extracted_date = clinical_date
+    parsed_data.is_clinical_date = True
+    parsed_data.save()
+
+    log_audit_event(
+        user=request.user,
+        action='UPDATE',
+        resource_type='ParsedData',
+        resource_id=parsed_data_id,
+        details=f"Updated clinical date to {clinical_date}"
+    )
+
+    return Response({'success': True})
+```
+
+6. Background task for missing dates:
+```python
+# tasks.py
+from celery import shared_task
+from .models import Document, ParsedData
+from .clinical_date_parser import ClinicalDateParser
+
+@shared_task
+def identify_missing_clinical_dates():
+    parser = ClinicalDateParser()
+    documents = Document.objects.filter(processing_complete=True)
+    
+    for document in documents:
+        parsed_data = ParsedData.objects.filter(document=document, is_clinical_date=True, extracted_date__isnull=True)
+        
+        for data in parsed_data:
+            extracted_dates = parser.extract_dates(data.field_value)
+            if extracted_dates:
+                data.extracted_date = extracted_dates[0]
+                data.save()
+            else:
+                data.manual_review_required = True
+                data.save()
+
+# Schedule this task to run periodically
+```
+
+7. Update patient timeline:
+```python
+# patient_service.py
+def get_patient_timeline(patient):
+    timeline = []
+    
+    # Fetch all date-related events
+    conditions = Condition.objects.filter(patient=patient)
+    observations = Observation.objects.filter(patient=patient)
+    documents = Document.objects.filter(patient=patient)
+    
+    for condition in conditions:
+        timeline.append({
+            'date': condition.onset_date,
+            'event_type': 'Condition',
+            'description': condition.description,
+            'is_clinical_date': True
+        })
+    
+    for observation in observations:
+        timeline.append({
+            'date': observation.effective_date,
+            'event_type': 'Observation',
+            'description': observation.code.text,
+            'is_clinical_date': True
+        })
+    
+    for document in documents:
+        timeline.append({
+            'date': document.created_at,
+            'event_type': 'Document',
+            'description': f"Document uploaded: {document.title}",
+            'is_clinical_date': False
+        })
+    
+    # Sort timeline by date
+    timeline.sort(key=lambda x: x['date'])
+    
+    return timeline
+```
+
+8. Implement date range filtering:
+```python
+# patient_search.py
+def search_patients(query, date_range_start=None, date_range_end=None):
+    patients = Patient.objects.filter(
+        Q(first_name__icontains=query) | 
+        Q(last_name__icontains=query) |
+        Q(mrn__icontains=query)
+    )
+    
+    if date_range_start and date_range_end:
+        patients = patients.filter(
+            Q(condition__onset_date__range=[date_range_start, date_range_end]) |
+            Q(observation__effective_date__range=[date_range_start, date_range_end])
+        ).distinct()
+    
+    return patients
+```
+
+This implementation provides a comprehensive system for handling clinical dates, including extraction, manual entry, and clear distinction between clinical and processing dates. It maintains HIPAA compliance through audit logging and integrates with existing FHIR resources and document processing workflows.
 
 # Test Strategy:
 To verify the correct implementation of the Clinical Date Extraction and Manual Entry System:
 
-1. Unit test the ClinicalDateParser utility:
+1. Unit test the ClinicalDateParser:
 ```python
 def test_clinical_date_parser():
     parser = ClinicalDateParser()
     
-    # Test date extraction
-    text = "Patient was admitted on 04/23/2024 and discharged on May 1, 2024"
-    dates = parser.extract_dates(text)
-    assert len(dates) == 2
-    assert "04/23/2024" in dates
-    assert "May 1, 2024" in dates
+    # Test various date formats
+    assert parser.extract_dates("Patient admitted on 05/15/2023") == ["2023-05-15"]
+    assert parser.extract_dates("Follow-up scheduled for January 10, 2024") == ["2024-01-10"]
+    assert parser.extract_dates("No dates in this text") == []
+    
+    # Test complex date expressions
+    assert parser.extract_dates("Symptoms started last week, worsened yesterday") != []
+    
+    # Test multiple dates in one text
+    result = parser.extract_dates("Admitted on 2023-06-01, discharged on 06/15/2023")
+    assert len(result) == 2 and "2023-06-01" in result and "2023-06-15" in result
 
-    # Test date parsing
-    assert parser.parse_date("04/23/2024") == date(2024, 4, 23)
-    assert parser.parse_date("invalid date") is None
-
-    # Test date validation
-    assert parser.validate_date(date(2024, 4, 23)) is True
-    assert parser.validate_date(date(2030, 1, 1)) is False  # Future date
-```
-
-2. Integration test the document processing pipeline:
-   - Create a test document with known clinical dates
-   - Run the document through the processing pipeline
-   - Verify that the correct dates are extracted and stored in ParsedData
-
-3. Test the review interface for manual date entry:
-   - Use Selenium or a similar tool to simulate user interactions
-   - Verify that date input fields are present and functional
-   - Test client-side date validation
-
-4. API endpoint tests:
+2. Test FHIR service updates:
 ```python
-def test_update_clinical_date_api():
+def test_condition_service():
+    service = ConditionService()
+    patient = Patient.objects.create(mrn="TEST001")
+    
+    condition_data = {
+        "code": "J45",
+        "description": "Asthma exacerbation on 2023-07-01"
+    }
+    
+    condition = service.create_condition(patient, condition_data)
+    
+    assert condition.onset_date == datetime.date(2023, 7, 1)
+    assert condition.recorded_date.date() == datetime.date.today()
+
+3. Verify ParsedData model changes:
+```python
+def test_parsed_data_model():
+    document = Document.objects.create(title="Test Doc")
+    parsed_data = ParsedData.objects.create(
+        document=document,
+        field_name="admission_date",
+        field_value="2023-08-15",
+        confidence_score=0.95,
+        extracted_date="2023-08-15",
+        is_clinical_date=True
+    )
+    
+    assert parsed_data.is_clinical_date == True
+    assert parsed_data.extracted_date == datetime.date(2023, 8, 15)
+
+4. Test manual date entry interface:
+- Use Selenium or a similar tool to simulate user interactions with the date entry form.
+- Verify that client-side validation correctly handles valid and invalid date formats.
+- Ensure the form submission process works as expected, including error handling.
+
+5. API endpoint and HIPAA audit logging:
+```python
+def test_submit_clinical_date_api():
     client = APIClient()
     user = User.objects.create_user(username='testuser', password='testpass')
     client.force_authenticate(user=user)
-
-    parsed_data = ParsedData.objects.create(field_name='test', field_value='value')
-    url = reverse('parseddata-update-clinical-date', kwargs={'pk': parsed_data.pk})
-
-    # Test valid date
-    response = client.post(url, {'clinical_date': '2024-04-23'})
+    
+    parsed_data = ParsedData.objects.create(field_name="test_date")
+    
+    response = client.post('/api/submit-clinical-date', {
+        'parsedDataId': parsed_data.id,
+        'date': '2023-09-01'
+    })
+    
     assert response.status_code == 200
-    parsed_data.refresh_from_db()
-    assert parsed_data.clinical_date == date(2024, 4, 23)
+    assert response.data['success'] == True
+    
+    updated_parsed_data = ParsedData.objects.get(id=parsed_data.id)
+    assert updated_parsed_data.extracted_date == datetime.date(2023, 9, 1)
+    assert updated_parsed_data.is_clinical_date == True
+    
+    # Verify audit log
+    audit_log = AuditLog.objects.filter(
+        user=user,
+        action='UPDATE',
+        resource_type='ParsedData',
+        resource_id=str(parsed_data.id)
+    ).first()
+    
+    assert audit_log is not None
+    assert "Updated clinical date to 2023-09-01" in audit_log.details
 
-    # Test invalid date
-    response = client.post(url, {'clinical_date': 'invalid date'})
-    assert response.status_code == 400
-```
+6. Test background task for missing dates:
+```python
+from unittest.mock import patch
 
-5. Verify HIPAA audit logging:
-   - Perform various operations that modify clinical dates
-   - Check the AuditLog entries to ensure all changes are properly logged
+@patch('tasks.ClinicalDateParser')
+def test_identify_missing_clinical_dates(mock_parser):
+    mock_parser.return_value.extract_dates.return_value = ['2023-10-01']
+    
+    document = Document.objects.create(processing_complete=True)
+    parsed_data = ParsedData.objects.create(
+        document=document,
+        field_name="test_date",
+        field_value="October 1, 2023",
+        is_clinical_date=True
+    )
+    
+    identify_missing_clinical_dates()
+    
+    updated_parsed_data = ParsedData.objects.get(id=parsed_data.id)
+    assert updated_parsed_data.extracted_date == datetime.date(2023, 10, 1)
 
-6. Test FHIR resource creation with clinical dates:
-   - Create test cases with various scenarios (extracted dates, manually entered dates, missing dates)
-   - Verify that the resulting FHIR resources contain the correct clinical dates and processing metadata
+7. Verify patient timeline updates:
+```python
+def test_patient_timeline():
+    patient = Patient.objects.create(mrn="TEST002")
+    condition = Condition.objects.create(
+        patient=patient,
+        description="Test Condition",
+        onset_date="2023-11-01"
+    )
+    observation = Observation.objects.create(
+        patient=patient,
+        code=CodeableConcept.objects.create(text="Test Observation"),
+        effective_date="2023-11-15"
+    )
+    document = Document.objects.create(
+        patient=patient,
+        title="Test Document",
+        created_at="2023-11-30"
+    )
+    
+    timeline = get_patient_timeline(patient)
+    
+    assert len(timeline) == 3
+    assert timeline[0]['date'] == datetime.date(2023, 11, 1)
+    assert timeline[0]['is_clinical_date'] == True
+    assert timeline[2]['date'] == datetime.date(2023, 11, 30)
+    assert timeline[2]['is_clinical_date'] == False
 
-7. Background task testing:
-   - Create a set of ParsedData entries with missing clinical dates
-   - Run the background task to identify missing dates
-   - Verify that notifications are generated correctly
+8. Test date range filtering in patient search:
+```python
+def test_patient_search_with_date_range():
+    patient1 = Patient.objects.create(first_name="John", last_name="Doe")
+    patient2 = Patient.objects.create(first_name="Jane", last_name="Doe")
+    
+    Condition.objects.create(patient=patient1, onset_date="2023-12-01")
+    Observation.objects.create(patient=patient2, effective_date="2023-12-15")
+    
+    results = search_patients("Doe", date_range_start="2023-12-01", date_range_end="2023-12-31")
+    
+    assert len(results) == 2
+    
+    results = search_patients("Doe", date_range_start="2023-12-01", date_range_end="2023-12-10")
+    
+    assert len(results) == 1
+    assert results[0] == patient1
 
-8. User interface testing:
-   - Create a test dataset with a mix of clinical and processing dates
-   - Render the patient timeline view
-   - Verify that clinical dates are displayed correctly and prioritized
-   - Check for proper visual indicators for missing clinical dates
+9. Integration Testing:
+- Perform end-to-end testing of the entire clinical date workflow, from document upload to data extraction, manual review, and integration into patient records.
+- Verify that the system correctly distinguishes between clinical dates and processing metadata throughout the entire process.
 
-9. Search functionality testing:
-   - Implement test cases for date range filtering
-   - Verify that search results are correctly filtered based on clinical dates when available
+10. Performance Testing:
+- Test the system with a large volume of documents and patient data to ensure it can handle the expected load.
+- Measure the performance of the date extraction process and optimize if necessary.
 
-10. Performance testing:
-    - Create a large dataset with numerous documents and extracted data points
-    - Measure the performance of date extraction, parsing, and FHIR resource creation
-    - Optimize any bottlenecks identified during testing
+11. Security and Compliance Testing:
+- Conduct penetration testing to ensure the security of the clinical date handling system.
+- Verify that all date-related operations are properly logged for HIPAA compliance.
+- Test access controls to ensure that only authorized users can view and modify clinical dates.
 
-11. Compliance testing:
-    - Review all implemented features against HIPAA requirements
-    - Verify that there is a clear distinction between processing metadata and clinical data in all relevant systems and interfaces
+12. User Acceptance Testing:
+- Engage with end-users (e.g., healthcare providers, data entry staff) to test the manual date entry interface and overall workflow.
+- Gather feedback on the usability and efficiency of the new system compared to the previous approach.
 
 # Subtasks:
 ## 1. Implement ClinicalDateParser utility [pending]
