@@ -244,7 +244,7 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
     """
     Extract structured medical data using Claude (primary) or OpenAI (fallback) with instructor.
     
-    Enhanced with comprehensive error handling, retry logic, and graceful degradation.
+    Enhanced with comprehensive error handling, retry logic, graceful degradation, and intelligent caching.
     
     Args:
         text: The medical document text to analyze
@@ -261,8 +261,12 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
         PydanticModelError: If data validation fails
         ConfigurationError: If AI services are not configured
     """
+    from django.utils import timezone
+    from apps.documents.cache import get_document_cache
+    
+    document_cache = get_document_cache()
     extraction_id = str(time.time())[:10]  # Short unique ID for this extraction
-    logger.info(f"[{extraction_id}] Starting structured medical data extraction")
+    logger.info(f"[{extraction_id}] Starting structured medical data extraction with caching")
     
     # Validate inputs
     if not text or not text.strip():
@@ -281,6 +285,28 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
             "No AI services available for extraction",
             details={'anthropic_available': False, 'openai_available': False}
         )
+    
+    # Performance Optimization: Check cache for existing extraction results
+    primary_model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620')
+    cache_context = {
+        'ai_model': primary_model,
+        'context': context or '',
+        'extraction_version': '2.0'
+    }
+    cache_key = document_cache.get_ai_extraction_cache_key(text, primary_model, cache_context)
+    
+    # Try to get cached result first
+    cached_result = document_cache.get_cached_ai_extraction(cache_key)
+    if cached_result:
+        logger.info(f"[{extraction_id}] Using cached AI extraction result (cache hit)")
+        try:
+            # Reconstruct StructuredMedicalExtraction from cached data
+            cached_structured_data = cached_result.get('structured_data')
+            if cached_structured_data:
+                return StructuredMedicalExtraction.model_validate(cached_structured_data)
+        except Exception as cache_error:
+            logger.warning(f"[{extraction_id}] Cache result invalid, proceeding with fresh extraction: {cache_error}")
+            # Continue with fresh extraction if cache is corrupted
     # Use comprehensive prompts for maximum data capture (90%+ target)
     # Try to use comprehensive prompts, fall back to basic prompts if not available
     try:
@@ -410,6 +436,25 @@ Return structured data with complete source context for each item."""
                     
                     logger.info(f"[{extraction_id}] Claude instructor extraction successful: {total_items} items, "
                                f"confidence {extraction.confidence_average:.3f} in {api_duration:.2f}s")
+                    
+                    # Performance Optimization: Cache successful extraction result
+                    try:
+                        cache_data = {
+                            'structured_data': extraction.model_dump(),
+                            'extraction_metadata': {
+                                'total_items': total_items,
+                                'confidence_average': extraction.confidence_average,
+                                'extraction_timestamp': extraction.extraction_timestamp,
+                                'ai_service': 'claude_instructor',
+                                'processing_time': api_duration
+                            }
+                        }
+                        document_cache.cache_ai_extraction(cache_key, cache_data)
+                        logger.info(f"[{extraction_id}] Cached successful extraction result")
+                    except Exception as cache_error:
+                        logger.warning(f"[{extraction_id}] Failed to cache extraction result: {cache_error}")
+                        # Don't fail the extraction if caching fails
+                    
                     return extraction
                 
                 else:
@@ -549,6 +594,24 @@ CRITICAL: Every extracted item MUST include a "source" object with the exact tex
                     
                     logger.info(f"[{extraction_id}] Claude manual extraction successful: {total_items} items, "
                                f"confidence {extraction.confidence_average:.3f}")
+                    
+                    # Performance Optimization: Cache successful extraction result
+                    try:
+                        cache_data = {
+                            'structured_data': extraction.model_dump(),
+                            'extraction_metadata': {
+                                'total_items': total_items,
+                                'confidence_average': extraction.confidence_average,
+                                'extraction_timestamp': extraction.extraction_timestamp,
+                                'ai_service': 'claude'
+                            }
+                        }
+                        document_cache.cache_ai_extraction(cache_key, cache_data)
+                        logger.info(f"[{extraction_id}] Cached successful extraction result")
+                    except Exception as cache_error:
+                        logger.warning(f"[{extraction_id}] Failed to cache extraction result: {cache_error}")
+                        # Don't fail the extraction if caching fails
+                    
                     return extraction
                     
                 except json.JSONDecodeError as je:
@@ -635,6 +698,24 @@ CRITICAL: Every extracted item MUST include a "source" object with the exact tex
             
             logger.info(f"[{extraction_id}] OpenAI extraction successful: {total_items} items, "
                        f"confidence {extraction.confidence_average:.3f}")
+            
+            # Performance Optimization: Cache successful extraction result
+            try:
+                cache_data = {
+                    'structured_data': extraction.model_dump(),
+                    'extraction_metadata': {
+                        'total_items': total_items,
+                        'confidence_average': extraction.confidence_average,
+                        'extraction_timestamp': extraction.extraction_timestamp,
+                        'ai_service': 'openai'
+                    }
+                }
+                document_cache.cache_ai_extraction(cache_key, cache_data)
+                logger.info(f"[{extraction_id}] Cached successful OpenAI extraction result")
+            except Exception as cache_error:
+                logger.warning(f"[{extraction_id}] Failed to cache extraction result: {cache_error}")
+                # Don't fail the extraction if caching fails
+            
             return extraction
             
         except (AIServiceRateLimitError, AIServiceTimeoutError, ExternalServiceError, 

@@ -24,8 +24,65 @@ from .exceptions import (
     categorize_exception,
     get_recovery_strategy
 )
+from .performance import performance_monitor, document_chunker
 
 logger = logging.getLogger(__name__)
+
+
+@shared_task(bind=True)
+@performance_monitor.timing_decorator("document_chunk_processing")
+def process_document_chunk(self, document_id: int, chunk_text: str, chunk_id: int, chunk_metadata: Dict = None):
+    """
+    Process a single chunk of a large document for parallel extraction.
+    
+    Args:
+        document_id: ID of the source document
+        chunk_text: Text content of this chunk
+        chunk_id: Unique identifier for this chunk
+        chunk_metadata: Additional metadata about the chunk (start/end positions, etc.)
+        
+    Returns:
+        Extracted medical data from this chunk
+    """
+    try:
+        logger.info(f"Processing chunk {chunk_id} for document {document_id} ({len(chunk_text)} chars)")
+        
+        # Extract medical data from chunk
+        from apps.documents.services.ai_extraction import extract_medical_data_structured
+        
+        chunk_context = f"Document chunk {chunk_id + 1} of large medical document"
+        structured_data = extract_medical_data_structured(chunk_text, context=chunk_context)
+        
+        # Convert to dictionary and add chunk metadata
+        result = structured_data.model_dump()
+        result['chunk_metadata'] = {
+            'chunk_id': chunk_id,
+            'chunk_size': len(chunk_text),
+            'document_id': document_id,
+            'start_index': chunk_metadata.get('start_index', 0) if chunk_metadata else 0,
+            'end_index': chunk_metadata.get('end_index', len(chunk_text)) if chunk_metadata else len(chunk_text)
+        }
+        
+        logger.info(f"Chunk {chunk_id} processed successfully: {sum(len(v) for k, v in result.items() if isinstance(v, list))} items")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to process chunk {chunk_id} for document {document_id}: {e}")
+        # Return empty result rather than failing the entire parallel operation
+        return {
+            'conditions': [],
+            'medications': [],
+            'vital_signs': [],
+            'lab_results': [],
+            'procedures': [],
+            'providers': [],
+            'chunk_metadata': {
+                'chunk_id': chunk_id,
+                'document_id': document_id,
+                'error': str(e),
+                'processing_failed': True
+            }
+        }
 
 
 @shared_task(bind=True)
@@ -91,6 +148,7 @@ def process_document_async(self, document_id: int):
     from apps.documents.analyzers import DocumentAnalyzer
     from apps.fhir.converters import StructuredDataConverter
     from apps.core.porthole import capture_pdf_text, capture_llm_output, capture_fhir_data, capture_raw_llm_response, capture_pipeline_error
+    from .validation_utils import ValidationContext, validate_before_ai_extraction, validate_after_ai_extraction
     
     # Initialize task tracking
     task_id = self.request.id
@@ -287,10 +345,21 @@ def process_document_async(self, document_id: int):
         logger.info(f"PDF extraction successful: {extraction_result['page_count']} pages, "
                    f"{len(extraction_result['text'])} characters")
         
-        # STEP 2: Analyze document with AI using new structured extraction pipeline
+        # PERFORMANCE OPTIMIZATION: Determine processing strategy based on document size
+        extracted_text = extraction_result['text']
+        text_length = len(extracted_text)
+        chunk_threshold = getattr(settings, 'AI_TOKEN_THRESHOLD_FOR_CHUNKING', 20000)
+        
+        logger.info(f"[{task_id}] Document size: {text_length} chars (threshold: {chunk_threshold})")
+        
+        # STEP 2: Analyze document with AI using size-appropriate strategy
         ai_result = None
         structured_extraction = None
-        if extraction_result['text'].strip():
+        if extracted_text.strip():
+            # VALIDATION: Check text quality before AI extraction
+            if not validate_before_ai_extraction(document, extraction_result['text']):
+                logger.warning(f"[{task_id}] Text quality validation failed for document {document_id}, proceeding with caution")
+            
             try:
                 logger.info(f"Step 2: Starting AI analysis with structured extraction pipeline for document {document_id}")
                 
@@ -306,13 +375,42 @@ def process_document_async(self, document_id: int):
                     provider = document.providers.first()
                     context = f"{provider.name} - {provider.specialty}" if hasattr(provider, 'specialty') else provider.name
                 
+                # PERFORMANCE OPTIMIZATION: Choose processing strategy based on size
+                if text_length > chunk_threshold:
+                    logger.info(f"[{task_id}] Large document detected ({text_length} chars), chunking for efficiency")
+                    
+                    # For very large documents, use direct AI extraction with chunking
+                    from apps.documents.services.ai_extraction import extract_medical_data_structured
+                    
+                    chunks = document_chunker.chunk_text(extracted_text, preserve_context=True)
+                    
+                    if len(chunks) > 1:
+                        # Process in chunks and aggregate
+                        all_chunk_data = []
+                        for chunk in chunks:
+                            chunk_result = extract_medical_data_structured(chunk['text'], context=context)
+                            all_chunk_data.append(chunk_result.model_dump())
+                        
+                        # Aggregate results
+                        structured_extraction = self._aggregate_chunked_extractions(all_chunk_data)
+                        logger.info(f"[{task_id}] Chunked processing completed: {len(chunks)} chunks processed")
+                    else:
+                        # Single chunk, process normally
+                        structured_extraction = ai_analyzer.analyze_document_structured(
+                            document_content=extracted_text,
+                            context=context
+                        )
+                else:
+                    logger.info(f"[{task_id}] Standard size document, using optimized single processing")
+                
                 # NEW: Use structured extraction pipeline
                 try:
-                    logger.info(f"Attempting structured extraction for document {document_id}")
-                    structured_extraction = ai_analyzer.analyze_document_structured(
-                        document_content=extraction_result['text'],
-                        context=context
-                    )
+                    if not structured_extraction:  # Only run if not already processed above
+                        logger.info(f"Attempting structured extraction for document {document_id}")
+                        structured_extraction = ai_analyzer.analyze_document_structured(
+                            document_content=extraction_result['text'],
+                            context=context
+                        )
                     
                     # PORTHOLE: Capture LLM structured output
                     capture_llm_output(
@@ -323,6 +421,10 @@ def process_document_async(self, document_id: int):
                     )
                     
                     if structured_extraction:
+                        # VALIDATION: Check structured extraction quality
+                        if not validate_after_ai_extraction(document, structured_extraction):
+                            logger.warning(f"[{task_id}] Structured extraction validation failed for document {document_id}, proceeding with caution")
+                        
                         # Convert structured data to legacy format for backward compatibility
                         ai_result = {
                             'success': True,
@@ -879,4 +981,75 @@ def cleanup_old_documents():
     # This will be implemented when we have the document models
     
     logger.info("Document cleanup completed")
-    return "Cleanup task completed" 
+    return "Cleanup task completed"
+
+
+def _aggregate_chunked_extractions(chunk_results: List[Dict]) -> 'StructuredMedicalExtraction':
+    """
+    Aggregate multiple chunk extraction results into a single StructuredMedicalExtraction.
+    
+    Args:
+        chunk_results: List of extraction results from document chunks
+        
+    Returns:
+        Aggregated StructuredMedicalExtraction object
+    """
+    from apps.documents.services.ai_extraction import StructuredMedicalExtraction
+    from collections import defaultdict
+    from difflib import SequenceMatcher
+    
+    # Initialize aggregated data
+    aggregated = {
+        'conditions': [],
+        'medications': [],
+        'vital_signs': [],
+        'lab_results': [],
+        'procedures': [],
+        'providers': [],
+        'extraction_timestamp': timezone.now().isoformat(),
+        'document_type': 'chunked_document'
+    }
+    
+    # Collect all items from chunks
+    for chunk_result in chunk_results:
+        if chunk_result and isinstance(chunk_result, dict):
+            for key in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers']:
+                if key in chunk_result:
+                    aggregated[key].extend(chunk_result[key])
+    
+    # Deduplicate similar items using fuzzy matching
+    def is_similar(a: str, b: str, threshold: float = 0.85) -> bool:
+        """Check if two medical terms are similar enough to be duplicates."""
+        return SequenceMatcher(None, a.lower(), b.lower()).ratio() > threshold
+    
+    for data_type in ['conditions', 'medications', 'procedures']:
+        if data_type in aggregated:
+            items = aggregated[data_type]
+            deduplicated = []
+            
+            for item in items:
+                # Extract name for comparison
+                item_name = item.get('name', str(item)) if isinstance(item, dict) else str(item)
+                
+                # Check if similar item already exists
+                is_duplicate = False
+                for existing in deduplicated:
+                    existing_name = existing.get('name', str(existing)) if isinstance(existing, dict) else str(existing)
+                    if is_similar(item_name, existing_name):
+                        # Keep the item with higher confidence if available
+                        if isinstance(item, dict) and isinstance(existing, dict):
+                            if item.get('confidence', 0) > existing.get('confidence', 0):
+                                # Replace existing with higher confidence item
+                                idx = deduplicated.index(existing)
+                                deduplicated[idx] = item
+                        is_duplicate = True
+                        break
+                
+                if not is_duplicate:
+                    deduplicated.append(item)
+            
+            logger.info(f"Deduplicated {data_type}: {len(items)} -> {len(deduplicated)} items")
+            aggregated[data_type] = deduplicated
+    
+    # Create and return StructuredMedicalExtraction object
+    return StructuredMedicalExtraction.model_validate(aggregated) 

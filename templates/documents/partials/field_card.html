@@ -1,11 +1,22 @@
 {% load review_filters %}
-<div class="field-review-card" data-field-id="{{ item.id }}">
+<div class="field-review-card" data-field-id="{{ item.id }}" 
+     data-field-path="{{ item.field_path|default:'' }}"
+     data-resource-type="{{ item.resource_type|default:'' }}"
+     data-resource-index="{{ item.resource_index|default:'' }}">
     <div class="field-header">
         <span class="field-name">{{ item.field_name|clean_field_name }}</span>
-        <span class="confidence-indicator confidence-{{ item.confidence|confidence_level }}" 
-              data-confidence="{{ item.confidence }}">
-            {{ item.confidence|confidence_level|title }} Confidence
-        </span>
+        <div class="flex items-center gap-2">
+            {% if item.edited %}
+                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">EDITED</span>
+            {% endif %}
+            {% if item.flagged %}
+                <span class="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full font-medium">FLAGGED</span>
+            {% endif %}
+            <span class="confidence-indicator confidence-{{ item.confidence|confidence_level }}" 
+                  data-confidence="{{ item.confidence }}">
+                {{ item.confidence|confidence_level|title }} Confidence
+            </span>
+        </div>
     </div>
     
     <div class="field-content">
@@ -27,6 +38,13 @@
         <div class="source-snippet">
             <h4>Source Context:</h4>
             <div class="snippet-text">{{ item.snippet }}</div>
+        </div>
+        {% endif %}
+        
+        {% if item.flag_reason %}
+        <div class="flag-reason bg-red-50 border border-red-200 rounded p-3 mt-3">
+            <h4 class="text-red-800 font-medium text-sm">Flag Reason:</h4>
+            <p class="text-red-700 text-sm mt-1">{{ item.flag_reason }}</p>
         </div>
         {% endif %}
     </div>

@@ -762,118 +762,41 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             'parsed_data': None
         })
         
-        # Add parsed data for review if available
+        # Check for new structured data first, then fall back to legacy
         try:
-            parsed_data = self.object.parsed_data
-            context['parsed_data'] = parsed_data
+            has_structured_data = self.object.has_structured_data()
             force_review = self.request.GET.get('force_review') == '1'
             
-            if (parsed_data and parsed_data.extraction_json) or force_review:
-                # Group data by category for organized display
-                categorized_data = defaultdict(list)
-                extraction_data = parsed_data.extraction_json if parsed_data else {}
-                source_snippets = parsed_data.source_snippets if parsed_data else {}
+            if has_structured_data or force_review:
+                context['parsed_data'] = True  # Set to True so template conditions pass
                 
-                # If force_review is enabled but no parsed_data, create dummy data for debugging
-                if force_review and not parsed_data:
-                    context['parsed_data'] = True  # Set to True so template conditions pass
-                    extraction_data = {
-                        'debug_message': 'Force review mode enabled - no parsed data available',
-                        'document_status': self.object.status,
-                        'processed_at': str(self.object.processed_at) if self.object.processed_at else 'Not processed'
-                    }
-                
-                # Handle different extraction_json formats
-                if isinstance(extraction_data, dict):
-                    # Check if this is FHIR-structured format (has resource type keys)
-                    fhir_resource_types = ['Patient', 'Condition', 'Observation', 'MedicationStatement', 
-                                         'Procedure', 'AllergyIntolerance', 'Practitioner', 'DocumentReference']
-                    is_fhir_structured = any(key in fhir_resource_types for key in extraction_data.keys())
-                    
-                    field_list = []
-                    
-                    if is_fhir_structured:
-                        # Convert FHIR-structured data to flat fields for UI
-                        field_list = self._convert_fhir_structured_to_fields(extraction_data)
-                    else:
-                        # Legacy format conversion
-                        for key, value in extraction_data.items():
-                            if isinstance(value, dict) and 'value' in value:
-                                # Structured format with metadata
-                                field_list.append({
-                                    'field_name': key,
-                                    'field_value': value.get('value', ''),
-                                    'confidence': value.get('confidence', 0.5),
-                                    'category': value.get('category', self._categorize_field(key)),
-                                    'fhir_path': value.get('fhir_path', ''),
-                                })
-                            else:
-                                # Simple key-value format
-                                field_list.append({
-                                    'field_name': key,
-                                    'field_value': str(value) if value is not None else '',
-                                    'confidence': 0.5,  # Default confidence
-                                    'category': self._categorize_field(key),
-                                    'fhir_path': '',
-                                })
-                elif isinstance(extraction_data, list):
-                    # Already in list format from ResponseParser
-                    field_list = extraction_data
+                if has_structured_data:
+                    # Use new structured data pipeline
+                    field_list = self._convert_structured_data_to_fields()
+                    logger.info(f"Using structured data for document {self.object.id} review interface")
                 else:
-                    field_list = []
+                    # Fallback to legacy data or debug mode
+                    field_list = self._get_legacy_field_data(force_review)
+                    logger.info(f"Using legacy data for document {self.object.id} review interface")
                 
-                # Process each field and organize by category
+                # Process fields and organize by category
+                categorized_data = defaultdict(list)
                 total_fields = len(field_list)
                 approved_fields = 0
                 
                 for field_data in field_list:
-                    # Handle ResponseParser format: uses 'label' and 'value' instead of 'field_name' and 'field_value'
-                    field_name = field_data.get('label', field_data.get('field_name', 'Unknown Field'))
-                    field_value = field_data.get('value', field_data.get('field_value', ''))
-                    confidence = field_data.get('confidence', 0.5)
-                    
-                    # Categorize the field
-                    category = field_data.get('category', self._categorize_field(field_name))
-                    
-                    # Get snippet for this field - try multiple possible keys
-                    snippet_text = source_snippets.get(field_name, '')
-                    if not snippet_text and source_snippets:
-                        # Try to find snippet by partial match or source_text field
-                        snippet_text = field_data.get('source_text', '')
-                        if not snippet_text:
-                            for snippet_key, snippet_value in source_snippets.items():
-                                if field_name.lower() in snippet_key.lower() or snippet_key.lower() in field_name.lower():
-                                    snippet_text = snippet_value
-                                    break
-                    
-                    # FALLBACK: Generate snippet if no snippet found and we have original text
-                    if not snippet_text and field_value and self.object.original_text:
-                        snippet_text = self._generate_fallback_snippet(
-                            self.object.original_text,
-                            field_value,
-                            field_data.get('char_position', 0)  # Use 0 as default if no char_position
-                        )
-                    
-                    # Check if field is approved (for now, assume not approved)
-                    # Check if this field has been approved in the session
-                    # Use the same field ID generation as in the template
-                    field_id = f"{field_name}_{hash(str(field_data))}"
-                    field_key = f"approved_field_{self.object.id}_{field_name}_{field_id}"
+                    # Check if field is approved in session
+                    field_id = field_data.get('id', f"{field_data['field_name']}_{hash(str(field_data))}")
+                    field_key = f"approved_field_{self.object.id}_{field_data['field_name']}_{field_id}"
                     is_approved = self.request.session.get(field_key, False)
                     if is_approved:
                         approved_fields += 1
                     
-                    categorized_data[category].append({
-                        'field_name': field_name,
-                        'field_value': field_value,
-                        'confidence': confidence,
-                        'snippet': snippet_text,
-                        'approved': is_approved,
-                        'fhir_path': field_data.get('fhir_path', field_data.get('fhir_field', '')),
-                        'id': f"{field_name}_{hash(str(field_data))}",  # Generate unique ID
-                        'category': category,
-                        'category_slug': category.lower().replace(' ', '-').replace('_', '-')
-                    })
+                    field_data['approved'] = is_approved
+                    field_data['id'] = field_id
+                    field_data['category_slug'] = field_data['category'].lower().replace(' ', '-').replace('_', '-')
+                    
+                    categorized_data[field_data['category']].append(field_data)
                 
                 context['categorized_data'] = dict(categorized_data)
                 context['review_progress'] = round((approved_fields / total_fields * 100) if total_fields > 0 else 0)
@@ -909,6 +832,293 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             context['comparison'] = None
         
         return context
+    
+    def _convert_structured_data_to_fields(self):
+        """
+        Convert new StructuredMedicalExtraction data to field format for UI display.
+        
+        Returns:
+            list: List of field dictionaries for UI display
+        """
+        field_list = []
+        
+        try:
+            from .services.ai_extraction import StructuredMedicalExtraction
+            
+            # Get structured data from document
+            structured_data_dict = self.object.get_structured_medical_data()
+            if not structured_data_dict:
+                return []
+            
+            # Convert dict to Pydantic model for proper handling
+            structured_data = StructuredMedicalExtraction.model_validate(structured_data_dict)
+            
+            # Process each resource type
+            
+            # 1. Conditions/Diagnoses
+            for i, condition in enumerate(structured_data.conditions):
+                field_list.append({
+                    'field_name': f'Condition {i+1}',
+                    'field_value': condition.name,
+                    'confidence': condition.confidence,
+                    'category': 'Medical History',
+                    'snippet': condition.source.text if condition.source else '',
+                    'resource_type': 'condition',
+                    'resource_index': i,
+                    'field_path': f'conditions.{i}.name'
+                })
+                
+                # Add secondary condition info if available
+                if condition.onset_date:
+                    field_list.append({
+                        'field_name': f'Condition {i+1} Onset Date',
+                        'field_value': condition.onset_date,
+                        'confidence': condition.confidence * 0.8,  # Slightly lower confidence for derived data
+                        'category': 'Medical History',
+                        'snippet': condition.source.text if condition.source else '',
+                        'resource_type': 'condition',
+                        'resource_index': i,
+                        'field_path': f'conditions.{i}.onset_date'
+                    })
+                
+                # Note: severity field not available in current MedicalCondition model
+            
+            # 2. Medications
+            for i, medication in enumerate(structured_data.medications):
+                field_list.append({
+                    'field_name': f'Medication {i+1}',
+                    'field_value': medication.name,
+                    'confidence': medication.confidence,
+                    'category': 'Medications',
+                    'snippet': medication.source.text if medication.source else '',
+                    'resource_type': 'medication',
+                    'resource_index': i,
+                    'field_path': f'medications.{i}.name'
+                })
+                
+                if medication.dosage:
+                    field_list.append({
+                        'field_name': f'Medication {i+1} Dosage',
+                        'field_value': medication.dosage,
+                        'confidence': medication.confidence * 0.9,
+                        'category': 'Medications',
+                        'snippet': medication.source.text if medication.source else '',
+                        'resource_type': 'medication',
+                        'resource_index': i,
+                        'field_path': f'medications.{i}.dosage'
+                    })
+                
+                if medication.frequency:
+                    field_list.append({
+                        'field_name': f'Medication {i+1} Frequency',
+                        'field_value': medication.frequency,
+                        'confidence': medication.confidence * 0.9,
+                        'category': 'Medications',
+                        'snippet': medication.source.text if medication.source else '',
+                        'resource_type': 'medication',
+                        'resource_index': i,
+                        'field_path': f'medications.{i}.frequency'
+                    })
+            
+            # 3. Vital Signs
+            for i, vital in enumerate(structured_data.vital_signs):
+                field_list.append({
+                    'field_name': f'Vital Sign: {vital.name}',
+                    'field_value': f"{vital.value} {vital.unit}" if vital.unit else str(vital.value),
+                    'confidence': vital.confidence,
+                    'category': 'Vital Signs',
+                    'snippet': vital.source.text if vital.source else '',
+                    'resource_type': 'vital_sign',
+                    'resource_index': i,
+                    'field_path': f'vital_signs.{i}.value'
+                })
+            
+            # 4. Lab Results
+            for i, lab in enumerate(structured_data.lab_results):
+                field_list.append({
+                    'field_name': f'Lab: {lab.name}',
+                    'field_value': f"{lab.value} {lab.unit}" if lab.unit else str(lab.value),
+                    'confidence': lab.confidence,
+                    'category': 'Laboratory Results',
+                    'snippet': lab.source.text if lab.source else '',
+                    'resource_type': 'lab_result',
+                    'resource_index': i,
+                    'field_path': f'lab_results.{i}.value'
+                })
+                
+                if lab.reference_range:
+                    field_list.append({
+                        'field_name': f'Lab: {lab.name} Reference Range',
+                        'field_value': lab.reference_range,
+                        'confidence': lab.confidence * 0.8,
+                        'category': 'Laboratory Results',
+                        'snippet': lab.source.text if lab.source else '',
+                        'resource_type': 'lab_result',
+                        'resource_index': i,
+                        'field_path': f'lab_results.{i}.reference_range'
+                    })
+            
+            # 5. Procedures
+            for i, procedure in enumerate(structured_data.procedures):
+                field_list.append({
+                    'field_name': f'Procedure {i+1}',
+                    'field_value': procedure.name,
+                    'confidence': procedure.confidence,
+                    'category': 'Medical History',
+                    'snippet': procedure.source.text if procedure.source else '',
+                    'resource_type': 'procedure',
+                    'resource_index': i,
+                    'field_path': f'procedures.{i}.name'
+                })
+                
+                if procedure.date:
+                    field_list.append({
+                        'field_name': f'Procedure {i+1} Date',
+                        'field_value': procedure.date,
+                        'confidence': procedure.confidence * 0.9,
+                        'category': 'Medical History',
+                        'snippet': procedure.source.text if procedure.source else '',
+                        'resource_type': 'procedure',
+                        'resource_index': i,
+                        'field_path': f'procedures.{i}.date'
+                    })
+            
+            # 6. Providers
+            for i, provider in enumerate(structured_data.providers):
+                field_list.append({
+                    'field_name': f'Provider {i+1}',
+                    'field_value': provider.name,
+                    'confidence': provider.confidence,
+                    'category': 'Provider Information',
+                    'snippet': provider.source.text if provider.source else '',
+                    'resource_type': 'provider',
+                    'resource_index': i,
+                    'field_path': f'providers.{i}.name'
+                })
+                
+                if provider.specialty:
+                    field_list.append({
+                        'field_name': f'Provider {i+1} Specialty',
+                        'field_value': provider.specialty,
+                        'confidence': provider.confidence * 0.9,
+                        'category': 'Provider Information',
+                        'snippet': provider.source.text if provider.source else '',
+                        'resource_type': 'provider',
+                        'resource_index': i,
+                        'field_path': f'providers.{i}.specialty'
+                    })
+            
+            logger.info(f"Converted structured data to {len(field_list)} fields for document {self.object.id}")
+            return field_list
+            
+        except Exception as e:
+            logger.error(f"Error converting structured data to fields for document {self.object.id}: {e}")
+            return []
+    
+    def _get_legacy_field_data(self, force_review=False):
+        """
+        Get field data from legacy ParsedData.extraction_json for backwards compatibility.
+        
+        Args:
+            force_review: Whether to create debug data if no parsed data exists
+            
+        Returns:
+            list: List of field dictionaries for UI display
+        """
+        try:
+            parsed_data = self.object.parsed_data
+            source_snippets = parsed_data.source_snippets if parsed_data else {}
+            
+            if force_review and not parsed_data:
+                # Create debug data
+                return [{
+                    'field_name': 'Debug Message',
+                    'field_value': 'Force review mode enabled - no parsed data available',
+                    'confidence': 0.5,
+                    'category': 'Other',
+                    'snippet': 'Debug context',
+                    'resource_type': 'debug',
+                    'resource_index': 0,
+                    'field_path': 'debug.message'
+                }]
+            
+            if not parsed_data or not parsed_data.extraction_json:
+                return []
+            
+            extraction_data = parsed_data.extraction_json
+            field_list = []
+            
+            # Handle different extraction_json formats
+            if isinstance(extraction_data, dict):
+                # Check if this is FHIR-structured format (has resource type keys)
+                fhir_resource_types = ['Patient', 'Condition', 'Observation', 'MedicationStatement', 
+                                     'Procedure', 'AllergyIntolerance', 'Practitioner', 'DocumentReference']
+                is_fhir_structured = any(key in fhir_resource_types for key in extraction_data.keys())
+                
+                if is_fhir_structured:
+                    # Convert FHIR-structured data to flat fields for UI
+                    field_list = self._convert_fhir_structured_to_fields(extraction_data)
+                else:
+                    # Legacy format conversion
+                    for key, value in extraction_data.items():
+                        if isinstance(value, dict) and 'value' in value:
+                            # Structured format with metadata
+                            field_list.append({
+                                'field_name': key,
+                                'field_value': value.get('value', ''),
+                                'confidence': value.get('confidence', 0.5),
+                                'category': value.get('category', self._categorize_field(key)),
+                                'snippet': source_snippets.get(key, ''),
+                                'resource_type': 'legacy',
+                                'resource_index': 0,
+                                'field_path': f'legacy.{key}'
+                            })
+                        else:
+                            # Simple key-value format
+                            field_list.append({
+                                'field_name': key,
+                                'field_value': str(value) if value is not None else '',
+                                'confidence': 0.5,  # Default confidence
+                                'category': self._categorize_field(key),
+                                'snippet': source_snippets.get(key, ''),
+                                'resource_type': 'legacy',
+                                'resource_index': 0,
+                                'field_path': f'legacy.{key}'
+                            })
+            elif isinstance(extraction_data, list):
+                # Already in list format from ResponseParser
+                for i, field_data in enumerate(extraction_data):
+                    field_name = field_data.get('label', field_data.get('field_name', 'Unknown Field'))
+                    field_value = field_data.get('value', field_data.get('field_value', ''))
+                    
+                    # Get snippet for this field
+                    snippet_text = source_snippets.get(field_name, '')
+                    if not snippet_text:
+                        snippet_text = field_data.get('source_text', '')
+                        if not snippet_text and self.object.original_text:
+                            snippet_text = self._generate_fallback_snippet(
+                                self.object.original_text,
+                                field_value,
+                                field_data.get('char_position', 0)
+                            )
+                    
+                    field_list.append({
+                        'field_name': field_name,
+                        'field_value': field_value,
+                        'confidence': field_data.get('confidence', 0.5),
+                        'category': field_data.get('category', self._categorize_field(field_name)),
+                        'snippet': snippet_text,
+                        'resource_type': 'legacy_list',
+                        'resource_index': i,
+                        'field_path': f'legacy_list.{i}.{field_name}'
+                    })
+            
+            logger.info(f"Converted legacy data to {len(field_list)} fields for document {self.object.id}")
+            return field_list
+            
+        except Exception as e:
+            logger.error(f"Error converting legacy data to fields for document {self.object.id}: {e}")
+            return []
     
     def _convert_fhir_structured_to_fields(self, fhir_data):
         """
@@ -1126,6 +1336,121 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 missing_fields.append(required)
         
         return missing_fields
+    
+    def _update_structured_data_field(self, field_path, new_value, document):
+        """
+        Update a specific field in the document's structured data.
+        
+        Args:
+            field_path: Dot notation path to the field (e.g., 'conditions.0.name')
+            new_value: New value to set
+            document: Document instance to update
+            
+        Returns:
+            bool: True if update was successful
+        """
+        try:
+            from .services.ai_extraction import StructuredMedicalExtraction
+            
+            structured_data_dict = document.get_structured_medical_data()
+            if not structured_data_dict:
+                logger.warning(f"No structured data found for document {document.id}")
+                return False
+            
+            # Convert to Pydantic model for validation
+            structured_data = StructuredMedicalExtraction.model_validate(structured_data_dict)
+            
+            # Parse the field path (e.g., 'conditions.0.name' -> ['conditions', '0', 'name'])
+            path_parts = field_path.split('.')
+            if len(path_parts) < 3:
+                logger.error(f"Invalid field path: {field_path}")
+                return False
+            
+            resource_type = path_parts[0]  # 'conditions'
+            resource_index = int(path_parts[1])  # 0
+            field_name = path_parts[2]  # 'name'
+            
+            # Update the appropriate field
+            if resource_type == 'conditions' and resource_index < len(structured_data.conditions):
+                if field_name == 'name':
+                    structured_data.conditions[resource_index].name = new_value
+                elif field_name == 'onset_date':
+                    structured_data.conditions[resource_index].onset_date = new_value
+                # Note: severity field not available in current MedicalCondition model
+                else:
+                    logger.error(f"Unknown condition field: {field_name}")
+                    return False
+                    
+            elif resource_type == 'medications' and resource_index < len(structured_data.medications):
+                if field_name == 'name':
+                    structured_data.medications[resource_index].name = new_value
+                elif field_name == 'dosage':
+                    structured_data.medications[resource_index].dosage = new_value
+                elif field_name == 'frequency':
+                    structured_data.medications[resource_index].frequency = new_value
+                else:
+                    logger.error(f"Unknown medication field: {field_name}")
+                    return False
+                    
+            elif resource_type == 'vital_signs' and resource_index < len(structured_data.vital_signs):
+                if field_name == 'value':
+                    # Parse value and unit if combined
+                    parts = new_value.split()
+                    if len(parts) >= 2:
+                        structured_data.vital_signs[resource_index].value = parts[0]
+                        structured_data.vital_signs[resource_index].unit = ' '.join(parts[1:])
+                    else:
+                        structured_data.vital_signs[resource_index].value = new_value
+                else:
+                    logger.error(f"Unknown vital sign field: {field_name}")
+                    return False
+                    
+            elif resource_type == 'lab_results' and resource_index < len(structured_data.lab_results):
+                if field_name == 'value':
+                    # Parse value and unit if combined
+                    parts = new_value.split()
+                    if len(parts) >= 2:
+                        structured_data.lab_results[resource_index].value = parts[0]
+                        structured_data.lab_results[resource_index].unit = ' '.join(parts[1:])
+                    else:
+                        structured_data.lab_results[resource_index].value = new_value
+                elif field_name == 'reference_range':
+                    structured_data.lab_results[resource_index].reference_range = new_value
+                else:
+                    logger.error(f"Unknown lab result field: {field_name}")
+                    return False
+                    
+            elif resource_type == 'procedures' and resource_index < len(structured_data.procedures):
+                if field_name == 'name':
+                    structured_data.procedures[resource_index].name = new_value
+                elif field_name == 'date':
+                    structured_data.procedures[resource_index].date = new_value
+                else:
+                    logger.error(f"Unknown procedure field: {field_name}")
+                    return False
+                    
+            elif resource_type == 'providers' and resource_index < len(structured_data.providers):
+                if field_name == 'name':
+                    structured_data.providers[resource_index].name = new_value
+                elif field_name == 'specialty':
+                    structured_data.providers[resource_index].specialty = new_value
+                else:
+                    logger.error(f"Unknown provider field: {field_name}")
+                    return False
+            else:
+                logger.error(f"Invalid resource type or index: {resource_type}[{resource_index}]")
+                return False
+            
+            # Save the updated structured data back to the document
+            document.structured_data = structured_data.model_dump()
+            document.save(update_fields=['structured_data'])
+            
+            logger.info(f"Updated structured data field {field_path} for document {document.id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating structured data field {field_path} for document {document.id}: {e}")
+            return False
     
     def _generate_fallback_snippet(self, original_text, field_value, char_position):
         """
@@ -1820,7 +2145,10 @@ def approve_field(request, field_id):
             'confidence': confidence_score,
             'snippet': request.POST.get('snippet', ''),
             'approved': True,  # This is the key change
-            'flagged': False
+            'flagged': False,
+            'resource_type': request.POST.get('resource_type', ''),
+            'resource_index': request.POST.get('resource_index', ''),
+            'field_path': request.POST.get('field_path', '')
         }
         
         # Render the updated field card
@@ -1847,6 +2175,7 @@ def approve_field(request, field_id):
 def update_field_value(request, field_id):
     """
     Update the value of a specific field in the document review interface.
+    Supports both structured data and legacy formats.
     
     Args:
         request: HTTP POST request with 'value' parameter
@@ -1873,6 +2202,20 @@ def update_field_value(request, field_id):
         if not request.user.has_perm('documents.change_document'):
             return JsonResponse({'error': 'Permission denied'}, status=403)
         
+        # Get field path for structured data updates
+        field_path = request.POST.get('field_path', '')
+        
+        # Try to update structured data if path is available
+        if field_path and document.has_structured_data():
+            review_view = DocumentReviewView()
+            review_view.object = document
+            success = review_view._update_structured_data_field(field_path, new_value, document)
+            
+            if success:
+                logger.info(f"Updated structured data field {field_path} for document {document.id}")
+            else:
+                logger.warning(f"Failed to update structured data field {field_path}, using mock update")
+        
         # Create updated field data for template rendering
         mock_item = {
             'id': field_id,
@@ -1882,7 +2225,10 @@ def update_field_value(request, field_id):
             'snippet': request.POST.get('snippet', ''),
             'approved': False,  # Reset approval when value changes
             'flagged': False,
-            'edited': True  # Mark as edited
+            'edited': True,  # Mark as edited
+            'resource_type': request.POST.get('resource_type', 'unknown'),
+            'resource_index': request.POST.get('resource_index', 0),
+            'field_path': field_path
         }
         
         # Render the updated field card
@@ -1935,7 +2281,10 @@ def flag_field(request, field_id):
             'snippet': request.POST.get('snippet', ''),
             'approved': False,  # Reset approval when flagged
             'flagged': True,
-            'flag_reason': flag_reason
+            'flag_reason': flag_reason,
+            'resource_type': request.POST.get('resource_type', ''),
+            'resource_index': request.POST.get('resource_index', ''),
+            'field_path': request.POST.get('field_path', '')
         }
         
         # Render the updated field card
