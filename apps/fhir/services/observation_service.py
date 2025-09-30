@@ -10,6 +10,7 @@ import re
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
+from apps.core.date_parser import ClinicalDateParser
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ class ObservationService:
     
     def __init__(self):
         self.logger = logger
+        self.date_parser = ClinicalDateParser()
         
     def process_observations(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -74,13 +76,14 @@ class ObservationService:
         self.logger.info(f"Successfully processed {len(observations)} observation resources")
         return observations
     
-    def _create_observation_resource(self, field: Dict[str, Any], patient_id: str) -> Optional[Dict[str, Any]]:
+    def _create_observation_resource(self, field: Dict[str, Any], patient_id: str, clinical_date: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Create a FHIR Observation resource from a vital sign field.
         
         Args:
             field: Dictionary containing label, value, confidence, etc.
             patient_id: Patient UUID for subject reference
+            clinical_date: Optional ISO format date string (YYYY-MM-DD) for when observation occurred
             
         Returns:
             FHIR Observation resource dictionary or None if invalid
@@ -89,6 +92,24 @@ class ObservationService:
         if not value or not isinstance(value, str) or not value.strip():
             self.logger.warning(f"Invalid or empty value in vital sign field: {field}")
             return None
+        
+        # Extract clinical date if not provided
+        effective_date = None
+        date_source = "unknown"
+        
+        if clinical_date:
+            # Manual date provided
+            effective_date = clinical_date
+            date_source = "manual"
+        else:
+            # Try to extract date from value text
+            extracted_dates = self.date_parser.extract_dates(value)
+            if extracted_dates:
+                # Use the highest confidence date
+                best_date = max(extracted_dates, key=lambda x: x.confidence)
+                effective_date = best_date.extracted_date.isoformat()
+                date_source = "extracted"
+                self.logger.debug(f"Extracted effective date {effective_date} with confidence {best_date.confidence}")
             
         # Determine vital type from label
         label = field.get('label', '').lower()
@@ -130,12 +151,21 @@ class ObservationService:
             "subject": {
                 "reference": f"Patient/{patient_id}"
             },
-            "effectiveDateTime": datetime.now().isoformat(),
             "meta": {
                 "source": field.get('source_context', 'Document extraction'),
-                "profile": ["http://hl7.org/fhir/StructureDefinition/Observation"]
+                "profile": ["http://hl7.org/fhir/StructureDefinition/Observation"],
+                "tag": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                    "code": "date-source",
+                    "display": f"Date source: {date_source}"
+                }]
             }
         }
+        
+        # Add CLINICAL DATE (when observation actually occurred) if available
+        # Note: If no clinical date is available, effectiveDateTime is omitted per FHIR spec
+        if effective_date:
+            observation["effectiveDateTime"] = effective_date
         
         # Add LOINC code if available
         if loinc_code:
@@ -161,14 +191,14 @@ class ObservationService:
         else:
             observation["valueString"] = value.strip()
         
-        # Add confidence if available
+        # Add extraction confidence if available
         confidence = field.get('confidence')
         if confidence is not None:
-            observation["meta"]["tag"] = [{
+            observation["meta"]["tag"].append({
                 "system": "http://terminology.hl7.org/CodeSystem/common-tags",
-                "code": "confidence",
-                "display": f"Confidence: {confidence}"
-            }]
+                "code": "extraction-confidence",
+                "display": f"Extraction confidence: {confidence}"
+            })
             
         self.logger.debug(f"Created Observation resource for {vital_type}: {value[:50]}...")
         return observation
