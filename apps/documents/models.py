@@ -366,6 +366,18 @@ class ParsedData(BaseModel):
     Stores both raw extraction results and FHIR-formatted data.
     """
     
+    # Date source choices for clinical date tracking
+    DATE_SOURCE_CHOICES = [
+        ('extracted', 'AI Extracted'),
+        ('manual', 'Manually Entered'),
+    ]
+    
+    # Date status choices for verification tracking
+    DATE_STATUS_CHOICES = [
+        ('pending', 'Pending Verification'),
+        ('verified', 'Verified'),
+    ]
+    
     # Core relationships
     document = models.OneToOneField(
         Document,
@@ -428,6 +440,25 @@ class ParsedData(BaseModel):
         help_text="Fallback extraction method used if primary AI failed (e.g., 'regex', 'gpt-fallback')"
     )
     
+    # Clinical date tracking (Task 35: Clinical Date Extraction System)
+    clinical_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Extracted or manually entered clinical date for this document/data"
+    )
+    date_source = models.CharField(
+        max_length=20,
+        choices=DATE_SOURCE_CHOICES,
+        blank=True,
+        help_text="Source of the clinical date (AI extracted or manually entered)"
+    )
+    date_status = models.CharField(
+        max_length=20,
+        choices=DATE_STATUS_CHOICES,
+        default='pending',
+        help_text="Verification status of the clinical date"
+    )
+    
     # Integration status
     merged_at = models.DateTimeField(
         null=True,
@@ -487,6 +518,9 @@ class ParsedData(BaseModel):
             models.Index(fields=['patient', 'is_merged']),
             models.Index(fields=['document', 'is_approved']),
             models.Index(fields=['merged_at']),
+            # Clinical date tracking indexes (Task 35)
+            models.Index(fields=['clinical_date', 'date_status']),
+            models.Index(fields=['patient', 'clinical_date']),
         ]
     
     def __str__(self):
@@ -509,6 +543,50 @@ class ParsedData(BaseModel):
         if notes:
             self.review_notes = notes
         self.save(update_fields=['is_approved', 'reviewed_by', 'reviewed_at', 'review_notes'])
+    
+    def set_clinical_date(self, date, source='extracted', status='pending'):
+        """
+        Set the clinical date for this parsed data.
+        
+        Args:
+            date: datetime.date or ISO format string (YYYY-MM-DD)
+            source: 'extracted' or 'manual'
+            status: 'pending' or 'verified'
+        """
+        from datetime import date as date_class
+        
+        # Convert string to date if needed
+        if isinstance(date, str):
+            from apps.core.date_parser import ClinicalDateParser
+            parser = ClinicalDateParser()
+            parsed_date = parser.parse_single_date(date)
+            if not parsed_date:
+                raise ValueError(f"Invalid date format: {date}")
+            date = parsed_date
+        
+        self.clinical_date = date
+        self.date_source = source
+        self.date_status = status
+        self.save(update_fields=['clinical_date', 'date_source', 'date_status'])
+    
+    def verify_clinical_date(self):
+        """Mark the clinical date as verified."""
+        if not self.clinical_date:
+            raise ValueError("No clinical date to verify")
+        self.date_status = 'verified'
+        self.save(update_fields=['date_status'])
+    
+    def has_clinical_date(self):
+        """Check if a clinical date has been set."""
+        return self.clinical_date is not None
+    
+    def needs_date_verification(self):
+        """Check if the clinical date needs verification."""
+        return self.has_clinical_date() and self.date_status == 'pending'
+    
+    def is_date_verified(self):
+        """Check if the clinical date has been verified."""
+        return self.has_clinical_date() and self.date_status == 'verified'
     
     def get_fhir_resource_count(self):
         """Get count of FHIR resources in this parsed data."""

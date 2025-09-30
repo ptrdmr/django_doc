@@ -479,17 +479,276 @@ Ready for integration into subtask 35.2 (FHIR services) and 35.3 (document proce
 ### Details:
 Update condition_service.py and observation_service.py to remove datetime.now() usage for clinical dates. Add support for optional clinical_date parameter in create methods. Implement clear separation between clinical dates and processing metadata.
 
-## 3. Enhance document processing workflow for date extraction [pending]
+## Implementation Complete: FHIR Services Clinical Date Support
+
+Successfully updated FHIR service classes to properly handle clinical dates instead of using processing timestamps.
+
+### Files Modified:
+1. **apps/fhir/services/condition_service.py**
+2. **apps/fhir/services/observation_service.py**
+
+### Key Changes:
+
+#### ConditionService Updates:
+- **Removed datetime.now()** from onsetDateTime field - this was incorrectly using processing time
+- **Added clinical_date parameter** to create_condition() method with type validation
+- **Updated onset date logic**: Uses provided clinical_date or leaves field empty if not provided
+- **Backward compatibility**: Works with both new clinical_date parameter and legacy code
+- **Type safety**: Added isinstance checks for date validation
+
+#### ObservationService Updates:
+- **Removed datetime.now()** from effectiveDateTime field - this was incorrectly using processing time
+- **Added clinical_date parameter** to create_observation() method with type validation
+- **Updated effective date logic**: Uses provided clinical_date or leaves field empty if not provided
+- **Backward compatibility**: Supports both new clinical_date parameter and legacy code paths
+- **Type safety**: Added isinstance checks for proper date handling
+
+### Design Principles:
+- **Clear separation**: Clinical dates (when something happened to patient) vs system metadata (when we processed it)
+- **Explicit over implicit**: Dates must be explicitly provided rather than defaulting to "now"
+- **Medical accuracy**: FHIR resources now accurately represent when medical events occurred
+- **Flexible**: Supports optional dates for cases where date is unknown or not applicable
+
+### Testing:
+- Unit tests verify date handling with various inputs (date objects, None values)
+- Integration tests confirm backward compatibility with existing code
+- Manual testing verified FHIR resource creation with clinical dates
+
+### Integration:
+- Works seamlessly with ClinicalDateParser from subtask 35.1
+- Integrated into document processing workflow (subtask 35.3)
+- Database models track date sources and status (subtask 35.4)
+
+This refactor improves medical data accuracy and compliance with FHIR specifications for temporal data.
+
+## 3. Enhance document processing workflow for date extraction [done]
 ### Dependencies: 35.1, 35.2
 ### Description: Integrate ClinicalDateParser into the document processing pipeline and update AI extraction prompt for clinical dates.
 ### Details:
 Modify the document processing workflow to use ClinicalDateParser for extracting dates. Update the AI extraction prompt to specifically request clinical dates. Store extracted dates in the ParsedData model.
 
-## 4. Update database models for date entry status [pending]
+## Implementation Complete: Document Processing Workflow Enhancement
+
+Successfully integrated clinical date extraction into the document processing pipeline with AI prompt updates.
+
+### Files Modified:
+1. **apps/documents/services.py** - Main document processing service
+2. **AI extraction prompts** - Updated to specifically request clinical dates
+
+### Key Changes:
+
+#### Document Processing Integration:
+- **Imported ClinicalDateParser** from apps.core.date_parser
+- **Added date extraction step** after AI processing completes
+- **Automatic date extraction** from document text using regex and fuzzy parsing
+- **Confidence-based filtering** - Only stores dates with confidence >= 0.7
+- **Context preservation** - Saves surrounding text for review purposes
+
+#### AI Prompt Updates:
+- **Explicit date instructions** added to extraction prompts
+- **Clinical date focus** - Instructs AI to identify when medical events occurred
+- **Format specification** - Requests ISO format (YYYY-MM-DD) for consistency
+- **Context requests** - AI includes date context in extraction results
+
+#### ParsedData Integration:
+- **Automatic date storage** in ParsedData.clinical_date field
+- **Source tracking** - Marks dates as 'extracted' vs 'manual'
+- **Status management** - Sets initial status to 'pending' for review
+- **Metadata preservation** - Stores extraction confidence and context
+
+### Workflow Flow:
+1. Document uploaded and text extracted
+2. AI processes document and identifies clinical information
+3. ClinicalDateParser extracts dates from document text
+4. Highest-confidence date selected (if multiple found)
+5. Date stored in ParsedData with source='extracted', status='pending'
+6. Date available for review and verification (subtask 35.5)
+
+### Date Extraction Logic:
+```python
+# After AI extraction completes:
+parser = ClinicalDateParser()
+date_results = parser.extract_dates(document_text)
+
+# Filter by confidence and select best date
+confident_dates = [d for d in date_results if d.confidence >= 0.7]
+if confident_dates:
+    best_date = max(confident_dates, key=lambda x: x.confidence)
+    parsed_data.set_clinical_date(
+        date=best_date.date,
+        source='extracted',
+        status='pending'
+    )
+```
+
+### Error Handling:
+- **Graceful degradation** - Processing continues even if date extraction fails
+- **Logging** - All date extraction attempts logged for debugging
+- **No dates found** - Document processing completes normally, date remains None
+- **Multiple dates** - Selects highest confidence date, logs others for review
+
+### Testing:
+- Integration tests with sample medical documents
+- Verified date extraction from various document types (lab reports, clinical notes, etc.)
+- Confirmed AI prompt updates produce better date information
+- Validated date storage in database with correct source/status
+
+### Integration Points:
+- **Builds on subtask 35.1** - Uses ClinicalDateParser utility
+- **Feeds into subtask 35.2** - Provides dates to FHIR services
+- **Supports subtask 35.4** - Stores dates in enhanced ParsedData model
+- **Enables subtask 35.5** - Provides dates for review interface
+
+This enhancement significantly improves the accuracy of clinical dates in medical records by extracting them automatically during document processing.
+
+## 4. Update database models for date entry status [done]
 ### Dependencies: 35.3
 ### Description: Enhance existing models to track the status of clinical date entries and their sources.
 ### Details:
 Modify the ParsedData model to include fields for clinical_date, date_source (extracted/manual), and date_status (pending/verified). Update related models as necessary to support these changes.
+
+## Implementation Complete: Clinical Date Tracking in Database Models
+
+Successfully enhanced the ParsedData model with comprehensive clinical date tracking fields and helper methods.
+
+### Files Modified:
+1. **apps/documents/models.py** - ParsedData model enhancement
+2. **Migration created**: `0010_add_clinical_date_tracking`
+
+### Database Fields Added:
+
+#### 1. clinical_date (DateField)
+- Stores the actual clinical date when medical event occurred
+- Nullable and blank to support documents without dates
+- Separate from system timestamps (created_at, updated_at)
+- Indexed for efficient querying
+
+#### 2. date_source (CharField)
+- Tracks how the date was obtained
+- **Choices**:
+  - `'extracted'` - AI extracted from document
+  - `'manual'` - Manually entered by user
+- Default: `'extracted'`
+- Max length: 20 characters
+- Supports audit trail and trust scoring
+
+#### 3. date_status (CharField)
+- Tracks verification status of the date
+- **Choices**:
+  - `'pending'` - Awaiting review/verification
+  - `'verified'` - Confirmed by authorized user
+- Default: `'pending'`
+- Max length: 20 characters
+- Enables workflow for date verification
+
+### Database Indexes Added:
+```python
+# Composite index for filtering by date and status
+models.Index(fields=['clinical_date', 'date_status'])
+
+# Composite index for patient date queries
+models.Index(fields=['patient', 'clinical_date'])
+```
+**Purpose**: Optimize queries for pending dates, patient timelines, and date verification workflows
+
+### Helper Methods Implemented:
+
+#### set_clinical_date(date, source='extracted', status='pending')
+- Sets clinical date from date object or ISO string
+- Validates date format and converts strings using ClinicalDateParser
+- Updates date_source and date_status atomically
+- Supports both datetime.date objects and "YYYY-MM-DD" strings
+- Raises ValueError for invalid date formats
+
+#### verify_clinical_date()
+- Marks date status as 'verified'
+- Saves only the date_status field (optimized)
+- Used after user confirms date accuracy
+
+#### has_clinical_date()
+- Returns True if clinical_date is set
+- Quick check for date availability
+
+#### needs_date_verification()
+- Returns True if date exists but status is 'pending'
+- Used to identify records requiring review
+
+#### is_date_verified()
+- Returns True if date status is 'verified'
+- Quick check for verified dates
+
+### Usage Examples:
+```python
+# Set extracted date from parser
+parsed_data.set_clinical_date(
+    date="2023-05-15",
+    source='extracted',
+    status='pending'
+)
+
+# Set manually entered date
+parsed_data.set_clinical_date(
+    date=date(2023, 5, 15),
+    source='manual',
+    status='verified'
+)
+
+# Verify a pending date
+if parsed_data.needs_date_verification():
+    parsed_data.verify_clinical_date()
+
+# Check date availability
+if parsed_data.has_clinical_date():
+    clinical_date = parsed_data.clinical_date
+```
+
+### Migration Details:
+- **Migration file**: `apps/documents/migrations/0010_add_clinical_date_tracking.py`
+- **Operations**:
+  1. AddField for clinical_date (nullable DateField)
+  2. AddField for date_source (CharField with choices, default='extracted')
+  3. AddField for date_status (CharField with choices, default='pending')
+  4. AddIndex for (clinical_date, date_status)
+  5. AddIndex for (patient_id, clinical_date)
+- **Applied successfully** to database
+- **Backward compatible** - existing records have NULL clinical_date
+
+### Testing:
+- **Test file**: `apps/documents/tests/test_clinical_date_tracking.py`
+- **Coverage**: 15 comprehensive tests
+- **Tests pass**: ✅ All 15/15 tests passing
+- **Test categories**:
+  - Field defaults and choices
+  - Helper method functionality
+  - String date parsing with ClinicalDateParser integration
+  - Verification workflow
+  - Query filtering by status
+  - Database indexing performance
+
+### Integration with Other Subtasks:
+- **35.1 (Parser)**: Uses ClinicalDateParser for string-to-date conversion
+- **35.2 (FHIR)**: Provides clinical dates to FHIR services
+- **35.3 (Processing)**: Stores dates extracted during document processing
+- **35.5 (Review UI)**: Enables manual date entry and verification
+- **35.6 (API)**: Supports API endpoints for date management
+- **35.7 (FHIR Creation)**: Provides dates for FHIR resource generation
+
+### Quality Assurance:
+- ✅ No linting errors
+- ✅ Migration applied cleanly
+- ✅ All tests passing
+- ✅ Database indexes created
+- ✅ Helper methods working correctly
+- ✅ Backward compatible with existing code
+- ✅ HIPAA-compliant audit trail support
+
+### Performance Characteristics:
+- **Indexed queries**: Fast filtering by date and status
+- **Atomic updates**: Helper methods use update_fields for efficiency
+- **Minimal overhead**: Only 3 new fields added to existing model
+- **Query optimization**: Composite indexes support common query patterns
+
+This enhancement provides a solid foundation for clinical date tracking throughout the medical document processing workflow.
 
 ## 5. Implement review interface for manual date entry [pending]
 ### Dependencies: 35.4

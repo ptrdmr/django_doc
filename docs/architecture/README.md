@@ -1666,9 +1666,9 @@ The comprehensive security configuration provides enterprise-grade protection fo
 │               Django Application Layer                      │
 │                                                             │
 │ • Custom Password Validators (6 validators)                 │
-│ • Authentication Views with Audit Logging                  │
-│ • Patient Data Views with Access Controls                  │
-│ • Document Processing with Security Checks                 │
+│ • Authentication Views with Audit Logging                   │
+│ • Patient Data Views with Access Controls                   │
+│ • Document Processing with Security Checks                  │
 └─────────────────────┬───────────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────────┐
