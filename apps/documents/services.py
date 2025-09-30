@@ -15,6 +15,7 @@ import base64
 import json
 from django.db import transaction
 from django.core.exceptions import ValidationError
+from apps.core.date_parser import ClinicalDateParser
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +325,9 @@ class DocumentAnalyzer:
         # Store document reference for cost monitoring
         self.document = document
         self.processing_session = uuid4()  # Unique session ID for this processing run
+        
+        # Initialize clinical date parser for temporal data validation
+        self.date_parser = ClinicalDateParser()
         
         # Initialize error recovery tracking
         self._context_key = None
@@ -3052,7 +3056,10 @@ Processing Note: This is part of a larger medical document. Context may span mul
     
     def parse_and_format_date(self, date_input: Any) -> Optional[str]:
         """
-        Parse and format date to FHIR-compliant format (ISO 8601).
+        Parse and format date to FHIR-compliant format (ISO 8601) using ClinicalDateParser.
+        
+        Integrates the ClinicalDateParser for medical-specific date validation and parsing.
+        Provides confidence scoring and validates clinical date ranges.
         
         Handles various input formats:
         - ISO 8601 strings (already compliant)
@@ -3062,64 +3069,82 @@ Processing Note: This is part of a larger medical document. Context may span mul
         - Date objects
         
         Args:
-            date_input: Date in various formats
+            date_input: Date in various formats (string, datetime, date object)
             
         Returns:
-            FHIR-compliant date string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS+TZ) or None
+            FHIR-compliant date string (YYYY-MM-DD) or None if parsing fails
         """
         if not date_input:
             return None
         
-        # If it's already a string, try to parse it
+        # Convert to string if needed
+        date_str = None
         if isinstance(date_input, str):
             date_str = date_input.strip()
-            
-            # Already in ISO 8601 format
-            if self._is_iso8601_format(date_str):
-                return date_str
-            
-            # Try common date formats
-            date_formats = [
-                '%m/%d/%Y',      # MM/DD/YYYY
-                '%m-%d-%Y',      # MM-DD-YYYY
-                '%d/%m/%Y',      # DD/MM/YYYY
-                '%d-%m-%Y',      # DD-MM-YYYY
-                '%Y-%m-%d',      # YYYY-MM-DD
-                '%Y/%m/%d',      # YYYY/MM/DD
-                '%B %d, %Y',     # January 1, 2023
-                '%b %d, %Y',     # Jan 1, 2023
-                '%d %B %Y',      # 1 January 2023
-                '%d %b %Y',      # 1 Jan 2023
-            ]
-            
-            for date_format in date_formats:
-                try:
-                    from datetime import datetime
-                    parsed_date = datetime.strptime(date_str, date_format)
-                    return parsed_date.strftime('%Y-%m-%d')
-                except ValueError:
-                    continue
-            
-            # Try parsing with dateutil for more flexible parsing
-            try:
-                from dateutil.parser import parse as dateutil_parse
-                parsed_date = dateutil_parse(date_str)
-                return parsed_date.strftime('%Y-%m-%d')
-            except:
-                self.logger.warning(f"Could not parse date string: {date_str}")
-                return None
-        
-        # Handle datetime objects
         elif hasattr(date_input, 'strftime'):
-            return date_input.strftime('%Y-%m-%d')
-        
-        # Handle date objects
+            # Handle datetime objects
+            date_str = date_input.strftime('%Y-%m-%d')
         elif hasattr(date_input, 'isoformat'):
-            return date_input.isoformat()
-        
+            # Handle date objects
+            date_str = date_input.isoformat()
         else:
             self.logger.warning(f"Unsupported date input type: {type(date_input)}")
             return None
+        
+        if not date_str:
+            return None
+        
+        # Quick check: if already in ISO 8601 format and valid, return it
+        if self._is_iso8601_format(date_str):
+            # Still validate it's a reasonable clinical date
+            parsed_date = self.date_parser.parse_single_date(date_str)
+            if parsed_date:
+                standardized = self.date_parser.standardize_date(parsed_date)
+                self.logger.debug(f"Validated ISO date '{date_str}' -> '{standardized}'")
+                return standardized
+            # If validation failed, fall through to extraction
+        
+        # Use ClinicalDateParser to extract and validate the date
+        try:
+            extraction_results = self.date_parser.extract_dates(date_str)
+            
+            if extraction_results:
+                # Take the first (highest confidence) result
+                best_result = extraction_results[0]
+                
+                # Standardize the extracted date to ISO format
+                standardized = self.date_parser.standardize_date(best_result.extracted_date)
+                
+                # Log confidence for monitoring
+                if best_result.confidence < 0.7:
+                    self.logger.warning(
+                        f"Low confidence ({best_result.confidence:.2f}) parsing date '{date_str}' "
+                        f"-> '{standardized}'"
+                    )
+                else:
+                    self.logger.debug(
+                        f"Parsed date '{date_str}' -> '{standardized}' "
+                        f"(confidence: {best_result.confidence:.2f}, method: {best_result.extraction_method})"
+                    )
+                
+                return standardized
+            else:
+                self.logger.warning(f"ClinicalDateParser could not extract date from: '{date_str}'")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error parsing date '{date_str}' with ClinicalDateParser: {e}")
+            
+            # Fallback to dateutil as last resort
+            try:
+                from dateutil.parser import parse as dateutil_parse
+                parsed_date = dateutil_parse(date_str)
+                fallback_result = parsed_date.strftime('%Y-%m-%d')
+                self.logger.warning(f"Used fallback parser for '{date_str}' -> '{fallback_result}'")
+                return fallback_result
+            except:
+                self.logger.error(f"All date parsing methods failed for: '{date_str}'")
+                return None
     
     def _is_iso8601_format(self, date_str: str) -> bool:
         """Check if a date string is already in ISO 8601 format."""
