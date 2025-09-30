@@ -417,13 +417,63 @@ def test_patient_search_with_date_range():
 - Gather feedback on the usability and efficiency of the new system compared to the previous approach.
 
 # Subtasks:
-## 1. Implement ClinicalDateParser utility [pending]
+## 1. Implement ClinicalDateParser utility [done]
 ### Dependencies: None
 ### Description: Create a utility class for extracting and parsing clinical dates from structured data and document text.
 ### Details:
 Develop the ClinicalDateParser class with methods for date extraction, parsing, and validation. Include NLP techniques for identifying dates in text and handling various date formats.
+<info added on 2025-09-26T04:28:31.960Z>
+## Implementation Summary
+Successfully implemented a comprehensive ClinicalDateParser utility class in `apps/core/date_parser.py` with the following features:
 
-## 2. Update FHIR services for clinical date support [pending]
+### Key Components Implemented:
+1. **DateExtractionResult Class**: Container for extraction results with metadata (confidence, method, position)
+2. **ClinicalDateParser Class**: Main parser with regex and fuzzy parsing capabilities
+3. **Multiple Date Format Support**: 
+   - ISO format (YYYY-MM-DD)
+   - US format (MM/DD/YYYY, MM-DD-YYYY, MM.DD.YYYY)
+   - Month names (January 15, 2023, 15 January 2023)
+   - Two-digit years with intelligent century handling
+
+### Advanced Features:
+- **Confidence Scoring**: Each extracted date gets a confidence score (0.0-1.0)
+- **Context Extraction**: Captures surrounding text for review interfaces
+- **Deduplication**: Smart deduplication based on proximity and confidence
+- **Clinical Date Validation**: Ensures dates are within reasonable medical range (1900-future appointments)
+- **Multiple Extraction Methods**: Regex-based and fuzzy parsing with dateutil
+- **Standardization**: Converts any valid date input to ISO format
+
+### Implementation Highlights:
+- Used existing `python-dateutil` dependency (no new packages needed)
+- Comprehensive error handling for malformed dates
+- Performance-optimized with compiled regex patterns
+- Modular design for easy extension
+- Clear separation of concerns
+
+### Testing:
+- **25 comprehensive unit tests** covering all functionality
+- Edge cases and malformed date handling
+- Realistic medical document examples
+- All tests passing
+
+### Files Created:
+- `apps/core/date_parser.py` - Main parser implementation (400+ lines)
+- `apps/core/tests/test_date_parser.py` - Comprehensive test suite (350+ lines)
+- `apps/core/tests/__init__.py` - Test module initialization
+
+### Usage Example:
+```python
+from apps.core.date_parser import ClinicalDateParser
+
+parser = ClinicalDateParser()
+results = parser.extract_dates("Patient admitted on 05/15/2023 and discharged May 20, 2023")
+# Returns DateExtractionResult objects with dates, confidence, and context
+```
+
+Ready for integration into subtask 35.2 (FHIR services) and 35.3 (document processing).
+</info added on 2025-09-26T04:28:31.960Z>
+
+## 2. Update FHIR services for clinical date support [done]
 ### Dependencies: 35.1
 ### Description: Modify FHIR services to use clinical dates instead of processing timestamps and add support for optional clinical date parameters.
 ### Details:

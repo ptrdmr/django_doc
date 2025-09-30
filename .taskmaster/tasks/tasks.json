@@ -2342,7 +2342,7 @@
             "title": "Update FHIR services for clinical date support",
             "description": "Modify FHIR services to use clinical dates instead of processing timestamps and add support for optional clinical date parameters.",
             "details": "Update condition_service.py and observation_service.py to remove datetime.now() usage for clinical dates. Add support for optional clinical_date parameter in create methods. Implement clear separation between clinical dates and processing metadata.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               "35.1"
             ],
@@ -2441,7 +2441,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-09-26T04:27:59.190Z",
+      "updated": "2025-09-30T15:07:52.686Z",
       "description": "Tasks for master context"
     }
   }
