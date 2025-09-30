@@ -10,7 +10,7 @@ from meddocparser.celery import app
 import time
 import logging
 from django.utils import timezone
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 # Import custom exceptions for enhanced error handling
 from .exceptions import (
