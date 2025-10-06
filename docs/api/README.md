@@ -647,6 +647,190 @@ Get document preview data for UI display.
 
 ---
 
+## Clinical Date Management API - Task 35 Complete ✅
+
+**Secure API endpoints for managing clinical dates with HIPAA audit logging and manual review capabilities.**
+
+*Updated: 2025-10-06 12:34:02 | Task 35 COMPLETE - Clinical date extraction and manual entry system*
+
+### Save Clinical Date
+**POST** `/documents/clinical-date/save/`
+
+Save or update a clinical date for extracted medical data.
+
+**Request:**
+```http
+POST /documents/clinical-date/save/
+Content-Type: application/json
+
+{
+    "document_id": 123,
+    "parsed_data_id": 456,
+    "clinical_date": "2023-05-15"
+}
+```
+
+**Response - Success:**
+```json
+{
+    "status": "success",
+    "message": "Clinical date saved successfully",
+    "clinical_date": "2023-05-15",
+    "date_source": "manual",
+    "date_status": "pending"
+}
+```
+
+**Response - Validation Error:**
+```json
+{
+    "status": "error",
+    "error": "Date cannot be in the future"
+}
+```
+
+**Validation Rules:**
+- Date format: YYYY-MM-DD
+- Date range: 1900-01-01 to present
+- No future dates allowed
+- Valid date format required
+
+**Security Features:**
+- User must own the document (access control)
+- HIPAA audit logging for all PHI access
+- Input validation and sanitization
+- SQL injection protection
+
+### Verify Clinical Date
+**POST** `/documents/clinical-date/verify/`
+
+Mark a clinical date as verified by a clinician.
+
+**Request:**
+```http
+POST /documents/clinical-date/verify/
+Content-Type: application/json
+
+{
+    "document_id": 123,
+    "parsed_data_id": 456
+}
+```
+
+**Response - Success:**
+```json
+{
+    "status": "success",
+    "message": "Clinical date verified successfully",
+    "date_status": "verified"
+}
+```
+
+**Response - Error:**
+```json
+{
+    "status": "error",
+    "error": "No clinical date to verify"
+}
+```
+
+**Features:**
+- Changes date_status from 'pending' to 'verified'
+- HIPAA audit logging
+- Requires existing clinical_date
+- Access control enforcement
+
+### Clinical Date Fields (ParsedData Model)
+
+**Date Management Fields:**
+```python
+clinical_date = DateField(null=True)      # The clinical event date
+date_source = CharField(max_length=20)    # 'extracted' or 'manual'
+date_status = CharField(max_length=20)    # 'pending' or 'verified'
+```
+
+**Helper Methods:**
+```python
+parsed_data.set_clinical_date(date, source, status)  # Set date with audit trail
+parsed_data.has_clinical_date()                      # Check if date exists
+```
+
+### FHIR Integration
+
+Clinical dates are automatically integrated into FHIR resources using a priority system:
+
+**Date Priority Hierarchy:**
+1. **AI-Extracted Dates** (highest priority) - Specific timestamps from structured extraction
+2. **Clinical Date Fallback** - Date from ParsedData if no extracted date
+3. **None** (no fallback) - Never uses `datetime.utcnow()` for medical events
+
+**FHIR Resource Types Using Clinical Dates:**
+- `Observation` (vital signs, lab results)
+- `Procedure` (medical procedures)
+- `Condition` (diagnoses)
+- `MedicationStatement` (medications)
+
+### Audit Logging
+
+All clinical date operations are logged with:
+- User ID and timestamp
+- Document ID and parsed data ID
+- Action performed (save/verify)
+- Old and new values
+- PHI access indicator
+- Event type: `phi_access`
+
+**Audit Log Fields:**
+```python
+{
+    "event_type": "phi_access",
+    "user": user_object,
+    "phi_involved": True,
+    "resource_type": "ParsedData",
+    "resource_id": parsed_data.id,
+    "details": {
+        "action": "clinical_date_saved",
+        "document_id": document.id,
+        "clinical_date": "2023-05-15",
+        "date_source": "manual"
+    }
+}
+```
+
+### Error Codes
+
+| Code | Description |
+|------|-------------|
+| `invalid_date_format` | Date must be in YYYY-MM-DD format |
+| `future_date_not_allowed` | Date cannot be in the future |
+| `date_too_old` | Date before 1900 not allowed |
+| `missing_required_field` | Required field missing from request |
+| `access_denied` | User does not have access to this document |
+| `parsed_data_not_found` | ParsedData record not found |
+| `no_date_to_verify` | No clinical date exists to verify |
+
+### Security Best Practices
+
+**Input Validation:**
+- Date format validation (YYYY-MM-DD)
+- Range checking (1900 to present)
+- SQL injection protection via Django ORM
+- CSRF token validation
+
+**Access Control:**
+- Login required for all endpoints
+- User must own the document
+- Organization-based isolation
+- Permission checking
+
+**Audit Compliance:**
+- All PHI access logged
+- Complete audit trail maintained
+- Timestamp tracking
+- User attribution
+
+---
+
 ## FHIR Merge Integration API - Task 14 (In Progress) ⭐
 
 **Enterprise-grade FHIR resource merging endpoints with conflict detection and resolution capabilities.**
