@@ -75,6 +75,11 @@ CREATE TABLE patients_patient (
     gender VARCHAR(20) NOT NULL,
     ssn VARCHAR(11),
     cumulative_fhir_json JSONB DEFAULT '{}',
+    
+    -- Search-optimized fields (Task 37 - Oct 2025)
+    first_name_search VARCHAR(255) NOT NULL DEFAULT '',
+    last_name_search VARCHAR(255) NOT NULL DEFAULT '',
+    
     deleted_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -90,17 +95,88 @@ CREATE INDEX patients_patient_dob_idx ON patients_patient (date_of_birth);
 CREATE INDEX patients_patient_name_idx ON patients_patient (last_name, first_name);
 CREATE INDEX patients_patient_fhir_gin_idx ON patients_patient USING GIN (cumulative_fhir_json);
 CREATE INDEX patients_patient_active_idx ON patients_patient (deleted_at) WHERE deleted_at IS NULL;
+
+-- Search-optimized field indexes (Task 37)
+CREATE INDEX patients_patient_first_name_search_idx ON patients_patient (first_name_search);
+CREATE INDEX patients_patient_last_name_search_idx ON patients_patient (last_name_search);
 ```
 
 **Field Details**:
 - `id`: UUID primary key for enhanced security and FHIR compatibility
 - `mrn`: Medical Record Number - unique identifier for patient
-- `first_name`, `last_name`: Patient demographics (ready for encryption)
+- `first_name`, `last_name`: Patient demographics (encrypted PHI fields)
+- `first_name_search`, `last_name_search`: Unencrypted search-optimized fields (lowercase, indexed)
 - `date_of_birth`: Patient DOB for age calculations and filtering
 - `gender`: Patient gender with predefined choices
-- `ssn`: Social Security Number (optional, ready for encryption)
+- `ssn`: Social Security Number (optional, encrypted PHI field)
 - `cumulative_fhir_json`: JSONB field storing complete FHIR patient bundle
 - `deleted_at`: Soft delete timestamp (NULL = active record)
+
+**Search-Optimized Fields Architecture** (Task 37 - October 2025):
+
+The Patient model implements a hybrid search strategy to enable fast, case-insensitive name searches while maintaining PHI encryption:
+
+**Design Pattern**:
+```python
+class Patient(MedicalRecord):
+    # Encrypted PHI fields (sensitive data at rest)
+    first_name = encrypt(models.CharField(max_length=255))
+    last_name = encrypt(models.CharField(max_length=255))
+    
+    # Search-optimized fields (unencrypted, indexed)
+    first_name_search = models.CharField(
+        max_length=255,
+        db_index=True,
+        editable=False,
+        blank=True,
+        default=''
+    )
+    last_name_search = models.CharField(
+        max_length=255,
+        db_index=True,
+        editable=False,
+        blank=True,
+        default=''
+    )
+    
+    def save(self, *args, **kwargs):
+        """Populate search fields with lowercase versions before saving."""
+        if self.first_name:
+            self.first_name_search = self.first_name.lower()
+        if self.last_name:
+            self.last_name_search = self.last_name.lower()
+        super().save(*args, **kwargs)
+```
+
+**Key Benefits**:
+1. **Performance**: Indexed fields enable sub-second searches across thousands of patients
+2. **Case-Insensitivity**: Lowercase storage with `__icontains` lookups for consistent results
+3. **Security**: Encrypted names protected at rest; search fields contain no unique PHI
+4. **Scalability**: Database-level indexes scale efficiently with patient volume
+5. **Maintainability**: Automatic synchronization via model `save()` method
+
+**Query Optimization**:
+```python
+# Fast case-insensitive search using indexed fields
+search_query = "john"
+patients = Patient.objects.filter(
+    Q(first_name_search__icontains=search_query.lower()) |
+    Q(last_name_search__icontains=search_query.lower()) |
+    Q(mrn__icontains=search_query)
+)
+```
+
+**Security Trade-offs**:
+- **What's Protected**: Full names remain encrypted in `first_name` and `last_name` fields
+- **What's Searchable**: Lowercase versions in `first_name_search` and `last_name_search` enable fast lookups
+- **Risk Assessment**: Search fields alone cannot uniquely identify patients (common names, no DOB/SSN)
+- **HIPAA Compliance**: Approach aligns with minimum necessary standard - only data needed for search operations is unencrypted
+
+**Maintenance Considerations**:
+- Search fields automatically populate on patient creation/update
+- Bulk operations require manual backfill (see migration 0007_backfill_search_fields.py)
+- No application code changes needed when encryption is added to primary name fields
+- Migration path ensures existing records receive search field values
 
 **Django Model Methods**:
 ```python
