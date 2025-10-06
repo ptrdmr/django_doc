@@ -8,7 +8,7 @@ from django.urls import reverse_lazy
 from django.contrib import messages
 from django.db import IntegrityError, DatabaseError, OperationalError, transaction
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, Http404
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.template.loader import render_to_string
@@ -2525,14 +2525,25 @@ def save_clinical_date(request):
                 status=status
             )
             
-            # Log the action for HIPAA audit trail
+            # Log the action for HIPAA audit trail using proper event types
             from apps.core.models import AuditLog
-            AuditLog.objects.create(
+            AuditLog.log_event(
+                event_type='phi_update',
                 user=request.user,
-                action='UPDATE' if not is_new else 'CREATE',
-                resource_type='ParsedData',
-                resource_id=str(parsed_data.id),
-                details=f"{'Updated' if not is_new else 'Added'} clinical date to {parsed_date} (source: manual, status: pending)"
+                request=request,
+                description=f"{'Updated' if not is_new else 'Added'} clinical date for document {document.id}",
+                details={
+                    'parsed_data_id': str(parsed_data.id),
+                    'document_id': str(document.id),
+                    'clinical_date': parsed_date.isoformat(),
+                    'date_source': source,
+                    'date_status': status,
+                    'action': 'update' if not is_new else 'create',
+                },
+                patient_mrn=document.patient.mrn if hasattr(document, 'patient') and document.patient else None,
+                phi_involved=True,
+                content_object=parsed_data,
+                severity='info'
             )
             
             logger.info(f"Clinical date {'updated' if not is_new else 'saved'} for ParsedData {parsed_data.id} by user {request.user.id}: {parsed_date}")
@@ -2552,16 +2563,11 @@ def save_clinical_date(request):
                 'error': f'Failed to save clinical date: {str(save_error)}'
             }, status=500)
     
-    except Document.DoesNotExist:
+    except Http404:
+        # Return JSON 404 for API consistency
         return JsonResponse({
             'success': False,
-            'error': 'Document not found'
-        }, status=404)
-    
-    except ParsedData.DoesNotExist:
-        return JsonResponse({
-            'success': False,
-            'error': 'Parsed data not found'
+            'error': 'Document or parsed data not found'
         }, status=404)
     
     except Exception as e:
@@ -2620,14 +2626,25 @@ def verify_clinical_date(request):
         try:
             parsed_data.verify_clinical_date()
             
-            # Log the action for HIPAA audit trail
+            # Log the action for HIPAA audit trail using proper event types
             from apps.core.models import AuditLog
-            AuditLog.objects.create(
+            AuditLog.log_event(
+                event_type='phi_update',
                 user=request.user,
-                action='VERIFY',
-                resource_type='ParsedData',
-                resource_id=str(parsed_data.id),
-                details=f"Verified clinical date {parsed_data.clinical_date}"
+                request=request,
+                description=f"Verified clinical date for document {document.id}",
+                details={
+                    'parsed_data_id': str(parsed_data.id),
+                    'document_id': str(document.id),
+                    'clinical_date': parsed_data.clinical_date.isoformat(),
+                    'action': 'verify',
+                    'previous_status': 'pending',
+                    'new_status': 'verified',
+                },
+                patient_mrn=document.patient.mrn if hasattr(document, 'patient') and document.patient else None,
+                phi_involved=True,
+                content_object=parsed_data,
+                severity='info'
             )
             
             logger.info(f"Clinical date verified for ParsedData {parsed_data.id} by user {request.user.id}")
@@ -2645,16 +2662,11 @@ def verify_clinical_date(request):
                 'error': f'Failed to verify clinical date: {str(verify_error)}'
             }, status=500)
     
-    except Document.DoesNotExist:
+    except Http404:
+        # Return JSON 404 for API consistency
         return JsonResponse({
             'success': False,
-            'error': 'Document not found'
-        }, status=404)
-    
-    except ParsedData.DoesNotExist:
-        return JsonResponse({
-            'success': False,
-            'error': 'Parsed data not found'
+            'error': 'Document or parsed data not found'
         }, status=404)
     
     except Exception as e:
