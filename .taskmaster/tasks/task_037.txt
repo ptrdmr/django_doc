@@ -1,0 +1,309 @@
+# Task ID: 37
+# Title: Add Search-Optimized Fields to Patient Model
+# Status: pending
+# Dependencies: 3, 19
+# Priority: high
+# Description: Implement unencrypted, indexed search fields for patient names to enable fast, case-insensitive searching while maintaining encryption of sensitive data.
+# Details:
+1. Update Patient model in apps/patients/models.py:
+   ```python
+   from django.db import models
+   from django_cryptography.fields import encrypt
+
+   class Patient(models.Model):
+       # Existing fields
+       first_name = encrypt(models.CharField(max_length=100))
+       last_name = encrypt(models.CharField(max_length=100))
+       
+       # New search-optimized fields
+       first_name_search = models.CharField(max_length=100, db_index=True, editable=False)
+       last_name_search = models.CharField(max_length=100, db_index=True, editable=False)
+
+       def save(self, *args, **kwargs):
+           # Populate search fields before saving
+           if self.first_name:
+               self.first_name_search = self.first_name.lower()
+           if self.last_name:
+               self.last_name_search = self.last_name.lower()
+           super().save(*args, **kwargs)
+   ```
+
+2. Create schema migration:
+   ```
+   python manage.py makemigrations patients
+   ```
+
+3. Create data migration to backfill existing records:
+   ```
+   python manage.py makemigrations patients --empty --name backfill_search_fields
+   ```
+   Edit the new migration file:
+   ```python
+   from django.db import migrations
+
+   def backfill_search_fields(apps, schema_editor):
+       Patient = apps.get_model('patients', 'Patient')
+       for patient in Patient.objects.all():
+           patient.first_name_search = patient.first_name.lower()
+           patient.last_name_search = patient.last_name.lower()
+           patient.save()
+
+   class Migration(migrations.Migration):
+       dependencies = [
+           ('patients', 'previous_migration'),
+       ]
+
+       operations = [
+           migrations.RunPython(backfill_search_fields),
+       ]
+   ```
+
+4. Apply migrations:
+   ```
+   python manage.py migrate
+   ```
+
+5. Update PatientListView in apps/patients/views.py:
+   ```python
+   from django.db.models import Q
+
+   class PatientListView(ListView):
+       model = Patient
+       
+       def get_queryset(self):
+           queryset = super().get_queryset()
+           search_query = self.request.GET.get('q')
+           if search_query:
+               queryset = queryset.filter(
+                   Q(first_name_search__icontains=search_query.lower()) |
+                   Q(last_name_search__icontains=search_query.lower()) |
+                   Q(mrn__icontains=search_query)
+               )
+           return queryset
+   ```
+
+6. Update PatientMergeListView similarly.
+
+7. Document the search field architecture in the project documentation, explaining the security considerations and trade-offs.
+
+8. Update any relevant unit tests to use the new search fields.
+
+Best Practices:
+- Use Django's built-in security features like CSRF protection and SQL injection prevention.
+- Implement proper access controls to ensure only authorized users can search patient records.
+- Use Django's ORM methods to prevent SQL injection vulnerabilities.
+- Regularly audit and rotate encryption keys for the encrypted fields.
+- Consider implementing rate limiting on search endpoints to prevent abuse.
+
+# Test Strategy:
+1. Unit Tests:
+   - Test Patient model save method:
+     ```python
+     def test_patient_save_populates_search_fields(self):
+         patient = Patient.objects.create(first_name="John", last_name="Doe")
+         self.assertEqual(patient.first_name_search, "john")
+         self.assertEqual(patient.last_name_search, "doe")
+     ```
+   - Test search functionality:
+     ```python
+     def test_patient_search(self):
+         Patient.objects.create(first_name="John", last_name="Doe")
+         Patient.objects.create(first_name="Jane", last_name="Smith")
+         
+         response = self.client.get(reverse('patient-list') + '?q=john')
+         self.assertContains(response, "John Doe")
+         self.assertNotContains(response, "Jane Smith")
+         
+         response = self.client.get(reverse('patient-list') + '?q=SMITH')
+         self.assertContains(response, "Jane Smith")
+         self.assertNotContains(response, "John Doe")
+     ```
+
+2. Integration Tests:
+   - Test patient creation workflow to ensure search fields are populated.
+   - Test patient update workflow to verify search fields are updated.
+   - Verify search functionality works with various inputs (lowercase, uppercase, partial names).
+
+3. Migration Tests:
+   - Create a test database with sample patient records.
+   - Run the backfill migration and verify all existing records have search fields populated correctly.
+
+4. Performance Tests:
+   - Benchmark search queries with a large dataset to ensure improved performance.
+   - Compare search times using encrypted fields vs. new search-optimized fields.
+
+5. Security Tests:
+   - Verify that the original encrypted fields remain protected and are not exposed in search results.
+   - Test access controls to ensure only authorized users can perform searches.
+
+6. UI/UX Tests:
+   - Verify search functionality in the patient list view.
+   - Test search in the patient merge view.
+   - Ensure proper error handling and user feedback for searches with no results.
+
+7. Edge Case Tests:
+   - Test searching with special characters and non-ASCII names.
+   - Verify behavior with very long names that may approach field length limits.
+
+8. Regression Tests:
+   - Ensure existing functionality related to patient management still works correctly after implementing the new search fields.
+
+# Subtasks:
+## 1. Update Patient Model with Search-Optimized Fields [pending]
+### Dependencies: None
+### Description: Modify the Patient model in apps/patients/models.py to include unencrypted, indexed search fields for first and last names, and override the save method to populate these fields before saving.
+### Details:
+In apps/patients/models.py, add the following fields to the Patient model:
+
+```python
+first_name_search = models.CharField(max_length=100, db_index=True, editable=False)
+last_name_search = models.CharField(max_length=100, db_index=True, editable=False)
+```
+
+Override the save method to populate these fields:
+
+```python
+if self.first_name:
+    self.first_name_search = self.first_name.lower()
+if self.last_name:
+    self.last_name_search = self.last_name.lower()
+super().save(*args, **kwargs)
+```
+
+This ensures that the search fields are populated with lowercase versions of the first and last names before saving the patient record.
+
+## 2. Create Schema Migration for Patient Model Changes [pending]
+### Dependencies: None
+### Description: Generate and apply a schema migration to add the new search-optimized fields to the Patient model's database schema.
+### Details:
+Run the following command to create a migration for the Patient model changes:
+
+```bash
+python manage.py makemigrations patients
+```
+
+This will generate a migration file that adds the new fields to the database schema. Apply the migration with:
+
+```bash
+python manage.py migrate
+```
+
+Ensure that the migration is applied successfully and that the new fields are present in the database schema.
+
+## 3. Create Data Migration to Backfill Existing Records [pending]
+### Dependencies: None
+### Description: Generate and apply a data migration to populate the new search-optimized fields for existing patient records in the database.
+### Details:
+Create an empty migration file for the data migration:
+
+```bash
+python manage.py makemigrations patients --empty --name backfill_search_fields
+```
+
+Edit the new migration file to include a function that backfills the search fields:
+
+```python
+from django.db import migrations
+
+def backfill_search_fields(apps, schema_editor):
+    Patient = apps.get_model('patients', 'Patient')
+    for patient in Patient.objects.all():
+        patient.first_name_search = patient.first_name.lower() if patient.first_name else ''
+        patient.last_name_search = patient.last_name.lower() if patient.last_name else ''
+        patient.save()
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ('patients', 'previous_migration'),
+    ]
+
+    operations = [
+        migrations.RunPython(backfill_search_fields),
+    ]
+```
+
+Replace 'previous_migration' with the name of the migration file that added the new fields. Apply the migration with:
+
+```bash
+python manage.py migrate
+```
+
+This will populate the search fields for existing patient records.
+
+## 4. Update PatientListView to Utilize Search Fields [pending]
+### Dependencies: None
+### Description: Modify the PatientListView in apps/patients/views.py to perform case-insensitive searches using the new search-optimized fields for first and last names.
+### Details:
+In apps/patients/views.py, update the get_queryset method of PatientListView:
+
+```python
+from django.db.models import Q
+
+class PatientListView(ListView):
+    model = Patient
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        search_query = self.request.GET.get('q')
+        if search_query:
+            queryset = queryset.filter(
+                Q(first_name_search__icontains=search_query.lower()) |
+                Q(last_name_search__icontains=search_query.lower()) |
+                Q(mrn__icontains=search_query)
+            )
+        return queryset
+```
+
+This ensures that searches on first and last names are case-insensitive and efficient due to the indexed search fields.
+
+## 5. Update PatientMergeListView to Utilize Search Fields [pending]
+### Dependencies: None
+### Description: Modify the PatientMergeListView to perform case-insensitive searches using the new search-optimized fields for first and last names.
+### Details:
+In apps/patients/views.py, update the get_queryset method of PatientMergeListView similarly to PatientListView:
+
+```python
+class PatientMergeListView(ListView):
+    model = Patient
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        search_query = self.request.GET.get('q')
+        if search_query:
+            queryset = queryset.filter(
+                Q(first_name_search__icontains=search_query.lower()) |
+                Q(last_name_search__icontains=search_query.lower()) |
+                Q(mrn__icontains=search_query)
+            )
+        return queryset
+```
+
+This ensures that searches on first and last names in the PatientMergeListView are also case-insensitive and efficient.
+
+## 6. Implement Comprehensive Testing for All Workflows [pending]
+### Dependencies: None
+### Description: Develop and execute unit tests to ensure that all workflows, including model saving, migrations, and view filtering, function correctly with the new search-optimized fields.
+### Details:
+Create unit tests to verify the following:
+
+- The Patient model's save method correctly populates the search fields.
+- The schema migration applies without errors and adds the new fields to the database.
+- The data migration populates the search fields for existing records.
+- The PatientListView filters patients correctly based on the search query.
+- The PatientMergeListView filters patients correctly based on the search query.
+
+Ensure that all tests pass successfully to confirm the correct implementation of the new search-optimized fields and their integration into the application.
+
+## 7. Update Project Documentation to Reflect Search Field Architecture [pending]
+### Dependencies: None
+### Description: Revise the project documentation to include detailed explanations of the new search-optimized fields, their implementation, and associated security considerations and trade-offs.
+### Details:
+Update the project documentation to include:
+
+- An overview of the new search-optimized fields in the Patient model.
+- Details on how these fields are populated and utilized in views.
+- Security considerations, including the use of unencrypted fields for search optimization and the implications for data security.
+- Trade-offs made in the design, such as balancing search performance with data encryption and security.
+
+This documentation will provide clarity on the design decisions and their impact on the application's functionality and security.
+

@@ -100,7 +100,10 @@ class PatientListView(LoginRequiredMixin, ListView):
     
     def filter_patients_by_search(self, queryset, search_query):
         """
-        Filter patient queryset by search criteria.
+        Filter patient queryset by search criteria using search-optimized fields.
+        
+        Uses unencrypted, indexed search fields for efficient case-insensitive searching
+        while maintaining encryption of sensitive PHI data.
         
         Args:
             queryset: Base patient queryset
@@ -110,9 +113,11 @@ class PatientListView(LoginRequiredMixin, ListView):
             QuerySet: Filtered queryset
         """
         if search_query:
+            # Use search-optimized fields for efficient database lookups
+            search_lower = search_query.lower()
             return queryset.filter(
-                Q(first_name__icontains=search_query) |
-                Q(last_name__icontains=search_query) |
+                Q(first_name_search__icontains=search_lower) |
+                Q(last_name_search__icontains=search_lower) |
                 Q(mrn__icontains=search_query)
             )
         return queryset
@@ -1022,9 +1027,11 @@ class PatientMergeListView(LoginRequiredMixin, TemplateView):
             patients = Patient.objects.all()
             
             if search_query:
+                # Use search-optimized fields for efficient searching
+                search_lower = search_query.lower()
                 patients = patients.filter(
-                    Q(first_name__icontains=search_query) |
-                    Q(last_name__icontains=search_query) |
+                    Q(first_name_search__icontains=search_lower) |
+                    Q(last_name_search__icontains=search_lower) |
                     Q(mrn__icontains=search_query)
                 )
             

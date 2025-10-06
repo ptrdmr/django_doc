@@ -59,6 +59,24 @@ class Patient(MedicalRecord):
         help_text="Gender is not considered PHI, stored unencrypted"
     )
     
+    # Search-optimized fields (unencrypted for fast searching)
+    first_name_search = models.CharField(
+        max_length=255, 
+        db_index=True, 
+        editable=False,
+        blank=True,
+        default='',
+        help_text="Lowercase version of first_name for efficient searching"
+    )
+    last_name_search = models.CharField(
+        max_length=255, 
+        db_index=True, 
+        editable=False,
+        blank=True,
+        default='',
+        help_text="Lowercase version of last_name for efficient searching"
+    )
+    
     # Additional PHI fields - All encrypted
     ssn = encrypt(models.CharField(max_length=11, blank=True, null=True))
     address = encrypt(models.TextField(blank=True, null=True))
@@ -108,6 +126,21 @@ class Patient(MedicalRecord):
     
     def __str__(self):
         return f"Patient {self.mrn}"
+    
+    def save(self, *args, **kwargs):
+        """
+        Override save to populate search-optimized fields.
+        
+        Populates first_name_search and last_name_search with lowercase
+        versions of the encrypted fields for efficient database searching.
+        """
+        # Populate search fields with lowercase versions
+        if self.first_name:
+            self.first_name_search = self.first_name.lower()
+        if self.last_name:
+            self.last_name_search = self.last_name.lower()
+        
+        super().save(*args, **kwargs)
     
     def get_absolute_url(self):
         from django.urls import reverse
