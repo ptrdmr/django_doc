@@ -423,6 +423,9 @@ class ObservationResource(FHIRObservation):
         """
         Create an Observation resource from lab result information.
         
+        Task 35.7: Updated to allow None observation_date, maintaining clear
+        distinction between clinical dates and processing metadata.
+        
         Args:
             patient_id: FHIR ID of the patient
             test_code: LOINC code for the test
@@ -431,7 +434,7 @@ class ObservationResource(FHIRObservation):
             unit: Optional unit of measurement
             observation_id: Optional FHIR resource ID
             reference_range: Optional reference range string
-            observation_date: Optional date of observation
+            observation_date: Optional date of observation (None if unknown)
             
         Returns:
             ObservationResource instance
@@ -439,8 +442,9 @@ class ObservationResource(FHIRObservation):
         if not observation_id:
             observation_id = str(uuid4())
             
-        if not observation_date:
-            observation_date = datetime.utcnow()
+        # Task 35.7: Do NOT fall back to datetime.utcnow() for clinical dates
+        # If no date is provided, leave it as None to maintain clear distinction
+        # between clinical dates and processing metadata
             
         # Create observation code
         code = CodeableConcept(
@@ -465,21 +469,24 @@ class ObservationResource(FHIRObservation):
         else:
             value_field = {"valueString": str(value)}
         
-        # Create meta
-        meta = Meta(
-            versionId="1",
-            lastUpdated=observation_date.isoformat() + "Z"
-        )
-        
-        return cls(
-            id=observation_id,
-            meta=meta,
-            status="final",
-            code=code,
-            subject=subject,
-            effectiveDateTime=observation_date.isoformat() + "Z",
+        # Task 35.7: Only create meta/effectiveDateTime if observation_date is available
+        resource_kwargs = {
+            "id": observation_id,
+            "status": "final",
+            "code": code,
+            "subject": subject,
             **value_field
-        )
+        }
+        
+        if observation_date:
+            # Include date fields only when we have a valid clinical date
+            resource_kwargs["meta"] = Meta(
+                versionId="1",
+                lastUpdated=observation_date.isoformat() + "Z"
+            )
+            resource_kwargs["effectiveDateTime"] = observation_date.isoformat() + "Z"
+        
+        return cls(**resource_kwargs)
     
     def get_test_name(self) -> Optional[str]:
         """

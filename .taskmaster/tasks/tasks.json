@@ -2398,8 +2398,8 @@
             "id": 7,
             "title": "Update FHIR resource creation process",
             "description": "Modify the document finalization process to incorporate extracted or manually entered clinical dates into FHIR resources.",
-            "details": "Update the FHIR resource creation logic to use the clinical dates stored in ParsedData when available. Implement fallback logic for cases where clinical dates are missing. Ensure clear distinction between clinical dates and processing metadata in the resulting FHIR resources.",
-            "status": "pending",
+            "details": "Update the FHIR resource creation logic to use the clinical dates stored in ParsedData when available. Implement fallback logic for cases where clinical dates are missing. Ensure clear distinction between clinical dates and processing metadata in the resulting FHIR resources.\n<info added on 2025-10-06T18:57:05.175Z>\nThe FHIR resource creation process has been successfully updated to properly handle clinical dates. Key modifications include:\n\n1. Removed automatic datetime.utcnow() fallback in ObservationResource.create_from_lab_result()\n2. Implemented a date priority system that uses:\n   - Specific dates from structured extraction data (highest priority)\n   - Clinical dates from ParsedData (second priority)\n   - No automatic fallback to processing time (returns None when dates unavailable)\n\nThe implementation maintains clear separation between clinical dates and processing metadata, ensuring temporal integrity of medical data. All FHIR resources now properly distinguish between actual clinical dates and document processing timestamps.\n\nThe code changes span multiple files including fhir_models.py, converters.py, and tasks.py, with comprehensive test coverage in a new test_clinical_date_integration.py file. All tests are passing, confirming the system handles all date scenarios correctly while maintaining HIPAA compliance and medical data integrity.\n</info added on 2025-10-06T18:57:05.175Z>",
+            "status": "done",
             "dependencies": [
               "35.2",
               "35.6"
@@ -2441,7 +2441,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-06T16:54:36.091Z",
+      "updated": "2025-10-06T18:56:27.330Z",
       "description": "Tasks for master context"
     }
   }
