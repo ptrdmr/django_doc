@@ -34,4 +34,8 @@ urlpatterns = [
     path('field/<str:field_id>/approve/', views.approve_field, name='approve-field'),
     path('field/<str:field_id>/update/', views.update_field_value, name='update-field'),
     path('field/<str:field_id>/flag/', views.flag_field, name='flag-field'),
+    
+    # Clinical date management endpoints (Task 35.5)
+    path('clinical-date/save/', views.save_clinical_date, name='save-clinical-date'),
+    path('clinical-date/verify/', views.verify_clinical_date, name='verify-clinical-date'),
 ] 
