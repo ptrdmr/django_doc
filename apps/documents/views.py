@@ -784,6 +784,23 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 total_fields = len(field_list)
                 approved_fields = 0
                 
+                # Get ParsedData for clinical date information
+                # Use hasattr to check if ParsedData exists before accessing it
+                parsed_data_id = None
+                clinical_date = None
+                date_source = None
+                date_status = None
+                
+                if hasattr(self.object, 'parsed_data'):
+                    try:
+                        parsed_data = self.object.parsed_data
+                        parsed_data_id = parsed_data.id
+                        clinical_date = parsed_data.clinical_date
+                        date_source = parsed_data.date_source
+                        date_status = parsed_data.date_status
+                    except Exception as e:
+                        logger.warning(f"Could not get ParsedData for document {self.object.id}: {e}")
+                
                 for field_data in field_list:
                     # Check if field is approved in session
                     field_id = field_data.get('id', f"{field_data['field_name']}_{hash(str(field_data))}")
@@ -795,6 +812,12 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     field_data['approved'] = is_approved
                     field_data['id'] = field_id
                     field_data['category_slug'] = field_data['category'].lower().replace(' ', '-').replace('_', '-')
+                    
+                    # Add clinical date information (Task 35.5)
+                    field_data['parsed_data_id'] = parsed_data_id
+                    field_data['clinical_date'] = clinical_date
+                    field_data['date_source'] = date_source
+                    field_data['date_status'] = date_status
                     
                     categorized_data[field_data['category']].append(field_data)
                 
@@ -830,6 +853,10 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
         except Exception as comparison_error:
             logger.error(f"Error creating patient data comparison: {comparison_error}")
             context['comparison'] = None
+        
+        # Add today's date for clinical date input max value (Task 35.5)
+        from django.utils import timezone
+        context['today'] = timezone.now().date()
         
         return context
     
@@ -2406,3 +2433,233 @@ def add_missing_field(request, document_id):
     except Exception as e:
         logger.error(f"Error adding missing field to document {document_id}: {e}")
         return HttpResponse('<div class="text-red-600">Error adding field</div>', status=500)
+
+
+# ============================================
+# Clinical Date Management API (Task 35.5)
+# ============================================
+
+@require_POST
+def save_clinical_date(request):
+    """
+    Save or update a clinical date for parsed data.
+    
+    Args:
+        request: HTTP POST request with:
+            - parsed_data_id: ID of the ParsedData object
+            - clinical_date: Date in YYYY-MM-DD format
+            - document_id: ID of the source document (for permissions)
+    
+    Returns:
+        JsonResponse: Success status and message
+    """
+    try:
+        # Get and validate parameters
+        parsed_data_id = request.POST.get('parsed_data_id')
+        clinical_date_str = request.POST.get('clinical_date')
+        document_id = request.POST.get('document_id')
+        
+        if not all([parsed_data_id, clinical_date_str, document_id]):
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required parameters'
+            }, status=400)
+        
+        # Get the document for permission checking
+        document = get_object_or_404(Document, id=document_id)
+        
+        # Verify user has permission to review documents
+        if not request.user.has_perm('documents.change_document'):
+            return JsonResponse({
+                'success': False,
+                'error': 'Permission denied'
+            }, status=403)
+        
+        # Get the ParsedData object
+        parsed_data = get_object_or_404(ParsedData, id=parsed_data_id, document=document)
+        
+        # Validate and parse the date
+        from apps.core.date_parser import ClinicalDateParser
+        parser = ClinicalDateParser()
+        
+        try:
+            parsed_date = parser.parse_single_date(clinical_date_str)
+            if not parsed_date:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid date format. Please use YYYY-MM-DD'
+                }, status=400)
+        except Exception as date_error:
+            logger.error(f"Error parsing clinical date '{clinical_date_str}': {date_error}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid date: {str(date_error)}'
+            }, status=400)
+        
+        # Validate date is not in the future
+        if parsed_date > timezone.now().date():
+            return JsonResponse({
+                'success': False,
+                'error': 'Clinical date cannot be in the future'
+            }, status=400)
+        
+        # Validate date is reasonable (after 1900)
+        from datetime import date as date_class
+        min_date = date_class(1900, 1, 1)
+        if parsed_date < min_date:
+            return JsonResponse({
+                'success': False,
+                'error': 'Date must be after 1900'
+            }, status=400)
+        
+        # Save the clinical date
+        try:
+            # Determine if this is a new date or an edit
+            is_new = not parsed_data.has_clinical_date()
+            source = 'manual'  # User is manually entering/editing
+            status = 'pending'  # New manual entries need verification
+            
+            parsed_data.set_clinical_date(
+                date=parsed_date,
+                source=source,
+                status=status
+            )
+            
+            # Log the action for HIPAA audit trail
+            from apps.core.models import AuditLog
+            AuditLog.objects.create(
+                user=request.user,
+                action='UPDATE' if not is_new else 'CREATE',
+                resource_type='ParsedData',
+                resource_id=str(parsed_data.id),
+                details=f"{'Updated' if not is_new else 'Added'} clinical date to {parsed_date} (source: manual, status: pending)"
+            )
+            
+            logger.info(f"Clinical date {'updated' if not is_new else 'saved'} for ParsedData {parsed_data.id} by user {request.user.id}: {parsed_date}")
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Clinical date saved successfully',
+                'clinical_date': parsed_date.isoformat(),
+                'date_source': source,
+                'date_status': status
+            })
+            
+        except Exception as save_error:
+            logger.error(f"Error saving clinical date for ParsedData {parsed_data.id}: {save_error}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Failed to save clinical date: {str(save_error)}'
+            }, status=500)
+    
+    except Document.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Document not found'
+        }, status=404)
+    
+    except ParsedData.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Parsed data not found'
+        }, status=404)
+    
+    except Exception as e:
+        logger.error(f"Unexpected error saving clinical date: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected error occurred'
+        }, status=500)
+
+
+@require_POST
+def verify_clinical_date(request):
+    """
+    Verify a clinical date for parsed data.
+    
+    Args:
+        request: HTTP POST request with:
+            - parsed_data_id: ID of the ParsedData object
+            - document_id: ID of the source document (for permissions)
+    
+    Returns:
+        JsonResponse: Success status and message
+    """
+    try:
+        # Get and validate parameters
+        parsed_data_id = request.POST.get('parsed_data_id')
+        document_id = request.POST.get('document_id')
+        
+        if not all([parsed_data_id, document_id]):
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required parameters'
+            }, status=400)
+        
+        # Get the document for permission checking
+        document = get_object_or_404(Document, id=document_id)
+        
+        # Verify user has permission to review documents
+        if not request.user.has_perm('documents.change_document'):
+            return JsonResponse({
+                'success': False,
+                'error': 'Permission denied'
+            }, status=403)
+        
+        # Get the ParsedData object
+        parsed_data = get_object_or_404(ParsedData, id=parsed_data_id, document=document)
+        
+        # Check if there's a clinical date to verify
+        if not parsed_data.has_clinical_date():
+            return JsonResponse({
+                'success': False,
+                'error': 'No clinical date to verify'
+            }, status=400)
+        
+        # Verify the clinical date
+        try:
+            parsed_data.verify_clinical_date()
+            
+            # Log the action for HIPAA audit trail
+            from apps.core.models import AuditLog
+            AuditLog.objects.create(
+                user=request.user,
+                action='VERIFY',
+                resource_type='ParsedData',
+                resource_id=str(parsed_data.id),
+                details=f"Verified clinical date {parsed_data.clinical_date}"
+            )
+            
+            logger.info(f"Clinical date verified for ParsedData {parsed_data.id} by user {request.user.id}")
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Clinical date verified successfully',
+                'date_status': 'verified'
+            })
+            
+        except Exception as verify_error:
+            logger.error(f"Error verifying clinical date for ParsedData {parsed_data.id}: {verify_error}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Failed to verify clinical date: {str(verify_error)}'
+            }, status=500)
+    
+    except Document.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Document not found'
+        }, status=404)
+    
+    except ParsedData.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Parsed data not found'
+        }, status=404)
+    
+    except Exception as e:
+        logger.error(f"Unexpected error verifying clinical date: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'An unexpected error occurred'
+        }, status=500)

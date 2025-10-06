@@ -1364,6 +1364,291 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
+    
+    // ===================================
+    // Clinical Date Management (Task 35.5)
+    // ===================================
+    
+    /**
+     * Validate clinical date input
+     * @param {string} dateString - Date in YYYY-MM-DD format
+     * @returns {Object} - {valid: boolean, error: string}
+     */
+    function validateClinicalDate(dateString) {
+        if (!dateString || dateString.trim() === '') {
+            return { valid: false, error: 'Date is required' };
+        }
+        
+        // Check format
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(dateString)) {
+            return { valid: false, error: 'Invalid date format. Use YYYY-MM-DD' };
+        }
+        
+        // Parse date
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) {
+            return { valid: false, error: 'Invalid date' };
+        }
+        
+        // Check if date is not in the future
+        const today = new Date();
+        today.setHours(23, 59, 59, 999); // End of today
+        if (date > today) {
+            return { valid: false, error: 'Clinical date cannot be in the future' };
+        }
+        
+        // Check if date is reasonable (not before 1900)
+        const minDate = new Date('1900-01-01');
+        if (date < minDate) {
+            return { valid: false, error: 'Date must be after 1900' };
+        }
+        
+        return { valid: true, error: null };
+    }
+    
+    /**
+     * Show validation error message
+     */
+    function showDateValidationError(inputElement, message) {
+        const errorDiv = inputElement.parentElement.querySelector('.date-validation-error');
+        if (errorDiv) {
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            inputElement.classList.add('border-red-500');
+        }
+    }
+    
+    /**
+     * Clear validation error message
+     */
+    function clearDateValidationError(inputElement) {
+        const errorDiv = inputElement.parentElement.querySelector('.date-validation-error');
+        if (errorDiv) {
+            errorDiv.textContent = '';
+            errorDiv.classList.add('hidden');
+            inputElement.classList.remove('border-red-500');
+        }
+    }
+    
+    /**
+     * Show success toast message
+     */
+    function showSuccessToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2';
+        toast.innerHTML = `
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+            </svg>
+            <span>${message}</span>
+        `;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+    
+    /**
+     * Show error toast message
+     */
+    function showErrorToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2';
+        toast.innerHTML = `
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+            </svg>
+            <span>${message}</span>
+        `;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+    }
+    
+    // Handle Edit Date button clicks
+    document.querySelectorAll('.edit-date-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const parsedDataId = this.dataset.parsedDataId;
+            const card = this.closest('.field-review-card');
+            const dateSection = card.querySelector('.clinical-date-section');
+            const displaySection = dateSection.querySelector('.clinical-date-display');
+            const editorSection = dateSection.querySelector('.clinical-date-editor');
+            
+            // Hide display, show editor
+            displaySection.classList.add('hidden');
+            editorSection.classList.remove('hidden');
+            
+            // Focus the date input
+            const dateInput = editorSection.querySelector('.clinical-date-input');
+            if (dateInput) {
+                dateInput.focus();
+            }
+        });
+    });
+    
+    // Handle Cancel Date Edit button clicks
+    document.querySelectorAll('.cancel-date-edit-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const parsedDataId = this.dataset.parsedDataId;
+            const card = this.closest('.field-review-card');
+            const dateSection = card.querySelector('.clinical-date-section');
+            const displaySection = dateSection.querySelector('.clinical-date-display');
+            const editorSection = dateSection.querySelector('.clinical-date-editor');
+            const dateInput = editorSection.querySelector('.clinical-date-input');
+            
+            // Clear any validation errors
+            clearDateValidationError(dateInput);
+            
+            // Hide editor, show display
+            editorSection.classList.add('hidden');
+            displaySection.classList.remove('hidden');
+        });
+    });
+    
+    // Handle Save Clinical Date button clicks
+    document.querySelectorAll('.save-clinical-date-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const parsedDataId = this.dataset.parsedDataId;
+            const card = this.closest('.field-review-card');
+            const dateSection = card.querySelector('.clinical-date-section');
+            const dateInput = dateSection.querySelector('.clinical-date-input');
+            const dateValue = dateInput.value;
+            
+            // Validate date
+            const validation = validateClinicalDate(dateValue);
+            if (!validation.valid) {
+                showDateValidationError(dateInput, validation.error);
+                return;
+            }
+            
+            // Clear validation errors
+            clearDateValidationError(dateInput);
+            
+            // Disable button during save
+            this.disabled = true;
+            const originalText = this.innerHTML;
+            this.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...';
+            
+            // Prepare form data
+            const formData = new FormData();
+            formData.append('clinical_date', dateValue);
+            formData.append('parsed_data_id', parsedDataId);
+            formData.append('document_id', '{{ document.id }}');
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            // Make AJAX request to save clinical date
+            fetch('/documents/clinical-date/save/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to save clinical date');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showSuccessToast('Clinical date saved successfully');
+                    
+                    // Reload the page to show updated date display
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || 'Failed to save clinical date');
+                }
+            })
+            .catch(error => {
+                console.error('Error saving clinical date:', error);
+                showErrorToast(error.message || 'Error saving clinical date');
+                
+                // Re-enable button
+                this.disabled = false;
+                this.innerHTML = originalText;
+            });
+        });
+    });
+    
+    // Handle Verify Date button clicks
+    document.querySelectorAll('.verify-date-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const parsedDataId = this.dataset.parsedDataId;
+            
+            // Disable button during verification
+            this.disabled = true;
+            const originalText = this.innerHTML;
+            this.innerHTML = '<svg class="w-3 h-3 animate-spin inline -mt-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Verifying...';
+            
+            // Prepare form data
+            const formData = new FormData();
+            formData.append('parsed_data_id', parsedDataId);
+            formData.append('document_id', '{{ document.id }}');
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            // Make AJAX request to verify clinical date
+            fetch('/documents/clinical-date/verify/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to verify clinical date');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showSuccessToast('Clinical date verified');
+                    
+                    // Reload the page to show updated verification status
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || 'Failed to verify clinical date');
+                }
+            })
+            .catch(error => {
+                console.error('Error verifying clinical date:', error);
+                showErrorToast(error.message || 'Error verifying clinical date');
+                
+                // Re-enable button
+                this.disabled = false;
+                this.innerHTML = originalText;
+            });
+        });
+    });
+    
+    // Real-time date input validation
+    document.querySelectorAll('.clinical-date-input').forEach(input => {
+        input.addEventListener('input', function() {
+            const validation = validateClinicalDate(this.value);
+            if (!validation.valid && this.value) {
+                showDateValidationError(this, validation.error);
+            } else {
+                clearDateValidationError(this);
+            }
+        });
+    });
 });
 </script>
 <script src="{% static 'js/patient-comparison.js' %}"></script>
