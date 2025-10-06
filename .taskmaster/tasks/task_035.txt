@@ -855,11 +855,91 @@ The implementation of the manual clinical date entry review interface has been c
 The clinical date entry review interface is now fully operational, providing a secure and user-friendly experience for managing clinical dates in compliance with all medical and security standards.
 </info added on 2025-10-06T15:49:25.783Z>
 
-## 6. Create API endpoints for date submission and validation [pending]
+## 6. Create API endpoints for date submission and validation [done]
 ### Dependencies: 35.4, 35.5
 ### Description: Implement API endpoints for submitting and validating clinical dates, with HIPAA-compliant audit logging.
 ### Details:
 Develop RESTful API endpoints for updating clinical dates, including validation using ClinicalDateParser. Implement HIPAA-compliant audit logging for all clinical date changes. Extend the existing AuditLog model to include clinical date modifications.
+<info added on 2025-10-06T16:55:13.805Z>
+## Implementation Summary
+Successfully implemented and tested comprehensive JSON API endpoints for clinical date management with full HIPAA audit logging and error handling.
+
+### What Was Built
+
+**1. Save Clinical Date Endpoint** (`POST /documents/clinical-date/save/`)
+- Saves or updates clinical dates for parsed data
+- Parameters: document_id, parsed_data_id, clinical_date (YYYY-MM-DD)
+- Validates date format using ClinicalDateParser
+- Rejects future dates and dates before 1900
+- Requires `documents.change_document` permission
+- Returns JSON with saved date and metadata
+- Full HIPAA audit logging via AuditLog.log_event()
+
+**2. Verify Clinical Date Endpoint** (`POST /documents/clinical-date/verify/`)
+- Changes date status from 'pending' to 'verified'
+- Parameters: document_id, parsed_data_id
+- Requires `documents.change_document` permission
+- Returns JSON confirmation
+- Full HIPAA audit logging
+
+### Error Handling & HTTP Status Codes
+- **400 Bad Request**: Missing parameters, invalid date format, future dates, dates before 1900
+- **403 Forbidden**: Permission denied
+- **404 Not Found**: Document or ParsedData not found (returns JSON, not HTML)
+- **405 Method Not Allowed**: GET requests (POST only)
+- **500 Internal Server Error**: Unexpected errors
+
+### HIPAA Audit Logging
+Both endpoints log via `AuditLog.log_event()` with:
+- event_type='phi_update'
+- phi_involved=True
+- Complete details: user, timestamp, clinical_date, action, document_id, parsed_data_id
+- Patient MRN tracking
+- Content object linking for full audit trail
+
+### Test Coverage: 18/18 Tests Passing
+**Success Scenarios:**
+- Save new clinical date
+- Update existing date  
+- Verify clinical date
+- Complete workflow integration
+
+**Validation Tests:**
+- Missing required parameters
+- Invalid date formats
+- Future dates rejected
+- Dates before 1900 rejected
+
+**Security Tests:**
+- Permission checks (403)
+- HIPAA audit logging verification
+- Method restrictions (POST only)
+
+**Error Handling Tests:**
+- Document not found (404 with JSON)
+- ParsedData not found (404 with JSON)
+- No permission (403)
+
+### Files Modified
+- `apps/documents/views.py`: Enhanced audit logging, fixed 404 handling to return JSON
+- `apps/documents/tests/test_clinical_date_api.py`: New comprehensive test suite (18 tests)
+- `apps/documents/urls.py`: URLs already existed from subtask 35.5
+
+### Integration Points
+- Uses `ParsedData.set_clinical_date()` and `verify_clinical_date()` methods from task 35.4
+- Integrates with `AuditLog` model for HIPAA compliance
+- Uses `ClinicalDateParser` from task 35.1 for validation
+- URLs defined in `apps/documents/urls.py`
+
+### Production Ready
+- All tests passing
+- Comprehensive error handling
+- HIPAA-compliant audit logging
+- JSON responses for all scenarios
+- Permission-based access control
+- Input validation and sanitization
+- No linting errors
+</info added on 2025-10-06T16:55:13.805Z>
 
 ## 7. Update FHIR resource creation process [pending]
 ### Dependencies: 35.2, 35.6
