@@ -576,7 +576,7 @@ class StructuredDataConverter(BaseFHIRConverter):
     Flow: StructuredMedicalExtraction → Dict format → Existing FHIR engine
     """
 
-    def convert_structured_data(self, structured_data: 'StructuredMedicalExtraction', metadata: Dict[str, Any], patient) -> List[Resource]:
+    def convert_structured_data(self, structured_data: 'StructuredMedicalExtraction', metadata: Dict[str, Any], patient, parsed_data=None) -> List[Resource]:
         """
         Convert structured medical data from AI extraction to FHIR resources.
         
@@ -584,11 +584,13 @@ class StructuredDataConverter(BaseFHIRConverter):
         with the existing FHIR converter infrastructure.
         
         Enhanced with comprehensive error handling for Task 34.5.
+        Updated for Task 35.7: Clinical Date Integration.
         
         Args:
             structured_data: StructuredMedicalExtraction from AI service
             metadata: Document metadata (document_id, extraction_timestamp, etc.)
             patient: Patient model instance
+            parsed_data: Optional ParsedData instance containing clinical dates (Task 35)
             
         Returns:
             List of FHIR Resource objects ready for the existing FHIR engine
@@ -660,6 +662,21 @@ class StructuredDataConverter(BaseFHIRConverter):
         # Perform conversion with comprehensive error tracking
         try:
             start_time = time.time()
+            
+            # Task 35.7: Extract clinical date from ParsedData if available
+            clinical_date = None
+            if parsed_data and hasattr(parsed_data, 'clinical_date'):
+                clinical_date = parsed_data.clinical_date
+                if clinical_date:
+                    self.logger.info(f"[{conversion_id}] Using clinical date from ParsedData: {clinical_date} "
+                                   f"(source: {getattr(parsed_data, 'date_source', 'unknown')}, "
+                                   f"status: {getattr(parsed_data, 'date_status', 'unknown')})")
+                    # Add clinical date to metadata for use in resource creation
+                    metadata['clinical_date'] = clinical_date
+                else:
+                    self.logger.debug(f"[{conversion_id}] No clinical date available in ParsedData")
+            else:
+                self.logger.debug(f"[{conversion_id}] No ParsedData provided for clinical date lookup")
             
             # Convert structured data to dictionary format that existing converters expect
             try:
@@ -959,7 +976,7 @@ class StructuredDataConverter(BaseFHIRConverter):
         # Convert vital signs
         for vital in structured_data.vital_signs:
             converted["vital_signs"].append({
-                "measurement_type": vital.measurement_type,
+                "measurement_type": vital.measurement,  # Field is 'measurement' in Pydantic model
                 "value": vital.value,
                 "unit": vital.unit,
                 "timestamp": vital.timestamp,
@@ -1060,11 +1077,28 @@ class StructuredDataConverter(BaseFHIRConverter):
             return None
 
     def _create_vital_sign_observation(self, vital_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[ObservationResource]:
-        """Create an Observation resource for vital signs from structured data."""
+        """Create an Observation resource for vital signs from structured data.
+        
+        Task 35.7: Updated to use clinical dates from metadata instead of processing timestamps.
+        """
         try:
             observation_date = None
+            
+            # Priority 1: Check if vital has its own timestamp
             if vital_data.get("timestamp"):
                 observation_date = self._normalize_date_for_fhir(vital_data["timestamp"])
+            
+            # Priority 2: Use clinical_date from metadata (Task 35.7)
+            if not observation_date and metadata.get('clinical_date'):
+                observation_date = metadata['clinical_date']
+                if not isinstance(observation_date, datetime):
+                    observation_date = datetime.combine(observation_date, datetime.min.time())
+                self.logger.debug(f"Using clinical_date from metadata for vital sign: {observation_date}")
+            
+            # Task 35.7: No fallback to datetime.utcnow() - leave as None if no date available
+            # This ensures clear separation between clinical dates and processing metadata
+            if not observation_date:
+                self.logger.warning(f"No clinical date available for vital sign {vital_data.get('measurement_type')}")
             
             return ObservationResource.create_from_lab_result(
                 patient_id=patient_id,
@@ -1072,18 +1106,35 @@ class StructuredDataConverter(BaseFHIRConverter):
                 test_name=vital_data["measurement_type"],
                 value=vital_data["value"],
                 unit=vital_data.get("unit"),
-                observation_date=observation_date or datetime.utcnow(),
+                observation_date=observation_date,
             )
         except Exception as exc:
             self.logger.warning(f"Failed to create vital sign observation from structured data: {exc}")
             return None
 
     def _create_lab_observation(self, lab_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[ObservationResource]:
-        """Create an Observation resource for lab results from structured data."""
+        """Create an Observation resource for lab results from structured data.
+        
+        Task 35.7: Updated to use clinical dates from metadata instead of processing timestamps.
+        """
         try:
             test_date = None
+            
+            # Priority 1: Check if lab has its own test_date
             if lab_data.get("test_date"):
                 test_date = self._normalize_date_for_fhir(lab_data["test_date"])
+            
+            # Priority 2: Use clinical_date from metadata (Task 35.7)
+            if not test_date and metadata.get('clinical_date'):
+                test_date = metadata['clinical_date']
+                if not isinstance(test_date, datetime):
+                    test_date = datetime.combine(test_date, datetime.min.time())
+                self.logger.debug(f"Using clinical_date from metadata for lab result: {test_date}")
+            
+            # Task 35.7: No fallback to datetime.utcnow() - leave as None if no date available
+            # This ensures clear separation between clinical dates and processing metadata
+            if not test_date:
+                self.logger.warning(f"No clinical date available for lab result {lab_data.get('test_name')}")
             
             return ObservationResource.create_from_lab_result(
                 patient_id=patient_id,
@@ -1091,25 +1142,42 @@ class StructuredDataConverter(BaseFHIRConverter):
                 test_name=lab_data["test_name"],
                 value=lab_data["value"],
                 unit=lab_data.get("unit"),
-                observation_date=test_date or datetime.utcnow(),
+                observation_date=test_date,
             )
         except Exception as exc:
             self.logger.warning(f"Failed to create lab observation from structured data: {exc}")
             return None
 
     def _create_procedure_observation_structured(self, procedure_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[ObservationResource]:
-        """Create an Observation resource for procedures from structured data."""
+        """Create an Observation resource for procedures from structured data.
+        
+        Task 35.7: Updated to use clinical dates from metadata instead of processing timestamps.
+        """
         try:
             procedure_date = None
+            
+            # Priority 1: Check if procedure has its own date
             if procedure_data.get("procedure_date"):
                 procedure_date = self._normalize_date_for_fhir(procedure_data["procedure_date"])
+            
+            # Priority 2: Use clinical_date from metadata (Task 35.7)
+            if not procedure_date and metadata.get('clinical_date'):
+                procedure_date = metadata['clinical_date']
+                if not isinstance(procedure_date, datetime):
+                    procedure_date = datetime.combine(procedure_date, datetime.min.time())
+                self.logger.debug(f"Using clinical_date from metadata for procedure: {procedure_date}")
+            
+            # Task 35.7: No fallback to datetime.utcnow() - leave as None if no date available
+            # This ensures clear separation between clinical dates and processing metadata
+            if not procedure_date:
+                self.logger.warning(f"No clinical date available for procedure {procedure_data.get('name')}")
             
             return ObservationResource.create_from_lab_result(
                 patient_id=patient_id,
                 test_code=f"PROC-{hash(procedure_data['name'].lower()) % 100000:05d}",
                 test_name=f"Procedure: {procedure_data['name']}",
                 value=procedure_data.get("outcome", "Performed"),
-                observation_date=procedure_date or datetime.utcnow(),
+                observation_date=procedure_date,
             )
         except Exception as exc:
             self.logger.warning(f"Failed to create procedure observation from structured data: {exc}")

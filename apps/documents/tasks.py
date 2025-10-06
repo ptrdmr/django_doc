@@ -9,6 +9,7 @@ from celery import shared_task
 from meddocparser.celery import app
 import time
 import logging
+from django.conf import settings
 from django.utils import timezone
 from typing import Dict, Any, List
 
@@ -544,6 +545,18 @@ def process_document_async(self, document_id: int):
                     # STEP 3: Convert to FHIR format using appropriate converter
                     patient_id = str(document.patient.id) if document.patient else None
                     
+                    # Task 35.7: Retrieve existing ParsedData for clinical date lookup
+                    parsed_data_for_dates = None
+                    try:
+                        from apps.documents.models import ParsedData
+                        parsed_data_for_dates = ParsedData.objects.filter(document=document).first()
+                        if parsed_data_for_dates and parsed_data_for_dates.has_clinical_date():
+                            logger.info(f"Found existing ParsedData with clinical_date: {parsed_data_for_dates.clinical_date}")
+                        else:
+                            logger.debug(f"No existing ParsedData with clinical_date found for document {document.id}")
+                    except Exception as pd_lookup_exc:
+                        logger.warning(f"Could not look up ParsedData for clinical date: {pd_lookup_exc}")
+                    
                     # NEW: Use StructuredDataConverter if we have structured data
                     if structured_extraction:
                         try:
@@ -558,10 +571,12 @@ def process_document_async(self, document_id: int):
                                 'confidence_average': structured_extraction.confidence_average
                             }
                             
+                            # Task 35.7: Pass ParsedData to converter for clinical date integration
                             fhir_resources = structured_converter.convert_structured_data(
                                 structured_extraction, 
                                 conversion_metadata, 
-                                document.patient
+                                document.patient,
+                                parsed_data=parsed_data_for_dates
                             )
                             
                             logger.info(f"StructuredDataConverter created {len(fhir_resources)} resources from structured data")
