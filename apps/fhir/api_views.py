@@ -7,9 +7,6 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required, permission_required
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 from django.core.exceptions import ValidationError
 from django.db import transaction
 import json
@@ -18,8 +15,8 @@ from .models import FHIRMergeConfiguration, FHIRMergeConfigurationAudit
 from .configuration import MergeConfigurationService
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@login_required
+@require_http_methods(["GET"])
 def list_configurations(request):
     """
     API endpoint to list FHIR merge configuration profiles.
@@ -31,7 +28,7 @@ def list_configurations(request):
     
     try:
         configurations = MergeConfigurationService.list_configurations(active_only=active_only)
-
+        
         config_data = []
         for config in configurations:
             config_data.append({
@@ -48,15 +45,15 @@ def list_configurations(request):
                 'created_at': config.created_at.isoformat(),
                 'updated_at': config.updated_at.isoformat()
             })
-
-        return Response({
+        
+        return JsonResponse({
             'status': 'success',
             'data': config_data,
             'count': len(config_data)
         })
-
+        
     except Exception as e:
-        return Response({
+        return JsonResponse({
             'status': 'error',
             'message': str(e)
         }, status=500)
