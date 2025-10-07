@@ -1,0 +1,364 @@
+<!-- Laboratory Results Section with Category Grouping -->
+<style>
+    .lab-results-section {
+        page-break-inside: avoid;
+        margin-bottom: var(--space-xl);
+    }
+    
+    .lab-results-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-md);
+    }
+    
+    .lab-results-count {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        font-weight: 600;
+    }
+    
+    /* Category container */
+    .lab-category {
+        margin-bottom: var(--space-lg);
+        page-break-inside: avoid;
+    }
+    
+    .category-header {
+        background-color: var(--bg-header);
+        padding: var(--space-sm) var(--space-md);
+        border-left: 3px solid var(--primary-color);
+        margin-bottom: var(--space-sm);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .category-title {
+        font-size: var(--font-size-md);
+        font-weight: 600;
+        color: var(--primary-dark);
+    }
+    
+    .category-count {
+        font-size: var(--font-size-xs);
+        color: var(--text-muted);
+        font-weight: 600;
+    }
+    
+    /* Lab results table */
+    .lab-results-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: var(--space-md);
+        font-size: var(--font-size-sm);
+    }
+    
+    .lab-results-table thead {
+        background-color: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-primary);
+    }
+    
+    .lab-results-table th {
+        padding: var(--space-xs) var(--space-sm);
+        text-align: left;
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: var(--font-size-xs);
+        text-transform: uppercase;
+        letter-spacing: 0.3pt;
+    }
+    
+    .lab-results-table tbody tr {
+        border-bottom: 1px solid var(--border-light);
+        page-break-inside: avoid;
+    }
+    
+    .lab-results-table tbody tr:nth-child(even) {
+        background-color: var(--bg-secondary);
+    }
+    
+    .lab-results-table td {
+        padding: var(--space-sm);
+        vertical-align: middle;
+    }
+    
+    /* Test name styling */
+    .test-name {
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    
+    .test-loinc {
+        display: block;
+        font-size: var(--font-size-xs);
+        color: var(--text-muted);
+        font-family: var(--font-family-mono);
+        margin-top: 2pt;
+    }
+    
+    /* Result value styling */
+    .test-value {
+        font-weight: 600;
+        font-family: var(--font-family-mono);
+        white-space: nowrap;
+    }
+    
+    .test-value.normal {
+        color: var(--status-normal);
+    }
+    
+    .test-value.low {
+        color: var(--status-moderate);
+        background-color: #fef3c7;
+        padding: 2pt 4pt;
+        border-radius: 2pt;
+    }
+    
+    .test-value.high {
+        color: var(--status-high);
+        background-color: #fee2e2;
+        padding: 2pt 4pt;
+        border-radius: 2pt;
+    }
+    
+    .test-value.critical {
+        color: var(--status-critical);
+        background-color: #fee2e2;
+        padding: 2pt 4pt;
+        border-radius: 2pt;
+        font-weight: 700;
+    }
+    
+    .test-unit {
+        color: var(--text-muted);
+        font-size: var(--font-size-xs);
+        margin-left: var(--space-xs);
+    }
+    
+    /* Reference range styling */
+    .reference-range {
+        font-size: var(--font-size-xs);
+        color: var(--text-muted);
+        white-space: nowrap;
+    }
+    
+    .reference-label {
+        font-weight: 600;
+        margin-right: var(--space-xs);
+    }
+    
+    /* Interpretation indicator */
+    .interpretation-indicator {
+        display: inline-block;
+        width: 6pt;
+        height: 6pt;
+        border-radius: 50%;
+        margin-right: var(--space-xs);
+    }
+    
+    .interpretation-indicator.normal {
+        background-color: var(--status-normal);
+    }
+    
+    .interpretation-indicator.low {
+        background-color: var(--status-moderate);
+    }
+    
+    .interpretation-indicator.high {
+        background-color: var(--status-high);
+    }
+    
+    .interpretation-indicator.critical {
+        background-color: var(--status-critical);
+    }
+    
+    /* Trend arrow */
+    .trend-indicator {
+        display: inline-block;
+        font-weight: 700;
+        margin-left: var(--space-xs);
+    }
+    
+    .trend-indicator.up {
+        color: var(--status-high);
+    }
+    
+    .trend-indicator.down {
+        color: var(--status-moderate);
+    }
+    
+    .trend-indicator.stable {
+        color: var(--text-muted);
+    }
+    
+    /* Date column */
+    .lab-date {
+        white-space: nowrap;
+        color: var(--text-secondary);
+        font-size: var(--font-size-xs);
+    }
+    
+    /* Notes/comments */
+    .lab-note {
+        font-size: var(--font-size-xs);
+        color: var(--text-muted);
+        font-style: italic;
+        margin-top: 2pt;
+    }
+    
+    /* Abnormal results summary */
+    .abnormal-summary {
+        background-color: #fef3c7;
+        border-left: 3px solid #f59e0b;
+        padding: var(--space-sm) var(--space-md);
+        margin-bottom: var(--space-md);
+        font-size: var(--font-size-sm);
+    }
+    
+    .abnormal-summary-title {
+        font-weight: 600;
+        color: var(--status-moderate);
+        margin-bottom: var(--space-xs);
+    }
+    
+    .abnormal-count {
+        display: flex;
+        gap: var(--space-md);
+        font-size: var(--font-size-xs);
+    }
+    
+    .abnormal-stat {
+        display: flex;
+        align-items: center;
+        gap: var(--space-xs);
+    }
+    
+    /* No results state */
+    .no-lab-results {
+        padding: var(--space-lg);
+        text-align: center;
+        color: var(--text-muted);
+        font-style: italic;
+        background-color: var(--bg-secondary);
+        border-radius: 4pt;
+        border: 1px dashed var(--border-light);
+    }
+</style>
+
+<div class="lab-results-section content-section">
+    <div class="lab-results-header">
+        <h2>Laboratory Results</h2>
+        {% if lab_results %}
+        <span class="lab-results-count">
+            {% with total=lab_results|length %}
+                {{ total }} Categor{{ total|pluralize:"y,ies" }}
+            {% endwith %}
+        </span>
+        {% endif %}
+    </div>
+    
+    {% if lab_results %}
+        <!-- Abnormal Results Summary -->
+        {% if abnormal_count or critical_count %}
+        <div class="abnormal-summary">
+            <div class="abnormal-summary-title">⚠️ Abnormal Results Alert</div>
+            <div class="abnormal-count">
+                {% if critical_count %}
+                <div class="abnormal-stat">
+                    <span class="interpretation-indicator critical"></span>
+                    <strong>{{ critical_count }}</strong> Critical Result{{ critical_count|pluralize }}
+                </div>
+                {% endif %}
+                {% if abnormal_count %}
+                <div class="abnormal-stat">
+                    <span class="interpretation-indicator high"></span>
+                    <strong>{{ abnormal_count }}</strong> Abnormal Result{{ abnormal_count|pluralize }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Laboratory Results by Category -->
+        {% for category, results in lab_results.items %}
+        <div class="lab-category">
+            <div class="category-header">
+                <h3 class="category-title">{{ category }}</h3>
+                <span class="category-count">{{ results|length }} test{{ results|length|pluralize }}</span>
+            </div>
+            
+            <table class="lab-results-table">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;"></th>
+                        <th style="width: 35%;">Test Name</th>
+                        <th style="width: 20%;">Result</th>
+                        <th style="width: 20%;">Reference Range</th>
+                        <th style="width: 20%;">Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                    <tr>
+                        <!-- Interpretation indicator -->
+                        <td style="text-align: center;">
+                            <span class="interpretation-indicator {{ result.interpretation|lower|default:'normal' }}"></span>
+                        </td>
+                        
+                        <!-- Test name and LOINC code -->
+                        <td>
+                            <div class="test-name">{{ result.test_name|default:"Unknown Test" }}</div>
+                            {% if result.loinc_code %}
+                            <span class="test-loinc">LOINC: {{ result.loinc_code }}</span>
+                            {% endif %}
+                        </td>
+                        
+                        <!-- Result value with trend -->
+                        <td>
+                            <span class="test-value {{ result.interpretation|lower|default:'normal' }}">
+                                {{ result.value|default:"—" }}
+                                <span class="test-unit">{{ result.unit|default:"" }}</span>
+                            </span>
+                            {% if result.trend %}
+                            <span class="trend-indicator {{ result.trend|lower }}">
+                                {% if result.trend == 'up' %}↑{% elif result.trend == 'down' %}↓{% else %}→{% endif %}
+                            </span>
+                            {% endif %}
+                            {% if result.note %}
+                            <div class="lab-note">{{ result.note }}</div>
+                            {% endif %}
+                        </td>
+                        
+                        <!-- Reference range -->
+                        <td class="reference-range">
+                            {% if result.reference_range %}
+                            <span class="reference-label">Ref:</span>
+                            {{ result.reference_range }}
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        
+                        <!-- Date -->
+                        <td class="lab-date">
+                            {% if result.effective_date %}
+                            {{ result.effective_date|date:"M d, Y" }}
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    {% else %}
+        <!-- No lab results state -->
+        <div class="no-lab-results">
+            <p>No laboratory results available for this patient.</p>
+        </div>
+    {% endif %}
+</div>
+

@@ -1,6 +1,6 @@
 # Task ID: 37
 # Title: Add Search-Optimized Fields to Patient Model
-# Status: pending
+# Status: done
 # Dependencies: 3, 19
 # Priority: high
 # Description: Implement unencrypted, indexed search fields for patient names to enable fast, case-insensitive searching while maintaining encryption of sensitive data.
@@ -149,7 +149,7 @@ Best Practices:
    - Ensure existing functionality related to patient management still works correctly after implementing the new search fields.
 
 # Subtasks:
-## 1. Update Patient Model with Search-Optimized Fields [pending]
+## 1. Update Patient Model with Search-Optimized Fields [done]
 ### Dependencies: None
 ### Description: Modify the Patient model in apps/patients/models.py to include unencrypted, indexed search fields for first and last names, and override the save method to populate these fields before saving.
 ### Details:
@@ -172,7 +172,7 @@ super().save(*args, **kwargs)
 
 This ensures that the search fields are populated with lowercase versions of the first and last names before saving the patient record.
 
-## 2. Create Schema Migration for Patient Model Changes [pending]
+## 2. Create Schema Migration for Patient Model Changes [done]
 ### Dependencies: None
 ### Description: Generate and apply a schema migration to add the new search-optimized fields to the Patient model's database schema.
 ### Details:
@@ -190,7 +190,7 @@ python manage.py migrate
 
 Ensure that the migration is applied successfully and that the new fields are present in the database schema.
 
-## 3. Create Data Migration to Backfill Existing Records [pending]
+## 3. Create Data Migration to Backfill Existing Records [done]
 ### Dependencies: None
 ### Description: Generate and apply a data migration to populate the new search-optimized fields for existing patient records in the database.
 ### Details:
@@ -230,7 +230,7 @@ python manage.py migrate
 
 This will populate the search fields for existing patient records.
 
-## 4. Update PatientListView to Utilize Search Fields [pending]
+## 4. Update PatientListView to Utilize Search Fields [done]
 ### Dependencies: None
 ### Description: Modify the PatientListView in apps/patients/views.py to perform case-insensitive searches using the new search-optimized fields for first and last names.
 ### Details:
@@ -256,7 +256,7 @@ class PatientListView(ListView):
 
 This ensures that searches on first and last names are case-insensitive and efficient due to the indexed search fields.
 
-## 5. Update PatientMergeListView to Utilize Search Fields [pending]
+## 5. Update PatientMergeListView to Utilize Search Fields [done]
 ### Dependencies: None
 ### Description: Modify the PatientMergeListView to perform case-insensitive searches using the new search-optimized fields for first and last names.
 ### Details:
@@ -280,7 +280,7 @@ class PatientMergeListView(ListView):
 
 This ensures that searches on first and last names in the PatientMergeListView are also case-insensitive and efficient.
 
-## 6. Implement Comprehensive Testing for All Workflows [pending]
+## 6. Implement Comprehensive Testing for All Workflows [done]
 ### Dependencies: None
 ### Description: Develop and execute unit tests to ensure that all workflows, including model saving, migrations, and view filtering, function correctly with the new search-optimized fields.
 ### Details:
@@ -294,7 +294,7 @@ Create unit tests to verify the following:
 
 Ensure that all tests pass successfully to confirm the correct implementation of the new search-optimized fields and their integration into the application.
 
-## 7. Update Project Documentation to Reflect Search Field Architecture [pending]
+## 7. Update Project Documentation to Reflect Search Field Architecture [done]
 ### Dependencies: None
 ### Description: Revise the project documentation to include detailed explanations of the new search-optimized fields, their implementation, and associated security considerations and trade-offs.
 ### Details:

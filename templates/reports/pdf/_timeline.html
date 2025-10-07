@@ -1,0 +1,356 @@
+<!-- Hospitalization and Clinical Events Timeline -->
+<style>
+    .timeline-section {
+        page-break-inside: avoid;
+        margin-bottom: var(--space-xl);
+    }
+    
+    .timeline-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-md);
+    }
+    
+    .timeline-count {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        font-weight: 600;
+    }
+    
+    .timeline-legend {
+        display: flex;
+        gap: var(--space-md);
+        font-size: var(--font-size-xs);
+        margin-bottom: var(--space-md);
+        padding: var(--space-sm);
+        background-color: var(--bg-secondary);
+        border-radius: 3pt;
+    }
+    
+    .timeline-legend-item {
+        display: flex;
+        align-items: center;
+        gap: var(--space-xs);
+    }
+    
+    .timeline-legend-color {
+        width: 12pt;
+        height: 12pt;
+        border-radius: 2pt;
+        border: 1px solid var(--border-light);
+    }
+    
+    .legend-color.admission { background-color: #3b82f6; }
+    .legend-color.procedure { background-color: #8b5cf6; }
+    .legend-color.consultation { background-color: #10b981; }
+    .legend-color.discharge { background-color: #6b7280; }
+    
+    /* Timeline container with CSS Grid */
+    .timeline-container {
+        position: relative;
+        margin-top: var(--space-lg);
+        margin-bottom: var(--space-lg);
+        background-color: var(--bg-secondary);
+        padding: var(--space-lg);
+        border-radius: 4pt;
+    }
+    
+    /* Timeline axis */
+    .timeline-axis {
+        position: relative;
+        height: 2pt;
+        background-color: var(--border-dark);
+        margin: var(--space-xl) 0;
+    }
+    
+    /* Timeline events */
+    .timeline-events {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-md);
+    }
+    
+    .timeline-event {
+        position: relative;
+        padding-left: var(--space-xl);
+        page-break-inside: avoid;
+    }
+    
+    .timeline-event::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 6pt;
+        width: 10pt;
+        height: 10pt;
+        border-radius: 50%;
+        border: 2px solid white;
+    }
+    
+    .timeline-event.admission::before {
+        background-color: #3b82f6;
+    }
+    
+    .timeline-event.procedure::before {
+        background-color: #8b5cf6;
+    }
+    
+    .timeline-event.consultation::before {
+        background-color: #10b981;
+    }
+    
+    .timeline-event.discharge::before {
+        background-color: #6b7280;
+    }
+    
+    .timeline-event.encounter::before {
+        background-color: var(--accent-color);
+    }
+    
+    .event-card {
+        background-color: white;
+        padding: var(--space-md);
+        border-radius: 4pt;
+        border-left: 3px solid var(--border-primary);
+        box-shadow: 0 1pt 2pt rgba(0, 0, 0, 0.05);
+    }
+    
+    .timeline-event.admission .event-card {
+        border-left-color: #3b82f6;
+    }
+    
+    .timeline-event.procedure .event-card {
+        border-left-color: #8b5cf6;
+    }
+    
+    .timeline-event.consultation .event-card {
+        border-left-color: #10b981;
+    }
+    
+    .timeline-event.discharge .event-card {
+        border-left-color: #6b7280;
+    }
+    
+    .timeline-event.encounter .event-card {
+        border-left-color: var(--accent-color);
+    }
+    
+    .event-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: var(--space-xs);
+    }
+    
+    .event-title {
+        font-weight: 600;
+        color: var(--text-primary);
+        font-size: var(--font-size-md);
+        line-height: var(--line-height-tight);
+    }
+    
+    .event-type-badge {
+        display: inline-block;
+        padding: 2pt 6pt;
+        border-radius: 2pt;
+        font-size: var(--font-size-xs);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3pt;
+    }
+    
+    .event-type-badge.admission {
+        background-color: #dbeafe;
+        color: #1e40af;
+    }
+    
+    .event-type-badge.procedure {
+        background-color: #ede9fe;
+        color: #6b21a8;
+    }
+    
+    .event-type-badge.consultation {
+        background-color: #d1fae5;
+        color: #065f46;
+    }
+    
+    .event-type-badge.discharge {
+        background-color: #f3f4f6;
+        color: #374151;
+    }
+    
+    .event-type-badge.encounter {
+        background-color: #e0f2fe;
+        color: #075985;
+    }
+    
+    .event-date {
+        display: flex;
+        gap: var(--space-sm);
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        margin-bottom: var(--space-xs);
+    }
+    
+    .event-date-label {
+        font-weight: 600;
+    }
+    
+    .event-date-value {
+        font-family: var(--font-family-mono);
+    }
+    
+    .event-duration {
+        font-size: var(--font-size-xs);
+        color: var(--text-muted);
+        font-style: italic;
+    }
+    
+    .event-details {
+        margin-top: var(--space-sm);
+        padding-top: var(--space-sm);
+        border-top: 1px solid var(--border-light);
+    }
+    
+    .event-detail-row {
+        display: flex;
+        gap: var(--space-sm);
+        margin-bottom: var(--space-xs);
+        font-size: var(--font-size-sm);
+    }
+    
+    .event-detail-label {
+        font-weight: 600;
+        color: var(--text-secondary);
+        min-width: 80pt;
+    }
+    
+    .event-detail-value {
+        color: var(--text-primary);
+    }
+    
+    /* No events state */
+    .no-timeline-events {
+        padding: var(--space-lg);
+        text-align: center;
+        color: var(--text-muted);
+        font-style: italic;
+        background-color: var(--bg-secondary);
+        border-radius: 4pt;
+        border: 1px dashed var(--border-light);
+    }
+</style>
+
+<div class="timeline-section content-section">
+    <div class="timeline-header">
+        <h2>Clinical Timeline</h2>
+        {% if timeline_events %}
+        <span class="timeline-count">
+            {{ timeline_events|length }} Event{{ timeline_events|length|pluralize }}
+        </span>
+        {% endif %}
+    </div>
+    
+    {% if timeline_events %}
+        <!-- Timeline Legend -->
+        <div class="timeline-legend">
+            <strong style="margin-right: var(--space-sm);">Event Types:</strong>
+            <div class="timeline-legend-item">
+                <div class="timeline-legend-color admission"></div>
+                <span>Admission</span>
+            </div>
+            <div class="timeline-legend-item">
+                <div class="timeline-legend-color procedure"></div>
+                <span>Procedure</span>
+            </div>
+            <div class="timeline-legend-item">
+                <div class="timeline-legend-color consultation"></div>
+                <span>Consultation</span>
+            </div>
+            <div class="timeline-legend-item">
+                <div class="timeline-legend-color discharge"></div>
+                <span>Discharge</span>
+            </div>
+        </div>
+        
+        <!-- Timeline Events -->
+        <div class="timeline-container">
+            <div class="timeline-events">
+                {% for event in timeline_events %}
+                <div class="timeline-event {{ event.event_type|lower|default:'encounter' }}">
+                    <div class="event-card">
+                        <div class="event-header">
+                            <h4 class="event-title">{{ event.title|default:"Clinical Event" }}</h4>
+                            <span class="event-type-badge {{ event.event_type|lower|default:'encounter' }}">
+                                {{ event.event_type|default:"Encounter" }}
+                            </span>
+                        </div>
+                        
+                        <div class="event-date">
+                            {% if event.start_date and event.end_date %}
+                                <div>
+                                    <span class="event-date-label">Start:</span>
+                                    <span class="event-date-value">{{ event.start_date|date:"M d, Y" }}</span>
+                                </div>
+                                <div>
+                                    <span class="event-date-label">End:</span>
+                                    <span class="event-date-value">{{ event.end_date|date:"M d, Y" }}</span>
+                                </div>
+                                {% if event.duration_days %}
+                                <div class="event-duration">
+                                    ({{ event.duration_days }} day{{ event.duration_days|pluralize }})
+                                </div>
+                                {% endif %}
+                            {% elif event.start_date %}
+                                <div>
+                                    <span class="event-date-label">Date:</span>
+                                    <span class="event-date-value">{{ event.start_date|date:"M d, Y" }}</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        {% if event.location or event.provider or event.reason or event.status %}
+                        <div class="event-details">
+                            {% if event.location %}
+                            <div class="event-detail-row">
+                                <span class="event-detail-label">Location:</span>
+                                <span class="event-detail-value">{{ event.location }}</span>
+                            </div>
+                            {% endif %}
+                            
+                            {% if event.provider %}
+                            <div class="event-detail-row">
+                                <span class="event-detail-label">Provider:</span>
+                                <span class="event-detail-value">{{ event.provider }}</span>
+                            </div>
+                            {% endif %}
+                            
+                            {% if event.reason %}
+                            <div class="event-detail-row">
+                                <span class="event-detail-label">Reason:</span>
+                                <span class="event-detail-value">{{ event.reason }}</span>
+                            </div>
+                            {% endif %}
+                            
+                            {% if event.status %}
+                            <div class="event-detail-row">
+                                <span class="event-detail-label">Status:</span>
+                                <span class="event-detail-value">{{ event.status }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% else %}
+        <!-- No timeline events state -->
+        <div class="no-timeline-events">
+            <p>No clinical events recorded for this patient.</p>
+        </div>
+    {% endif %}
+</div>
+
