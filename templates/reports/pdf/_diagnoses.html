@@ -1,0 +1,281 @@
+<!-- Diagnoses Section with Color-Coded Severity -->
+<style>
+    .diagnoses-section {
+        page-break-inside: avoid;
+        margin-bottom: var(--space-xl);
+    }
+    
+    .diagnoses-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-md);
+    }
+    
+    .diagnoses-count {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        font-weight: 600;
+    }
+    
+    .diagnoses-legend {
+        display: flex;
+        gap: var(--space-md);
+        font-size: var(--font-size-xs);
+        margin-bottom: var(--space-md);
+        padding: var(--space-sm);
+        background-color: var(--bg-secondary);
+        border-radius: 3pt;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: var(--space-xs);
+    }
+    
+    .legend-color {
+        width: 12pt;
+        height: 12pt;
+        border-radius: 2pt;
+        border: 1px solid var(--border-light);
+    }
+    
+    .legend-color.critical { background-color: var(--status-critical); }
+    .legend-color.severe { background-color: var(--status-high); }
+    .legend-color.moderate { background-color: var(--status-moderate); }
+    .legend-color.mild { background-color: var(--status-low); }
+    
+    .diagnoses-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: var(--space-md);
+        font-size: var(--font-size-sm);
+    }
+    
+    .diagnoses-table thead {
+        background-color: var(--bg-header);
+        border-bottom: 2px solid var(--border-dark);
+    }
+    
+    .diagnoses-table th {
+        padding: var(--space-sm) var(--space-md);
+        text-align: left;
+        font-weight: 600;
+        color: var(--primary-dark);
+        font-size: var(--font-size-sm);
+    }
+    
+    .diagnoses-table tbody tr {
+        border-bottom: 1px solid var(--border-light);
+        page-break-inside: avoid;
+    }
+    
+    .diagnoses-table tbody tr:hover {
+        background-color: var(--bg-secondary);
+    }
+    
+    .diagnoses-table tbody tr:nth-child(even) {
+        background-color: var(--bg-secondary);
+    }
+    
+    .diagnoses-table td {
+        padding: var(--space-sm) var(--space-md);
+        vertical-align: top;
+    }
+    
+    /* Severity indicator column */
+    .severity-indicator {
+        width: 8pt;
+        padding: 0 !important;
+    }
+    
+    .severity-bar {
+        width: 4pt;
+        height: 100%;
+        min-height: 20pt;
+        border-radius: 2pt;
+    }
+    
+    .severity-bar.critical { background-color: var(--status-critical); }
+    .severity-bar.severe { background-color: var(--status-high); }
+    .severity-bar.moderate { background-color: var(--status-moderate); }
+    .severity-bar.mild { background-color: var(--status-low); }
+    
+    /* Condition name styling */
+    .condition-name {
+        font-weight: 600;
+        color: var(--text-primary);
+        display: block;
+        margin-bottom: var(--space-xs);
+    }
+    
+    .condition-note {
+        font-size: var(--font-size-xs);
+        color: var(--text-muted);
+        font-style: italic;
+    }
+    
+    /* ICD-10 code styling */
+    .icd-code {
+        font-family: var(--font-family-mono);
+        font-weight: 600;
+        color: var(--primary-color);
+        background-color: var(--bg-highlight);
+        padding: 2pt 4pt;
+        border-radius: 2pt;
+        font-size: var(--font-size-xs);
+    }
+    
+    /* Status badge */
+    .dx-status {
+        display: inline-block;
+        padding: 2pt 6pt;
+        border-radius: 2pt;
+        font-size: var(--font-size-xs);
+        font-weight: 600;
+        text-transform: capitalize;
+    }
+    
+    .dx-status.active {
+        background-color: #dcfce7;
+        color: #166534;
+    }
+    
+    .dx-status.resolved {
+        background-color: #f3f4f6;
+        color: #6b7280;
+    }
+    
+    .dx-status.recurrence {
+        background-color: #fef3c7;
+        color: #92400e;
+    }
+    
+    /* Date column */
+    .dx-date {
+        white-space: nowrap;
+        color: var(--text-secondary);
+    }
+    
+    /* No diagnoses state */
+    .no-diagnoses {
+        padding: var(--space-lg);
+        text-align: center;
+        color: var(--text-muted);
+        font-style: italic;
+        background-color: var(--bg-secondary);
+        border-radius: 4pt;
+        border: 1px dashed var(--border-light);
+    }
+</style>
+
+<div class="diagnoses-section content-section">
+    <div class="diagnoses-header">
+        <h2>Diagnoses</h2>
+        {% if diagnoses %}
+        <span class="diagnoses-count">
+            {{ diagnoses|length }} Total Diagnosis{{ diagnoses|length|pluralize:"es" }}
+        </span>
+        {% endif %}
+    </div>
+    
+    {% if diagnoses %}
+        <!-- Severity Legend -->
+        <div class="diagnoses-legend">
+            <strong style="margin-right: var(--space-sm);">Severity:</strong>
+            <div class="legend-item">
+                <div class="legend-color critical"></div>
+                <span>Critical</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color severe"></div>
+                <span>Severe</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color moderate"></div>
+                <span>Moderate</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color mild"></div>
+                <span>Mild</span>
+            </div>
+        </div>
+        
+        <!-- Diagnoses Table -->
+        <table class="diagnoses-table">
+            <thead>
+                <tr>
+                    <th style="width: 8pt;"></th>
+                    <th style="width: 40%;">Condition</th>
+                    <th style="width: 15%;">ICD-10 Code</th>
+                    <th style="width: 15%;">Status</th>
+                    <th style="width: 15%;">Onset Date</th>
+                    <th style="width: 15%;">Recorded Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for diagnosis in diagnoses %}
+                <tr>
+                    <!-- Severity indicator bar -->
+                    <td class="severity-indicator">
+                        <div class="severity-bar {{ diagnosis.severity|lower|default:'moderate' }}"></div>
+                    </td>
+                    
+                    <!-- Condition name and notes -->
+                    <td>
+                        <span class="condition-name">{{ diagnosis.display_name|default:"Unknown Condition" }}</span>
+                        {% if diagnosis.clinical_status_display %}
+                        <span class="condition-note">{{ diagnosis.clinical_status_display }}</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- ICD-10 Code -->
+                    <td>
+                        {% if diagnosis.icd10_code %}
+                        <span class="icd-code">{{ diagnosis.icd10_code }}</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Status -->
+                    <td>
+                        {% if diagnosis.status %}
+                        <span class="dx-status {{ diagnosis.status|lower }}">
+                            {{ diagnosis.status }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Onset Date -->
+                    <td class="dx-date">
+                        {% if diagnosis.onset_date %}
+                        {{ diagnosis.onset_date|date:"M d, Y" }}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Recorded Date -->
+                    <td class="dx-date">
+                        {% if diagnosis.recorded_date %}
+                        {{ diagnosis.recorded_date|date:"M d, Y" }}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <!-- No diagnoses state -->
+        <div class="no-diagnoses">
+            <p>No diagnoses recorded for this patient.</p>
+        </div>
+    {% endif %}
+</div>
+

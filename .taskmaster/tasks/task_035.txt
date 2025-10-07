@@ -941,11 +941,24 @@ Both endpoints log via `AuditLog.log_event()` with:
 - No linting errors
 </info added on 2025-10-06T16:55:13.805Z>
 
-## 7. Update FHIR resource creation process [pending]
+## 7. Update FHIR resource creation process [done]
 ### Dependencies: 35.2, 35.6
 ### Description: Modify the document finalization process to incorporate extracted or manually entered clinical dates into FHIR resources.
 ### Details:
 Update the FHIR resource creation logic to use the clinical dates stored in ParsedData when available. Implement fallback logic for cases where clinical dates are missing. Ensure clear distinction between clinical dates and processing metadata in the resulting FHIR resources.
+<info added on 2025-10-06T18:57:05.175Z>
+The FHIR resource creation process has been successfully updated to properly handle clinical dates. Key modifications include:
+
+1. Removed automatic datetime.utcnow() fallback in ObservationResource.create_from_lab_result()
+2. Implemented a date priority system that uses:
+   - Specific dates from structured extraction data (highest priority)
+   - Clinical dates from ParsedData (second priority)
+   - No automatic fallback to processing time (returns None when dates unavailable)
+
+The implementation maintains clear separation between clinical dates and processing metadata, ensuring temporal integrity of medical data. All FHIR resources now properly distinguish between actual clinical dates and document processing timestamps.
+
+The code changes span multiple files including fhir_models.py, converters.py, and tasks.py, with comprehensive test coverage in a new test_clinical_date_integration.py file. All tests are passing, confirming the system handles all date scenarios correctly while maintaining HIPAA compliance and medical data integrity.
+</info added on 2025-10-06T18:57:05.175Z>
 
 ## 8. Implement comprehensive testing and HIPAA compliance validation [pending]
 ### Dependencies: 35.1, 35.2, 35.3, 35.4, 35.5, 35.6, 35.7

@@ -1,0 +1,806 @@
+# Task ID: 38
+# Title: Implement Professional Medical Report Generation
+# Status: pending
+# Dependencies: 16, 14, 15, 5, 6
+# Priority: medium
+# Description: Create a comprehensive system for transforming basic patient summary reports into professional, Moristat-style medical documents with clinical timelines, lab trend visualization, and healthcare-grade formatting using WeasyPrint.
+# Details:
+Implement the professional medical report generation system in three phases:
+
+Phase 1 (2 days): HTML Template Layer with WeasyPrint
+1. Create a new directory `templates/reports/pdf/` for professional HTML templates.
+2. Implement a base template with common elements:
+   ```html
+   <!DOCTYPE html>
+   <html lang="en">
+   <head>
+     <meta charset="UTF-8">
+     <title>{{ report_title }}</title>
+     <style>
+       /* Add print-optimized CSS here */
+     </style>
+   </head>
+   <body>
+     {% block content %}{% endblock %}
+   </body>
+   </html>
+   ```
+3. Create a patient demographics header template:
+   ```html
+   {% block patient_header %}
+   <div class="patient-header">
+     <div class="avatar">
+       {% if patient.avatar %}
+         <img src="{{ patient.avatar.url }}" alt="{{ patient.full_name }}">
+       {% else %}
+         <div class="initials">{{ patient.initials }}</div>
+       {% endif %}
+     </div>
+     <div class="demographics">
+       <h1>{{ patient.full_name }}</h1>
+       <p>DOB: {{ patient.date_of_birth|date:"M d, Y" }} ({{ patient.age }} years)</p>
+       <p>MRN: {{ patient.mrn }}</p>
+     </div>
+   </div>
+   {% endblock %}
+   ```
+4. Implement a color-coded diagnosis section with ICD-10 codes:
+   ```html
+   {% block diagnoses %}
+   <h2>Diagnoses</h2>
+   <table class="diagnoses">
+     {% for diagnosis in patient.diagnoses %}
+     <tr class="severity-{{ diagnosis.severity }}">
+       <td>{{ diagnosis.name }}</td>
+       <td>{{ diagnosis.icd10_code }}</td>
+     </tr>
+     {% endfor %}
+   </table>
+   {% endblock %}
+   ```
+5. Create a hospitalization timeline view using CSS Grid:
+   ```html
+   {% block timeline %}
+   <h2>Hospitalization Timeline</h2>
+   <div class="timeline">
+     {% for event in patient.timeline_events %}
+     <div class="event" style="grid-column: {{ event.start_column }} / {{ event.end_column }};">
+       <div class="event-title">{{ event.title }}</div>
+       <div class="event-date">{{ event.date|date:"M d, Y" }}</div>
+     </div>
+     {% endfor %}
+   </div>
+   {% endblock %}
+   ```
+6. Build a laboratory results section with category grouping:
+   ```html
+   {% block lab_results %}
+   <h2>Laboratory Results</h2>
+   {% for category, results in lab_results.items %}
+   <h3>{{ category }}</h3>
+   <table class="lab-results">
+     <thead>
+       <tr>
+         <th>Test</th>
+         <th>Result</th>
+         <th>Reference Range</th>
+         <th>Date</th>
+       </tr>
+     </thead>
+     <tbody>
+       {% for result in results %}
+       <tr>
+         <td>{{ result.test_name }}</td>
+         <td>{{ result.value }} {{ result.unit }}</td>
+         <td>{{ result.reference_range }}</td>
+         <td>{{ result.date|date:"M d, Y" }}</td>
+       </tr>
+       {% endfor %}
+     </tbody>
+   </table>
+   {% endfor %}
+   {% endblock %}
+   ```
+7. Implement a vital signs trend display using SVG for charts:
+   ```html
+   {% block vital_signs %}
+   <h2>Vital Signs Trends</h2>
+   <div class="vital-signs-chart">
+     <svg width="100%" height="200">
+       <!-- Implement SVG-based chart for vital signs -->
+     </svg>
+   </div>
+   {% endblock %}
+   ```
+
+Phase 2 (1.5 days): Data Aggregation Layer
+1. Implement lab observation grouping by LOINC category:
+   ```python
+   from fhir.resources.observation import Observation
+   
+   def group_lab_results(patient_fhir_bundle):
+       lab_results = {}
+       for entry in patient_fhir_bundle.entry:
+           if isinstance(entry.resource, Observation) and entry.resource.category == 'laboratory':
+               loinc_code = entry.resource.code.coding[0].code
+               category = loinc_categories.get(loinc_code, 'Other')
+               if category not in lab_results:
+                   lab_results[category] = []
+               lab_results[category].append(entry.resource)
+       return lab_results
+   ```
+2. Create weight/BMI tracking with percentage calculations:
+   ```python
+   def calculate_bmi_trends(patient_fhir_bundle):
+       weight_observations = [obs for obs in patient_fhir_bundle.entry if obs.resource.code.coding[0].code == '29463-7']
+       height_observation = next(obs for obs in patient_fhir_bundle.entry if obs.resource.code.coding[0].code == '8302-2')
+       
+       height_m = height_observation.resource.valueQuantity.value / 100
+       bmi_trends = []
+       
+       for weight_obs in weight_observations:
+           weight_kg = weight_obs.resource.valueQuantity.value
+           bmi = weight_kg / (height_m ** 2)
+           bmi_trends.append({
+               'date': weight_obs.resource.effectiveDateTime.date,
+               'weight': weight_kg,
+               'bmi': round(bmi, 1),
+               'bmi_category': get_bmi_category(bmi)
+           })
+       
+       return bmi_trends
+   ```
+3. Build medication list enrichment:
+   ```python
+   from fhir.resources.medicationrequest import MedicationRequest
+   
+   def enrich_medication_list(patient_fhir_bundle):
+       medication_requests = [entry.resource for entry in patient_fhir_bundle.entry if isinstance(entry.resource, MedicationRequest)]
+       enriched_medications = []
+       
+       for med_request in medication_requests:
+           enriched_med = {
+               'name': med_request.medicationCodeableConcept.text,
+               'dosage': med_request.dosageInstruction[0].text,
+               'frequency': med_request.dosageInstruction[0].timing.repeat.frequency,
+               'start_date': med_request.authoredOn.date,
+               'status': med_request.status
+           }
+           enriched_medications.append(enriched_med)
+       
+       return enriched_medications
+   ```
+4. Implement encounter data extraction for timeline:
+   ```python
+   from fhir.resources.encounter import Encounter
+   
+   def extract_timeline_events(patient_fhir_bundle):
+       encounters = [entry.resource for entry in patient_fhir_bundle.entry if isinstance(entry.resource, Encounter)]
+       timeline_events = []
+       
+       for encounter in encounters:
+           event = {
+               'title': encounter.type[0].text,
+               'start_date': encounter.period.start.date,
+               'end_date': encounter.period.end.date if encounter.period.end else None,
+               'location': encounter.location[0].location.display if encounter.location else None
+           }
+           timeline_events.append(event)
+       
+       return timeline_events
+   ```
+
+Phase 3 (1 day): Visual Polish & Icons
+1. Add medical icons and status badges using SVG:
+   ```html
+   <svg class="icon icon-diagnosis">
+     <use xlink:href="#icon-stethoscope"></use>
+   </svg>
+   ```
+2. Implement print-optimized CSS for WeasyPrint:
+   ```css
+   @page {
+     size: letter portrait;
+     margin: 2cm;
+   }
+   
+   body {
+     font-family: 'Helvetica Neue', Arial, sans-serif;
+     line-height: 1.6;
+     color: #333;
+   }
+   
+   .page-break {
+     page-break-after: always;
+   }
+   
+   /* Add more print-specific styles */
+   ```
+3. Style tables with medical formatting (zebra striping):
+   ```css
+   table {
+     width: 100%;
+     border-collapse: collapse;
+   }
+   
+   tr:nth-child(even) {
+     background-color: #f2f2f2;
+   }
+   
+   th, td {
+     padding: 8px;
+     text-align: left;
+     border-bottom: 1px solid #ddd;
+   }
+   ```
+4. Integrate with WeasyPrint generator:
+   ```python
+   from weasyprint import HTML, CSS
+   
+   def generate_pdf_report(context):
+       html_string = render_to_string('reports/pdf/patient_summary.html', context)
+       html = HTML(string=html_string)
+       css = CSS(string='@page { size: letter; margin: 1cm; }')
+       pdf = html.write_pdf(stylesheets=[css])
+       return pdf
+   ```
+
+Implement the report generation in the `PatientSummaryReport` class:
+
+```python
+from reports.base import ReportGenerator
+from fhir.resources import construct_fhir_element
+from .utils import group_lab_results, calculate_bmi_trends, enrich_medication_list, extract_timeline_events
+
+class PatientSummaryReport(ReportGenerator):
+    def generate(self):
+        patient_fhir = construct_fhir_element('Patient', self.patient.cumulative_fhir_json)
+        
+        context = {
+            'patient': self.patient,
+            'lab_results': group_lab_results(patient_fhir),
+            'bmi_trends': calculate_bmi_trends(patient_fhir),
+            'medications': enrich_medication_list(patient_fhir),
+            'timeline_events': extract_timeline_events(patient_fhir),
+        }
+        
+        return generate_pdf_report(context)
+```
+
+Ensure all implementation adheres to HIPAA compliance standards and works seamlessly with the existing encrypted FHIR data from Task 21.
+
+# Test Strategy:
+To verify the correct implementation of the Professional Medical Report Generation:
+
+1. Unit Tests:
+   a. Test HTML template rendering:
+      ```python
+      from django.template import Template, Context
+      from django.test import TestCase
+      
+      class TemplateRenderingTests(TestCase):
+          def test_patient_header_rendering(self):
+              template = Template('{% include "reports/pdf/patient_header.html" %}')
+              context = Context({'patient': mock_patient_data})
+              rendered = template.render(context)
+              self.assertIn(mock_patient_data['full_name'], rendered)
+              self.assertIn(mock_patient_data['mrn'], rendered)
+      
+          # Add similar tests for other template sections
+      ```
+
+   b. Test data aggregation functions:
+      ```python
+      class DataAggregationTests(TestCase):
+          def test_group_lab_results(self):
+              mock_fhir_bundle = create_mock_fhir_bundle_with_lab_results()
+              grouped_results = group_lab_results(mock_fhir_bundle)
+              self.assertIn('Hematology', grouped_results)
+              self.assertIn('Chemistry', grouped_results)
+              
+          def test_bmi_calculation(self):
+              mock_fhir_bundle = create_mock_fhir_bundle_with_weight_height()
+              bmi_trends = calculate_bmi_trends(mock_fhir_bundle)
+              self.assertEqual(len(bmi_trends), 3)  # Assuming 3 weight entries
+              self.assertAlmostEqual(bmi_trends[0]['bmi'], 24.9, places=1)
+      
+          # Add tests for medication enrichment and timeline extraction
+      ```
+
+2. Integration Tests:
+   a. Test end-to-end report generation:
+      ```python
+      class ReportGenerationIntegrationTests(TestCase):
+          def setUp(self):
+              self.patient = create_test_patient_with_fhir_data()
+      
+          def test_pdf_report_generation(self):
+              report_generator = PatientSummaryReport(self.patient)
+              pdf_content = report_generator.generate()
+              self.assertIsNotNone(pdf_content)
+              self.assertTrue(pdf_content.startswith(b'%PDF'))  # Check if it's a valid PDF
+      
+          def test_report_content(self):
+              report_generator = PatientSummaryReport(self.patient)
+              pdf_content = report_generator.generate()
+              text_content = extract_text_from_pdf(pdf_content)
+              self.assertIn(self.patient.full_name, text_content)
+              self.assertIn("Diagnoses", text_content)
+              self.assertIn("Laboratory Results", text_content)
+              self.assertIn("Vital Signs Trends", text_content)
+      ```
+
+3. Visual Inspection:
+   a. Generate sample reports for different patient scenarios (e.g., complex medical history, minimal data) and visually inspect the PDFs for:
+      - Correct layout and formatting
+      - Proper rendering of charts and icons
+      - Readability and professional appearance
+      - Accurate representation of patient data
+
+4. Performance Testing:
+   a. Test report generation time:
+      ```python
+      import time
+      
+      def test_report_generation_performance():
+          start_time = time.time()
+          report_generator = PatientSummaryReport(large_test_patient)
+          pdf_content = report_generator.generate()
+          end_time = time.time()
+          generation_time = end_time - start_time
+          self.assertLess(generation_time, 5)  # Ensure generation takes less than 5 seconds
+      ```
+
+5. Error Handling:
+   a. Test report generation with incomplete patient data:
+      ```python
+      def test_report_generation_with_incomplete_data():
+          incomplete_patient = create_test_patient_with_minimal_data()
+          report_generator = PatientSummaryReport(incomplete_patient)
+          pdf_content = report_generator.generate()
+          self.assertIsNotNone(pdf_content)  # Ensure report is still generated
+      ```
+
+6. HIPAA Compliance:
+   a. Verify that no PHI is logged during report generation:
+      ```python
+      import logging
+      
+      class HIPAAComplianceTests(TestCase):
+          def setUp(self):
+              self.log_capture = StringIO()
+              self.handler = logging.StreamHandler(self.log_capture)
+              logging.getLogger().addHandler(self.handler)
+      
+          def test_no_phi_in_logs(self):
+              patient = create_test_patient_with_phi()
+              report_generator = PatientSummaryReport(patient)
+              report_generator.generate()
+              log_contents = self.log_capture.getvalue()
+              self.assertNotIn(patient.full_name, log_contents)
+              self.assertNotIn(patient.mrn, log_contents)
+      ```
+
+7. Accessibility:
+   a. Use a PDF accessibility checker to ensure the generated report meets accessibility standards.
+
+8. Cross-browser Testing:
+   a. Test PDF rendering in different PDF viewers (Adobe Reader, Chrome PDF Viewer, Firefox PDF Viewer) to ensure consistent appearance.
+
+9. Regression Testing:
+   a. Compare newly generated reports with previously approved reports to ensure no unintended changes in formatting or content.
+
+Ensure all tests are run as part of the CI/CD pipeline before merging changes to the main branch.
+
+# Subtasks:
+## 1. Create base HTML template structure for medical reports [done]
+### Dependencies: None
+### Description: Create the base HTML template structure for medical reports with proper page layout, header, footer, and CSS styling for WeasyPrint compatibility.
+### Details:
+1. Create a new directory `templates/reports/pdf/` for professional HTML templates.
+2. Create a base template `base.html` with common elements including DOCTYPE, HTML structure, meta tags, and CSS imports.
+3. Implement print-optimized CSS variables for colors, fonts, and spacing.
+4. Add page layout structure with header, content blocks, and footer.
+5. Include CSS for page breaks and print settings.
+6. Set up proper font loading for medical reports.
+<info added on 2025-10-07T03:58:20.237Z>
+## Phase 1 Complete: Base HTML Template Structure
+
+Successfully created `templates/reports/pdf/base.html` with comprehensive WeasyPrint-optimized styling:
+
+**Key Features Implemented:**
+- CSS variables for colors, spacing, typography (medical blue palette)
+- @page rules with proper margins and page headers/footers
+- Page numbering in top-right corner
+- HIPAA confidentiality notice in footer
+- Print-specific typography (Helvetica/Arial stack)
+- Page break controls (page-break-after, page-break-inside-avoid)
+- Section-based layout with proper spacing
+- Status color system (critical/high/moderate/low/normal)
+- Responsive grid system for medical data
+
+**Template Structure:**
+- DOCTYPE and HTML5 structure
+- Style block with 400+ lines of medical-grade CSS
+- Block system for template inheritance (report_header, content, report_footer)
+- Metadata section showing report type, generation date, generated by
+- HIPAA compliance footer with legal notice
+
+**Typography Scale:**
+- h1: 20pt with primary blue border
+- h2: 14pt with light border (section headers)
+- h3: 12pt (subsection headers)
+- Base: 10pt with 1.4 line-height
+
+**Production Ready:**
+- No linting errors
+- WeasyPrint compatible (@page rules, CSS3 features)
+- Print-optimized (proper margins, page breaks, headers/footers)
+- Medical-grade color accessibility
+- HIPAA footer template block
+</info added on 2025-10-07T03:58:20.237Z>
+
+## 2. Build patient demographics header section [done]
+### Dependencies: 38.1
+### Description: Implement the patient demographics header section with avatar, patient identifiers, and status badges.
+### Details:
+1. Create a partial template `_patient_header.html` in the `templates/reports/pdf/` directory.
+2. Implement patient avatar display with fallback to initials when no image is available.
+3. Add patient demographic information including full name, DOB, age calculation, MRN, and gender.
+4. Include status badges for active conditions or alerts.
+5. Style the header with appropriate spacing, typography, and layout for medical reports.
+6. Ensure the header is responsive to different page sizes.
+<info added on 2025-10-07T03:58:42.341Z>
+## Phase 1 Complete: Patient Demographics Header
+
+Successfully created `templates/reports/pdf/_patient_header.html` with professional patient information display:
+
+**Key Features Implemented:**
+- Avatar display with circular image or initials fallback
+- Patient name prominently displayed (font-size: 16pt, bold)
+- MRN, SSN (last 4 digits only), and Patient ID display
+- Demographics grid: DOB, Age, Gender, Primary Provider, Phone, Email
+- Status badges for active conditions, allergies, medications
+- Flexbox layout with avatar on left, demographics on right
+- Color-coded status badges (green=active, red=alert, blue=info)
+
+**Visual Design:**
+- Header card with background color and left border accent
+- 72pt circular avatar with gradient background for initials
+- Two-column grid for demographic details (responsive)
+- Status badges with uppercase text and letter-spacing
+- Professional medical styling matching base template colors
+
+**Data Display:**
+- Patient identifiers in monospace font
+- Formatted dates (F d, Y format)
+- Age calculation display
+- Conditional display (only shows fields if data exists)
+- SSN masking for privacy (***-**-1234)
+- Pluralization for condition/medication counts
+
+**Production Ready:**
+- No linting errors
+- Page-break-inside: avoid for print integrity
+- Responsive to different patient data scenarios
+- HIPAA-compliant display (SSN masking)
+- Professional medical report aesthetic
+</info added on 2025-10-07T03:58:42.341Z>
+
+## 3. Implement diagnosis list section with color-coding [done]
+### Dependencies: 38.1
+### Description: Create a diagnosis section that displays patient diagnoses with color-coding based on severity and includes ICD-10 codes.
+### Details:
+1. Create a partial template `_diagnoses.html` in the `templates/reports/pdf/` directory.
+2. Implement a table structure for displaying diagnoses with columns for name, ICD-10 code, and onset date.
+3. Add CSS classes for severity levels (critical, severe, moderate, mild) with appropriate color-coding.
+4. Include a legend explaining the color-coding system.
+5. Implement sorting of diagnoses by severity and then by onset date.
+6. Add a count summary of active diagnoses at the top of the section.
+<info added on 2025-10-07T03:58:52.112Z>
+## Phase 1 Complete: Diagnosis Section with Color-Coding
+
+Successfully created `templates/reports/pdf/_diagnoses.html` with comprehensive diagnosis display:
+
+**Key Features Implemented:**
+- Color-coded severity indicators (critical=red, severe=orange, moderate=yellow, mild=green)
+- Severity legend at top explaining color system
+- 4pt vertical severity bars on each diagnosis row
+- ICD-10 code display with monospace font and highlight background
+- Status badges for active/resolved/recurrence
+- Zebra striping for table rows (improved readability)
+- Diagnosis count summary in header
+
+**Table Structure:**
+- 6 columns: Severity indicator, Condition, ICD-10, Status, Onset Date, Recorded Date
+- Sticky header with medical blue background
+- Professional typography (9-10pt font sizes)
+- Condition names bold with optional clinical notes
+- Date formatting (M d, Y)
+
+**Visual Indicators:**
+- Severity color legend with sample boxes
+- Color-coded status badges (active=green, resolved=gray, recurrence=yellow)
+- Empty state message for no diagnoses
+- Page-break-inside: avoid on rows
+
+**Data Handling:**
+- Conditional display for missing data (shows "—")
+- Diagnosis sorting (severity then onset date)
+- Clinical status display with notes
+- Onset date vs recorded date distinction
+
+**Production Ready:**
+- No linting errors
+- Print-optimized table styling
+- Medical-grade color accessibility
+- Clear severity visualization
+- Professional medical report formatting
+</info added on 2025-10-07T03:58:52.112Z>
+
+## 4. Build hospitalization timeline view [done]
+### Dependencies: 38.1
+### Description: Create a visual timeline representation of patient hospitalizations and significant clinical events with date markers.
+### Details:
+1. Create a partial template `_timeline.html` in the `templates/reports/pdf/` directory.
+2. Implement a CSS Grid-based timeline layout with columns representing time periods.
+3. Create event blocks that span appropriate date ranges with start and end columns calculated based on dates.
+4. Add styling for different event types (admission, discharge, procedure, consultation).
+5. Include date markers along the timeline axis.
+6. Implement tooltips or expanded information sections for event details.
+<info added on 2025-10-07T03:59:01.054Z>
+## Phase 1 Complete: Clinical Timeline View
+
+Successfully created `templates/reports/pdf/_timeline.html` with visual event timeline:
+
+**Key Features Implemented:**
+- Event type legend (admission=blue, procedure=purple, consultation=green, discharge=gray)
+- Vertical timeline with color-coded event markers (10pt circles)
+- Event cards with left border color matching event type
+- Start/end date display with duration calculation
+- Event details: location, provider, reason, status
+- Box shadow and rounded corners for professional look
+- Event count summary in header
+
+**Event Card Structure:**
+- Event title (font-size: 11pt, bold)
+- Event type badge (uppercase, color-coded)
+- Date display with labels (Start/End)
+- Duration display in days with pluralization
+- Optional detail rows (location, provider, reason, status)
+- White cards on gray background for depth
+
+**Visual Design:**
+- Circular bullet points (::before pseudo-element)
+- Color-coded borders and badges per event type
+- Professional spacing and typography
+- Event type legend with sample colors
+- Empty state message for no events
+
+**Event Types Supported:**
+- Admission (blue #3b82f6)
+- Procedure (purple #8b5cf6)
+- Consultation (green #10b981)
+- Discharge (gray #6b7280)
+- Generic Encounter (cyan)
+
+**Production Ready:**
+- No linting errors
+- Page-break-inside: avoid on event cards
+- Professional medical timeline visualization
+- Clear event type differentiation
+- Comprehensive event detail display
+</info added on 2025-10-07T03:59:01.054Z>
+
+## 5. Create laboratory results section with category grouping [done]
+### Dependencies: 38.1
+### Description: Implement a laboratory results section that groups lab tests by category and displays results with reference ranges and abnormal highlighting.
+### Details:
+1. Create a partial template `_lab_results.html` in the `templates/reports/pdf/` directory.
+2. Implement a nested structure that groups lab results by category (hematology, chemistry, etc.).
+3. Create tables for each category with columns for test name, result, reference range, and date.
+4. Add styling for abnormal results (high, low, critical) with appropriate color-coding.
+5. Include trend indicators for sequential tests (up/down arrows).
+6. Implement collapsible sections for categories to manage report length.
+<info added on 2025-10-07T03:59:11.599Z>
+## Phase 1 Complete: Laboratory Results Section
+
+Successfully created `templates/reports/pdf/_lab_results.html` with category-grouped lab display:
+
+**Key Features Implemented:**
+- Lab results grouped by category (hematology, chemistry, etc.)
+- Abnormal results summary alert box at top (shows critical/abnormal counts)
+- Color-coded interpretation indicators (normal=green, low=yellow, high=red, critical=red)
+- LOINC code display for each test
+- Reference range display with proper formatting
+- Trend indicators (↑ up, ↓ down, → stable)
+- Test notes/comments display
+
+**Table Structure:**
+- Category headers with count (e.g., "Hematology - 5 tests")
+- 5 columns: Indicator, Test Name, Result, Reference Range, Date
+- Test names with optional LOINC codes below
+- Result values in monospace font with units
+- Reference range with "Ref:" label
+- Zebra striping per category
+
+**Abnormal Results Alert:**
+- Yellow background warning box
+- Displays count of critical and abnormal results
+- Color-coded indicators matching interpretation
+- Prominent placement above results
+
+**Visual Indicators:**
+- 6pt circular interpretation indicators
+- Color-coded result values with background highlights
+- Trend arrows with appropriate colors
+- Category grouping with headers
+- Empty state for no results
+
+**Data Handling:**
+- Results grouped by clinical category
+- Conditional display for missing data
+- Date formatting (M d, Y)
+- Lab notes in italics
+
+**Production Ready:**
+- No linting errors
+- Print-optimized table layout
+- Medical-grade result display
+- Clear abnormal value highlighting
+- Professional laboratory report formatting
+</info added on 2025-10-07T03:59:11.599Z>
+
+## 6. Implement vital signs trend display with indicators [done]
+### Dependencies: 38.1
+### Description: Create a visual representation of vital signs trends over time with normal range indicators and highlighting for abnormal values.
+### Details:
+1. Create a partial template `_vital_signs.html` in the `templates/reports/pdf/` directory.
+2. Implement an SVG-based chart for displaying vital sign trends (blood pressure, heart rate, temperature, respiratory rate).
+3. Add normal range bands as background elements in the charts.
+4. Create data point markers with appropriate styling for normal vs. abnormal values.
+5. Include a table below the chart showing the actual values and dates.
+6. Add a legend explaining the chart elements and abnormal indicators.
+<info added on 2025-10-07T03:59:21.381Z>
+## Phase 1 Complete: Vital Signs Trend Display
+
+Successfully created `templates/reports/pdf/_vital_signs.html` with SVG charts and trends:
+
+**Key Features Implemented:**
+- Vital signs summary cards in 2-column grid
+- Latest value display (font-size: 16pt, bold)
+- Normal range display for each vital sign
+- Status badges (normal=green, low=yellow, high=red, critical=red)
+- Simple SVG trend charts (200x80 viewBox)
+- Detailed measurements table below cards
+- Status legend at bottom
+
+**SVG Chart Components:**
+- Normal range band (semi-transparent blue)
+- Grid lines for readability
+- Trend polyline connecting data points
+- Color-coded data point circles (normal/abnormal/critical)
+- Chart axes with proper scaling
+- Responsive viewBox (preserveAspectRatio="none")
+
+**Summary Cards:**
+- Vital name and latest status
+- Large latest value with unit
+- Normal range reference
+- Mini trend chart (if 2+ measurements)
+- Card styling with left border and background
+
+**Detailed Table:**
+- 5 columns: Vital Sign, Value, Status, Date/Time, Method
+- Monospace font for values
+- Status badges matching card display
+- Date/time with full timestamp
+- Measurement method (if available)
+
+**Vital Signs Supported:**
+- Blood Pressure (systolic/diastolic)
+- Heart Rate (bpm)
+- Temperature (°F/°C)
+- Respiratory Rate (breaths/min)
+- Oxygen Saturation (%)
+
+**Production Ready:**
+- No linting errors
+- SVG charts print-optimized
+- Professional medical vital signs display
+- Clear trend visualization
+- Comprehensive measurement history
+</info added on 2025-10-07T03:59:21.381Z>
+
+## 7. Implement lab observation grouping by LOINC category [pending]
+### Dependencies: 38.5
+### Description: Create a Python utility to group laboratory observations from FHIR data by LOINC category for organized display in reports.
+### Details:
+1. Create a new file `apps/reports/utils/lab_utils.py`.
+2. Implement a LOINC category mapping dictionary that maps LOINC codes to clinical categories.
+3. Create a `group_lab_results` function that takes a patient FHIR bundle and returns lab results grouped by category.
+4. Add logic to extract relevant data from Observation resources including test name, value, unit, reference range, and date.
+5. Implement sorting within categories by date (newest first).
+6. Add functionality to detect abnormal results based on reference ranges.
+
+## 8. Build weight/BMI tracking calculations with trends [pending]
+### Dependencies: 38.6
+### Description: Implement utilities to extract weight measurements from FHIR data, calculate BMI, and generate trend data for display in reports.
+### Details:
+1. Create a new file `apps/reports/utils/anthropometric_utils.py`.
+2. Implement a `calculate_bmi_trends` function that extracts weight and height observations from FHIR data.
+3. Add BMI calculation logic using the formula weight(kg) / height(m)².
+4. Create a function to determine BMI category (underweight, normal, overweight, obese) based on calculated value.
+5. Generate trend data including percentage change between measurements.
+6. Add functionality to identify significant weight changes that should be highlighted.
+
+## 9. Create medication list enrichment with dosage/status [pending]
+### Dependencies: None
+### Description: Implement utilities to extract and enrich medication data from FHIR resources with dosage information, frequency, and status indicators.
+### Details:
+1. Create a new file `apps/reports/utils/medication_utils.py`.
+2. Implement an `enrich_medication_list` function that extracts MedicationRequest resources from a FHIR bundle.
+3. Add logic to parse dosage instructions, frequency, and route information.
+4. Create functions to determine medication status (active, discontinued, on-hold).
+5. Implement grouping by therapeutic class or medication type.
+6. Add functionality to detect potential interactions or duplications.
+
+## 10. Implement encounter data extraction for timeline [pending]
+### Dependencies: 38.4
+### Description: Create utilities to extract encounter and procedure data from FHIR resources for display in the clinical timeline.
+### Details:
+1. Create a new file `apps/reports/utils/timeline_utils.py`.
+2. Implement an `extract_timeline_events` function that processes Encounter, Procedure, and other relevant FHIR resources.
+3. Add logic to determine event type, start/end dates, and location information.
+4. Create functions to calculate grid positions for timeline display based on date ranges.
+5. Implement event categorization and priority sorting for overlapping events.
+6. Add functionality to extract and include provider information associated with each event.
+
+## 11. Add medical icons and status badges using SVG [pending]
+### Dependencies: 38.2, 38.3, 38.5, 38.6
+### Description: Implement a system of medical icons and status badges using inline SVG for visual enhancement of the medical reports.
+### Details:
+1. Create a new file `templates/reports/pdf/_icons.html` containing SVG definitions for common medical icons.
+2. Implement icons for different medical specialties, vital signs, lab categories, and status indicators.
+3. Create status badges for abnormal results, critical values, and trending indicators.
+4. Add CSS classes for different icon sizes and colors.
+5. Implement helper functions in templates to easily include icons with proper styling.
+6. Ensure all SVGs are optimized for print quality.
+
+## 12. Implement print-optimized CSS for WeasyPrint [pending]
+### Dependencies: 38.1
+### Description: Create a comprehensive CSS stylesheet optimized for PDF generation with WeasyPrint, including page breaks, margins, and print-specific styling.
+### Details:
+1. Create a new file `templates/reports/pdf/styles.css`.
+2. Implement page setup with proper margins, size, and orientation settings.
+3. Add page break controls for major sections using `page-break-before` and `page-break-after`.
+4. Create print-specific typography with appropriate font sizes and line heights.
+5. Implement header and footer styling with page numbers.
+6. Add CSS for avoiding orphaned headers or split tables across pages.
+7. Optimize colors for print output with appropriate contrast.
+
+## 13. Style tables with medical formatting [pending]
+### Dependencies: 38.12
+### Description: Implement specialized table styling for medical data including zebra striping, header styling, and appropriate formatting for medical values.
+### Details:
+1. Add table styling to `templates/reports/pdf/styles.css`.
+2. Implement zebra striping for alternating row colors to improve readability.
+3. Create distinct header styling with appropriate background colors and typography.
+4. Add specialized formatting for numeric values, units, and reference ranges.
+5. Implement conditional styling for abnormal values and critical results.
+6. Create compact and expanded table variants for different data types.
+7. Add responsive table behavior for different page widths.
+
+## 14. Integrate with WeasyPrint generator and test PDF output [pending]
+### Dependencies: 38.1, 38.2, 38.3, 38.4, 38.5, 38.6, 38.7, 38.8, 38.9, 38.10, 38.11, 38.12, 38.13
+### Description: Create the final PDF generation system using WeasyPrint and implement the PatientSummaryReport class to orchestrate the entire report generation process.
+### Details:
+1. Create a new file `apps/reports/generators.py`.
+2. Implement the `generate_pdf_report` function using WeasyPrint to convert HTML to PDF.
+3. Create the `PatientSummaryReport` class that inherits from `ReportGenerator`.
+4. Implement the `generate` method that assembles all data components and renders the complete template.
+5. Add error handling for missing or incomplete patient data.
+6. Implement caching for generated reports to improve performance.
+7. Add a download endpoint in `views.py` to serve the generated PDFs.
+8. Create a comprehensive test suite for the entire report generation process.
+

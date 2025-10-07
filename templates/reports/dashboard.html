@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Reports Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Reports</h1>
+        <p class="mt-2 text-gray-600">Generate comprehensive medical reports and summaries</p>
+    </div>
+
+    <!-- Report Type Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {% for report_type in report_types %}
+        <a href="{% if not report_type.disabled %}{% url 'reports:generate' %}?type={{ report_type.value }}{% else %}#{% endif %}" 
+           class="block p-6 bg-white rounded-lg shadow hover:shadow-lg transition-shadow {% if report_type.disabled %}opacity-50 cursor-not-allowed{% endif %}">
+            <div class="flex items-center mb-4">
+                <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                {% if report_type.disabled %}
+                <span class="ml-auto text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded">Coming Soon</span>
+                {% endif %}
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">{{ report_type.label }}</h3>
+            <p class="text-sm text-gray-600">{{ report_type.description }}</p>
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- Recent Reports -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-900">Recent Reports</h2>
+        </div>
+        
+        {% if recent_reports %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Report</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Format</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Generated</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for report in recent_reports %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">
+                                {{ report.configuration.name|default:"Unnamed Report" }}
+                            </div>
+                            <div class="text-sm text-gray-500">
+                                {{ report.configuration.get_report_type_display }}
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                {{ report.format|upper }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if report.status == 'completed' %}
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                Completed
+                            </span>
+                            {% elif report.status == 'failed' %}
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                Failed
+                            </span>
+                            {% else %}
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                {{ report.status|title }}
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ report.created_at|date:"M d, Y g:i A" }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            {% if report.status == 'completed' %}
+                            <a href="{% url 'reports:download' report.pk %}" class="text-blue-600 hover:text-blue-900 mr-4">
+                                Download
+                            </a>
+                            {% endif %}
+                            <a href="{% url 'reports:detail' report.pk %}" class="text-gray-600 hover:text-gray-900">
+                                Details
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-6 py-12 text-center">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No reports yet</h3>
+            <p class="mt-1 text-sm text-gray-500">Get started by generating your first report above.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

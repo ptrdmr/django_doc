@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Report Details{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Back button -->
+    <div class="mb-6">
+        <a href="{% url 'reports:dashboard' %}" class="text-blue-600 hover:text-blue-800">
+            ← Back to Reports
+        </a>
+    </div>
+
+    <!-- Report Details -->
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h1 class="text-2xl font-bold text-gray-900">
+                {{ report.configuration.name|default:"Report" }}
+            </h1>
+            <p class="mt-1 text-sm text-gray-500">
+                Generated on {{ report.created_at|date:"F d, Y \a\t g:i A" }}
+            </p>
+        </div>
+
+        <div class="px-6 py-6 space-y-6">
+            <!-- Status -->
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Status</dt>
+                <dd class="mt-1">
+                    {% if report.status == 'completed' %}
+                    <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                        Completed
+                    </span>
+                    {% elif report.status == 'failed' %}
+                    <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                        Failed
+                    </span>
+                    {% else %}
+                    <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                        {{ report.status|title }}
+                    </span>
+                    {% endif %}
+                </dd>
+            </div>
+
+            <!-- Report Type -->
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Report Type</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    {{ report.configuration.get_report_type_display }}
+                </dd>
+            </div>
+
+            <!-- Format -->
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Format</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    {{ report.format|upper }}
+                </dd>
+            </div>
+
+            {% if report.file_size_mb %}
+            <!-- File Size -->
+            <div>
+                <dt class="text-sm font-medium text-gray-500">File Size</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    {{ report.file_size_mb }} MB
+                </dd>
+            </div>
+            {% endif %}
+
+            {% if report.generation_time %}
+            <!-- Generation Time -->
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Generation Time</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    {{ report.generation_time|floatformat:2 }} seconds
+                </dd>
+            </div>
+            {% endif %}
+
+            {% if report.error_message %}
+            <!-- Error Message -->
+            <div>
+                <dt class="text-sm font-medium text-red-500">Error</dt>
+                <dd class="mt-1 text-sm text-red-700 bg-red-50 p-3 rounded">
+                    {{ report.error_message }}
+                </dd>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if report.status == 'completed' %}
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
+            <a href="{% url 'reports:download' report.pk %}" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                Download Report
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

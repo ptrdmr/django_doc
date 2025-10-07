@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title|default:"Medical Report" }}</title>
+    <style>
+        /* ============================================
+           CSS VARIABLES FOR MEDICAL REPORT STYLING
+           ============================================ */
+        :root {
+            /* Colors - Medical Blue Palette */
+            --primary-color: #2563eb;
+            --primary-dark: #1e40af;
+            --primary-darker: #1e3a8a;
+            --secondary-color: #64748b;
+            --accent-color: #0ea5e9;
+            
+            /* Status Colors */
+            --status-critical: #dc2626;
+            --status-high: #ea580c;
+            --status-moderate: #f59e0b;
+            --status-low: #84cc16;
+            --status-normal: #22c55e;
+            
+            /* Background Colors */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-header: #f1f5f9;
+            --bg-highlight: #eff6ff;
+            
+            /* Text Colors */
+            --text-primary: #1e293b;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            
+            /* Border Colors */
+            --border-primary: #cbd5e1;
+            --border-light: #e2e8f0;
+            --border-dark: #64748b;
+            
+            /* Spacing */
+            --space-xs: 0.25rem;
+            --space-sm: 0.5rem;
+            --space-md: 1rem;
+            --space-lg: 1.5rem;
+            --space-xl: 2rem;
+            
+            /* Typography */
+            --font-family-sans: 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
+            --font-family-mono: 'Courier New', monospace;
+            
+            --font-size-xs: 8pt;
+            --font-size-sm: 9pt;
+            --font-size-base: 10pt;
+            --font-size-md: 11pt;
+            --font-size-lg: 12pt;
+            --font-size-xl: 14pt;
+            --font-size-2xl: 16pt;
+            --font-size-3xl: 20pt;
+            
+            --line-height-tight: 1.25;
+            --line-height-normal: 1.4;
+            --line-height-relaxed: 1.6;
+        }
+        
+        /* ============================================
+           PAGE SETUP FOR WEASYPRINT
+           ============================================ */
+        @page {
+            size: letter portrait;
+            margin: 0.75in 0.75in 1in 0.75in;
+            
+            @top-left {
+                content: "{{ report_type|default:'Medical Report' }}";
+                font-family: var(--font-family-sans);
+                font-size: var(--font-size-xs);
+                color: var(--text-muted);
+                vertical-align: bottom;
+                padding-bottom: var(--space-sm);
+            }
+            
+            @top-right {
+                content: "Page " counter(page) " of " counter(pages);
+                font-family: var(--font-family-sans);
+                font-size: var(--font-size-xs);
+                color: var(--text-muted);
+                vertical-align: bottom;
+                padding-bottom: var(--space-sm);
+            }
+            
+            @bottom-center {
+                content: "CONFIDENTIAL - HIPAA Protected Health Information";
+                font-family: var(--font-family-sans);
+                font-size: var(--font-size-xs);
+                color: var(--text-muted);
+                text-align: center;
+                border-top: 1px solid var(--border-light);
+                padding-top: var(--space-sm);
+            }
+        }
+        
+        @page :first {
+            margin-top: 0.5in;
+            
+            @top-left {
+                content: "";
+            }
+            
+            @top-right {
+                content: "";
+            }
+        }
+        
+        /* ============================================
+           GLOBAL STYLES
+           ============================================ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--font-family-sans);
+            font-size: var(--font-size-base);
+            line-height: var(--line-height-normal);
+            color: var(--text-primary);
+            background-color: var(--bg-primary);
+        }
+        
+        /* ============================================
+           TYPOGRAPHY
+           ============================================ */
+        h1 {
+            font-size: var(--font-size-3xl);
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: var(--space-lg);
+            padding-bottom: var(--space-sm);
+            border-bottom: 2px solid var(--primary-color);
+            line-height: var(--line-height-tight);
+        }
+        
+        h2 {
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+            color: var(--primary-dark);
+            margin-top: var(--space-xl);
+            margin-bottom: var(--space-md);
+            padding-bottom: var(--space-xs);
+            border-bottom: 1px solid var(--border-light);
+            line-height: var(--line-height-tight);
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--primary-darker);
+            margin-top: var(--space-lg);
+            margin-bottom: var(--space-sm);
+            line-height: var(--line-height-tight);
+            page-break-after: avoid;
+        }
+        
+        h4 {
+            font-size: var(--font-size-md);
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-top: var(--space-md);
+            margin-bottom: var(--space-sm);
+            page-break-after: avoid;
+        }
+        
+        p {
+            margin-bottom: var(--space-sm);
+            line-height: var(--line-height-relaxed);
+        }
+        
+        strong, .label {
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        
+        .value {
+            color: var(--text-primary);
+        }
+        
+        /* ============================================
+           PAGE BREAK CONTROLS
+           ============================================ */
+        .page-break {
+            page-break-after: always;
+        }
+        
+        .page-break-before {
+            page-break-before: always;
+        }
+        
+        .page-break-inside-avoid {
+            page-break-inside: avoid;
+        }
+        
+        .section {
+            page-break-inside: avoid;
+            margin-bottom: var(--space-lg);
+        }
+        
+        /* ============================================
+           LAYOUT STRUCTURE
+           ============================================ */
+        .report-header {
+            margin-bottom: var(--space-xl);
+        }
+        
+        .report-title {
+            text-align: center;
+            margin-bottom: var(--space-lg);
+        }
+        
+        .report-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: var(--font-size-md);
+            margin-bottom: var(--space-md);
+        }
+        
+        .report-metadata {
+            background-color: var(--bg-header);
+            padding: var(--space-md);
+            border-radius: 4pt;
+            margin-bottom: var(--space-lg);
+            font-size: var(--font-size-sm);
+        }
+        
+        .metadata-row {
+            display: flex;
+            margin-bottom: var(--space-xs);
+        }
+        
+        .metadata-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .metadata-label {
+            font-weight: 600;
+            color: var(--text-secondary);
+            min-width: 120pt;
+        }
+        
+        .metadata-value {
+            color: var(--text-primary);
+        }
+        
+        .content-section {
+            margin-bottom: var(--space-xl);
+        }
+        
+        .content-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        /* ============================================
+           UTILITY CLASSES
+           ============================================ */
+        .text-center {
+            text-align: center;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .text-muted {
+            color: var(--text-muted);
+        }
+        
+        .text-secondary {
+            color: var(--text-secondary);
+        }
+        
+        .text-primary {
+            color: var(--primary-color);
+        }
+        
+        .font-bold {
+            font-weight: 600;
+        }
+        
+        .font-normal {
+            font-weight: 400;
+        }
+        
+        .mb-xs { margin-bottom: var(--space-xs); }
+        .mb-sm { margin-bottom: var(--space-sm); }
+        .mb-md { margin-bottom: var(--space-md); }
+        .mb-lg { margin-bottom: var(--space-lg); }
+        .mb-xl { margin-bottom: var(--space-xl); }
+        
+        .mt-xs { margin-top: var(--space-xs); }
+        .mt-sm { margin-top: var(--space-sm); }
+        .mt-md { margin-top: var(--space-md); }
+        .mt-lg { margin-top: var(--space-lg); }
+        .mt-xl { margin-top: var(--space-xl); }
+        
+        .p-xs { padding: var(--space-xs); }
+        .p-sm { padding: var(--space-sm); }
+        .p-md { padding: var(--space-md); }
+        .p-lg { padding: var(--space-lg); }
+        .p-xl { padding: var(--space-xl); }
+        
+        /* ============================================
+           HIPAA COMPLIANCE FOOTER
+           ============================================ */
+        .hipaa-notice {
+            margin-top: var(--space-xl);
+            padding-top: var(--space-md);
+            border-top: 1px solid var(--border-light);
+            font-size: var(--font-size-xs);
+            color: var(--text-muted);
+            text-align: center;
+            line-height: var(--line-height-relaxed);
+        }
+        
+        /* ============================================
+           EMPTY STATE
+           ============================================ */
+        .empty-state {
+            padding: var(--space-lg);
+            text-align: center;
+            color: var(--text-muted);
+            font-style: italic;
+            background-color: var(--bg-secondary);
+            border-radius: 4pt;
+        }
+        
+        /* ============================================
+           CUSTOM BLOCKS FOR TEMPLATE INHERITANCE
+           ============================================ */
+        {% block custom_styles %}
+        /* Additional custom styles can be added in child templates */
+        {% endblock %}
+    </style>
+</head>
+<body>
+    <!-- Report Header -->
+    <header class="report-header">
+        {% block report_header %}
+        <div class="report-title">
+            <h1>{{ title|default:"Medical Report" }}</h1>
+        </div>
+        
+        {% if subtitle %}
+        <div class="report-subtitle">
+            {{ subtitle }}
+        </div>
+        {% endif %}
+        
+        <div class="report-metadata">
+            {% block report_metadata %}
+            <div class="metadata-row">
+                <span class="metadata-label">Report Type:</span>
+                <span class="metadata-value">{{ report_type|default:"Patient Summary" }}</span>
+            </div>
+            <div class="metadata-row">
+                <span class="metadata-label">Generated:</span>
+                <span class="metadata-value">{{ generated_at|date:"F d, Y g:i A"|default:"N/A" }}</span>
+            </div>
+            <div class="metadata-row">
+                <span class="metadata-label">Generated By:</span>
+                <span class="metadata-value">{{ generated_by|default:"System" }}</span>
+            </div>
+            {% endblock %}
+        </div>
+        {% endblock %}
+    </header>
+    
+    <!-- Main Content -->
+    <main class="report-content">
+        {% block content %}
+        <!-- Child templates override this block with report-specific content -->
+        {% endblock %}
+    </main>
+    
+    <!-- Footer -->
+    <footer class="report-footer">
+        {% block report_footer %}
+        <div class="hipaa-notice">
+            <p><strong>CONFIDENTIAL - HIPAA Protected Health Information</strong></p>
+            <p>This document contains confidential patient health information protected by federal and state privacy laws.
+            Unauthorized access, use, or disclosure is prohibited and may result in civil and criminal penalties.</p>
+        </div>
+        {% endblock %}
+    </footer>
+</body>
+</html>
+

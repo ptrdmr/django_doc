@@ -1,0 +1,363 @@
+<!-- Vital Signs Trend Display with SVG Charts -->
+<style>
+    .vital-signs-section {
+        page-break-inside: avoid;
+        margin-bottom: var(--space-xl);
+    }
+    
+    .vital-signs-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-md);
+    }
+    
+    .vital-signs-count {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        font-weight: 600;
+    }
+    
+    /* Vital signs grid */
+    .vital-signs-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-lg);
+        margin-bottom: var(--space-lg);
+    }
+    
+    .vital-card {
+        background-color: var(--bg-secondary);
+        padding: var(--space-md);
+        border-radius: 4pt;
+        border-left: 3px solid var(--primary-color);
+        page-break-inside: avoid;
+    }
+    
+    .vital-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-sm);
+    }
+    
+    .vital-name {
+        font-size: var(--font-size-md);
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    
+    .vital-latest-value {
+        font-size: var(--font-size-2xl);
+        font-weight: 700;
+        color: var(--primary-color);
+        margin-bottom: var(--space-xs);
+    }
+    
+    .vital-latest-value .unit {
+        font-size: var(--font-size-md);
+        font-weight: 400;
+        color: var(--text-secondary);
+        margin-left: var(--space-xs);
+    }
+    
+    .vital-normal-range {
+        font-size: var(--font-size-xs);
+        color: var(--text-muted);
+        margin-bottom: var(--space-sm);
+    }
+    
+    .range-label {
+        font-weight: 600;
+    }
+    
+    /* Status indicators */
+    .vital-status {
+        display: inline-block;
+        padding: 2pt 6pt;
+        border-radius: 2pt;
+        font-size: var(--font-size-xs);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3pt;
+    }
+    
+    .vital-status.normal {
+        background-color: #dcfce7;
+        color: #166534;
+    }
+    
+    .vital-status.low {
+        background-color: #fef3c7;
+        color: #92400e;
+    }
+    
+    .vital-status.high {
+        background-color: #fee2e2;
+        color: #991b1b;
+    }
+    
+    .vital-status.critical {
+        background-color: #dc2626;
+        color: white;
+        font-weight: 700;
+    }
+    
+    /* Simple SVG chart */
+    .vital-chart {
+        margin-top: var(--space-sm);
+        background-color: white;
+        border-radius: 3pt;
+        padding: var(--space-sm);
+    }
+    
+    .vital-chart svg {
+        width: 100%;
+        height: 80pt;
+    }
+    
+    .chart-line {
+        fill: none;
+        stroke: var(--primary-color);
+        stroke-width: 2;
+    }
+    
+    .chart-point {
+        fill: var(--primary-color);
+        stroke: white;
+        stroke-width: 2;
+    }
+    
+    .chart-point.normal {
+        fill: var(--status-normal);
+    }
+    
+    .chart-point.abnormal {
+        fill: var(--status-high);
+    }
+    
+    .chart-point.critical {
+        fill: var(--status-critical);
+    }
+    
+    .chart-axis {
+        stroke: var(--border-primary);
+        stroke-width: 1;
+    }
+    
+    .chart-grid {
+        stroke: var(--border-light);
+        stroke-width: 0.5;
+        stroke-dasharray: 2,2;
+    }
+    
+    .chart-label {
+        font-size: 8pt;
+        fill: var(--text-muted);
+        font-family: var(--font-family-sans);
+    }
+    
+    .normal-range-band {
+        fill: var(--bg-highlight);
+        opacity: 0.3;
+    }
+    
+    /* Vital signs table */
+    .vital-signs-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--font-size-sm);
+        margin-top: var(--space-lg);
+    }
+    
+    .vital-signs-table thead {
+        background-color: var(--bg-header);
+        border-bottom: 2px solid var(--border-dark);
+    }
+    
+    .vital-signs-table th {
+        padding: var(--space-sm);
+        text-align: left;
+        font-weight: 600;
+        color: var(--primary-dark);
+        font-size: var(--font-size-sm);
+    }
+    
+    .vital-signs-table tbody tr {
+        border-bottom: 1px solid var(--border-light);
+        page-break-inside: avoid;
+    }
+    
+    .vital-signs-table tbody tr:nth-child(even) {
+        background-color: var(--bg-secondary);
+    }
+    
+    .vital-signs-table td {
+        padding: var(--space-sm);
+        vertical-align: middle;
+    }
+    
+    .vital-value {
+        font-weight: 600;
+        font-family: var(--font-family-mono);
+    }
+    
+    .vital-date {
+        white-space: nowrap;
+        color: var(--text-secondary);
+        font-size: var(--font-size-xs);
+    }
+    
+    .vital-method {
+        font-size: var(--font-size-xs);
+        color: var(--text-muted);
+        font-style: italic;
+    }
+    
+    /* No vitals state */
+    .no-vital-signs {
+        padding: var(--space-lg);
+        text-align: center;
+        color: var(--text-muted);
+        font-style: italic;
+        background-color: var(--bg-secondary);
+        border-radius: 4pt;
+        border: 1px dashed var(--border-light);
+    }
+</style>
+
+<div class="vital-signs-section content-section">
+    <div class="vital-signs-header">
+        <h2>Vital Signs Trends</h2>
+        {% if vital_signs %}
+        <span class="vital-signs-count">
+            {{ vital_signs|length }} Vital Sign{{ vital_signs|length|pluralize }}
+        </span>
+        {% endif %}
+    </div>
+    
+    {% if vital_signs %}
+        <!-- Vital Signs Summary Cards with Mini Charts -->
+        <div class="vital-signs-grid">
+            {% for vital_type, vital_data in vital_signs.items %}
+            <div class="vital-card">
+                <div class="vital-card-header">
+                    <h4 class="vital-name">{{ vital_data.display_name|default:vital_type }}</h4>
+                    <span class="vital-status {{ vital_data.latest_status|lower|default:'normal' }}">
+                        {{ vital_data.latest_status|default:"Normal" }}
+                    </span>
+                </div>
+                
+                <div class="vital-latest-value">
+                    {{ vital_data.latest_value|default:"—" }}
+                    <span class="unit">{{ vital_data.unit|default:"" }}</span>
+                </div>
+                
+                {% if vital_data.normal_range %}
+                <div class="vital-normal-range">
+                    <span class="range-label">Normal Range:</span>
+                    {{ vital_data.normal_range }}
+                </div>
+                {% endif %}
+                
+                <!-- Simple SVG Trend Chart -->
+                {% if vital_data.values and vital_data.values|length > 1 %}
+                <div class="vital-chart">
+                    <svg viewBox="0 0 200 80" preserveAspectRatio="none">
+                        <!-- Normal range band (if available) -->
+                        {% if vital_data.normal_min and vital_data.normal_max %}
+                        <rect class="normal-range-band" 
+                              x="0" 
+                              y="{{ vital_data.normal_min_y }}" 
+                              width="200" 
+                              height="{{ vital_data.normal_band_height }}"/>
+                        {% endif %}
+                        
+                        <!-- Grid lines -->
+                        <line class="chart-grid" x1="0" y1="20" x2="200" y2="20"/>
+                        <line class="chart-grid" x1="0" y1="40" x2="200" y2="40"/>
+                        <line class="chart-grid" x1="0" y1="60" x2="200" y2="60"/>
+                        
+                        <!-- Trend line -->
+                        <polyline class="chart-line" 
+                                  points="{% for point in vital_data.chart_points %}{{ point.x }},{{ point.y }} {% endfor %}"/>
+                        
+                        <!-- Data points -->
+                        {% for point in vital_data.chart_points %}
+                        <circle class="chart-point {{ point.status|lower }}" 
+                                cx="{{ point.x }}" 
+                                cy="{{ point.y }}" 
+                                r="3"/>
+                        {% endfor %}
+                        
+                        <!-- Axes -->
+                        <line class="chart-axis" x1="0" y1="80" x2="200" y2="80"/>
+                        <line class="chart-axis" x1="0" y1="0" x2="0" y2="80"/>
+                    </svg>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Detailed Vital Signs Table -->
+        <h3>Detailed Measurements</h3>
+        <table class="vital-signs-table">
+            <thead>
+                <tr>
+                    <th style="width: 25%;">Vital Sign</th>
+                    <th style="width: 20%;">Value</th>
+                    <th style="width: 20%;">Status</th>
+                    <th style="width: 20%;">Date/Time</th>
+                    <th style="width: 15%;">Method</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vital_type, vital_data in vital_signs.items %}
+                    {% for measurement in vital_data.measurements %}
+                    <tr>
+                        <td>
+                            <strong>{{ vital_data.display_name|default:vital_type }}</strong>
+                        </td>
+                        <td>
+                            <span class="vital-value">
+                                {{ measurement.value }} {{ vital_data.unit }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="vital-status {{ measurement.status|lower }}">
+                                {{ measurement.status }}
+                            </span>
+                        </td>
+                        <td class="vital-date">
+                            {{ measurement.effective_date|date:"M d, Y g:i A" }}
+                        </td>
+                        <td>
+                            {% if measurement.method %}
+                            <span class="vital-method">{{ measurement.method }}</span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <!-- Legend -->
+        <div style="margin-top: var(--space-md); font-size: var(--font-size-xs); color: var(--text-muted);">
+            <strong>Legend:</strong>
+            <span class="vital-status normal" style="margin-left: var(--space-sm);">Normal</span>
+            <span class="vital-status low" style="margin-left: var(--space-sm);">Low</span>
+            <span class="vital-status high" style="margin-left: var(--space-sm);">High</span>
+            <span class="vital-status critical" style="margin-left: var(--space-sm);">Critical</span>
+        </div>
+    {% else %}
+        <!-- No vital signs state -->
+        <div class="no-vital-signs">
+            <p>No vital signs measurements available for this patient.</p>
+        </div>
+    {% endif %}
+</div>
+
