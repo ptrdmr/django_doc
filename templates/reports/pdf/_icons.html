@@ -1,0 +1,414 @@
+{% comment %}
+Medical Icons and Status Badges SVG Library
+Professional medical icons optimized for PDF reports and printing
+{% endcomment %}
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <defs>
+    <!-- Vital Signs Icons -->
+    
+    <!-- Blood Pressure -->
+    <symbol id="icon-blood-pressure" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+      <circle fill="currentColor" cx="12" cy="12" r="3"/>
+      <path fill="currentColor" d="M12 7v3M12 14v3M9 12H6M18 12h-3"/>
+    </symbol>
+
+    <!-- Heart Rate -->
+    <symbol id="icon-heart-rate" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3z"/>
+      <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l2-4 2 8 2-4h4"/>
+    </symbol>
+
+    <!-- Temperature -->
+    <symbol id="icon-temperature" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M15 13V5c0-1.66-1.34-3-3-3S9 3.34 9 5v8c-1.21.91-2 2.37-2 4 0 2.76 2.24 5 5 5s5-2.24 5-5c0-1.63-.79-3.09-2-4zm-4-8c0-.55.45-1 1-1s1 .45 1 1h-1v1h1v2h-1v1h1v2h-2V5z"/>
+    </symbol>
+
+    <!-- Respiratory Rate -->
+    <symbol id="icon-respiratory" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z"/>
+      <path fill="none" stroke="currentColor" stroke-width="1.5" d="M8 15c1-1 2-1 3 0s2 1 3 0"/>
+    </symbol>
+
+    <!-- Oxygen Saturation -->
+    <symbol id="icon-oxygen" viewBox="0 0 24 24">
+      <circle fill="none" stroke="currentColor" stroke-width="2" cx="12" cy="12" r="9"/>
+      <path fill="currentColor" d="M12 6C8.69 6 6 8.69 6 12s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/>
+      <text x="12" y="14" text-anchor="middle" font-size="6" font-weight="bold" fill="currentColor">O₂</text>
+    </symbol>
+
+    <!-- Weight/BMI -->
+    <symbol id="icon-weight" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7z"/>
+      <path fill="currentColor" d="M13 7h-2v4H8v2h3v4h2v-4h3v-2h-3z"/>
+    </symbol>
+
+    <!-- Status Indicators -->
+    
+    <!-- Normal/Success -->
+    <symbol id="icon-status-normal" viewBox="0 0 24 24">
+      <circle fill="#10b981" cx="12" cy="12" r="10"/>
+      <path fill="white" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/>
+    </symbol>
+
+    <!-- Warning -->
+    <symbol id="icon-status-warning" viewBox="0 0 24 24">
+      <path fill="#f59e0b" d="M12 2L1 21h22L12 2zm0 3.5L19.5 19h-15L12 5.5z"/>
+      <rect fill="white" x="11" y="10" width="2" height="5" rx="1"/>
+      <circle fill="white" cx="12" cy="17" r="1"/>
+    </symbol>
+
+    <!-- Critical/Error -->
+    <symbol id="icon-status-critical" viewBox="0 0 24 24">
+      <circle fill="#ef4444" cx="12" cy="12" r="10"/>
+      <rect fill="white" x="11" y="7" width="2" height="7" rx="1"/>
+      <circle fill="white" cx="12" cy="17" r="1"/>
+    </symbol>
+
+    <!-- Info -->
+    <symbol id="icon-status-info" viewBox="0 0 24 24">
+      <circle fill="#3b82f6" cx="12" cy="12" r="10"/>
+      <circle fill="white" cx="12" cy="8" r="1"/>
+      <rect fill="white" x="11" y="11" width="2" height="7" rx="1"/>
+    </symbol>
+
+    <!-- Trending Indicators -->
+    
+    <!-- Trending Up -->
+    <symbol id="icon-trend-up" viewBox="0 0 24 24">
+      <path fill="#ef4444" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 6l5 0 0 5M21 6l-7 7-4-4-6 6"/>
+    </symbol>
+
+    <!-- Trending Down -->
+    <symbol id="icon-trend-down" viewBox="0 0 24 24">
+      <path fill="#3b82f6" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 18l5 0 0-5M21 18l-7-7-4 4-6-6"/>
+    </symbol>
+
+    <!-- Trending Stable -->
+    <symbol id="icon-trend-stable" viewBox="0 0 24 24">
+      <path fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" d="M3 12h18"/>
+      <path fill="#10b981" d="M18 12l3 0-1.5-2.5z M18 12l3 0-1.5 2.5z"/>
+    </symbol>
+
+    <!-- Medical Categories -->
+    
+    <!-- Laboratory/Test -->
+    <symbol id="icon-laboratory" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M7 2v7.27c-1.57.45-2.89 1.4-3.82 2.63-.99 1.32-1.51 2.9-1.51 4.58 0 1.93.73 3.74 2.05 5.11C5.04 23 6.82 24 8.86 24H15.14c2.04 0 3.82-1 5.14-2.41 1.32-1.37 2.05-3.18 2.05-5.11 0-1.68-.52-3.26-1.51-4.58-.93-1.23-2.25-2.18-3.82-2.63V2h-9zm2 0h6v6h-6V2zm0 8h6v1.9c-1 .19-1.97.61-2.78 1.24-.27.21-.52.45-.75.71-.23-.26-.48-.5-.75-.71-.81-.63-1.78-1.05-2.72-1.24V10z"/>
+    </symbol>
+
+    <!-- Medication/Pill -->
+    <symbol id="icon-medication" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M4.22 11.29l7.07-7.07c1.56-1.56 4.1-1.56 5.66 0l2.83 2.83c1.56 1.56 1.56 4.1 0 5.66l-7.07 7.07c-1.56 1.56-4.1 1.56-5.66 0l-2.83-2.83c-1.56-1.56-1.56-4.09 0-5.66zm1.41 1.42l2.83 2.83c.78.78 2.05.78 2.83 0l7.07-7.07c.78-.78.78-2.05 0-2.83l-2.83-2.83c-.78-.78-2.05-.78-2.83 0L5.63 10.88c-.78.78-.78 2.05 0 2.83z"/>
+      <path fill="currentColor" d="M7 10l7 7"/>
+    </symbol>
+
+    <!-- Diagnosis/Stethoscope -->
+    <symbol id="icon-diagnosis" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M19 8h-1.81c-.45-1.25-1.65-2.14-3.07-2.14-1.79 0-3.25 1.46-3.25 3.25S12.33 12.36 14.12 12.36c1.42 0 2.62-.89 3.07-2.14H19c1.1 0 2 .9 2 2v1.79c0 2.02-1.64 3.66-3.66 3.66-1.38 0-2.59-.76-3.22-1.89-.46.11-.93.17-1.41.17-3.59 0-6.5-2.91-6.5-6.5h2c0 2.49 2.01 4.5 4.5 4.5.17 0 .33-.02.5-.03V7.82c-.17-.01-.33-.03-.5-.03-2.49 0-4.5 2.01-4.5 4.5H4c0-3.59 2.91-6.5 6.5-6.5.48 0 .95.06 1.41.17C12.54 4.83 13.75 4.07 15.13 4.07c2.02 0 3.66 1.64 3.66 3.66V8h.21z"/>
+    </symbol>
+
+    <!-- Timeline/Calendar -->
+    <symbol id="icon-timeline" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V9h14v10z"/>
+      <path fill="currentColor" d="M7 11h2v2H7zM11 11h2v2h-2zM15 11h2v2h-2z"/>
+    </symbol>
+
+    <!-- Procedure/Surgery -->
+    <symbol id="icon-procedure" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M9.01 14H2v2h7.01v3L13 15l-3.99-4v3zm5.98-1v-3H22V8h-7.01V5L11 9l3.99 4z"/>
+    </symbol>
+
+    <!-- General Medical -->
+    
+    <!-- Patient/Person -->
+    <symbol id="icon-patient" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+    </symbol>
+
+    <!-- Doctor/Provider -->
+    <symbol id="icon-provider" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+      <path fill="currentColor" d="M12 13c-1.66 0-3-1.34-3-3V8h6v2c0 1.66-1.34 3-3 3z"/>
+    </symbol>
+
+    <!-- Hospital/Building -->
+    <symbol id="icon-hospital" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 9h-3v3h-2v-3h-3v-2h3V7h2v3h3v2z"/>
+    </symbol>
+
+    <!-- Document/Report -->
+    <symbol id="icon-document" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zM8 15h8v2H8v-2zm0-4h8v2H8v-2z"/>
+    </symbol>
+
+    <!-- Allergy/Alert -->
+    <symbol id="icon-allergy" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+      <path fill="currentColor" d="M11 7h2v7h-2zM11 16h2v2h-2z"/>
+    </symbol>
+
+    <!-- Location/Pin -->
+    <symbol id="icon-location" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+    </symbol>
+
+    <!-- Badge Backgrounds -->
+    
+    <!-- Status Badge Background - Normal -->
+    <symbol id="badge-normal" viewBox="0 0 80 24">
+      <rect fill="#d1fae5" stroke="#10b981" stroke-width="1" x="0.5" y="0.5" width="79" height="23" rx="4"/>
+    </symbol>
+
+    <!-- Status Badge Background - Low -->
+    <symbol id="badge-low" viewBox="0 0 80 24">
+      <rect fill="#fef3c7" stroke="#f59e0b" stroke-width="1" x="0.5" y="0.5" width="79" height="23" rx="4"/>
+    </symbol>
+
+    <!-- Status Badge Background - High -->
+    <symbol id="badge-high" viewBox="0 0 80 24">
+      <rect fill="#fee2e2" stroke="#ef4444" stroke-width="1" x="0.5" y="0.5" width="79" height="23" rx="4"/>
+    </symbol>
+
+    <!-- Status Badge Background - Critical -->
+    <symbol id="badge-critical" viewBox="0 0 80 24">
+      <rect fill="#dc2626" stroke="#7f1d1d" stroke-width="1" x="0.5" y="0.5" width="79" height="23" rx="4"/>
+    </symbol>
+
+    <!-- Status Badge Background - Info -->
+    <symbol id="badge-info" viewBox="0 0 80 24">
+      <rect fill="#dbeafe" stroke="#3b82f6" stroke-width="1" x="0.5" y="0.5" width="79" height="23" rx="4"/>
+    </symbol>
+
+    <!-- Status Badge Background - Active -->
+    <symbol id="badge-active" viewBox="0 0 80 24">
+      <rect fill="#dcfce7" stroke="#16a34a" stroke-width="1" x="0.5" y="0.5" width="79" height="23" rx="4"/>
+    </symbol>
+
+    <!-- Status Badge Background - Inactive -->
+    <symbol id="badge-inactive" viewBox="0 0 80 24">
+      <rect fill="#f3f4f6" stroke="#9ca3af" stroke-width="1" x="0.5" y="0.5" width="79" height="23" rx="4"/>
+    </symbol>
+
+  </defs>
+</svg>
+
+<style>
+/* Icon Utility Classes */
+
+/* Icon Sizes */
+.icon {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.icon-xs {
+  width: 12pt;
+  height: 12pt;
+}
+
+.icon-sm {
+  width: 16pt;
+  height: 16pt;
+}
+
+.icon-md {
+  width: 20pt;
+  height: 20pt;
+}
+
+.icon-lg {
+  width: 24pt;
+  height: 24pt;
+}
+
+.icon-xl {
+  width: 32pt;
+  height: 32pt;
+}
+
+/* Icon Colors */
+.icon-primary {
+  color: #2563eb;
+}
+
+.icon-success {
+  color: #10b981;
+}
+
+.icon-warning {
+  color: #f59e0b;
+}
+
+.icon-danger {
+  color: #ef4444;
+}
+
+.icon-info {
+  color: #3b82f6;
+}
+
+.icon-muted {
+  color: #6b7280;
+}
+
+/* Status Badge Styles */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4pt;
+  padding: 2pt 8pt;
+  border-radius: 4pt;
+  font-size: 8pt;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5pt;
+  white-space: nowrap;
+}
+
+.status-badge-normal {
+  background-color: #d1fae5;
+  color: #065f46;
+  border: 1pt solid #10b981;
+}
+
+.status-badge-low {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1pt solid #f59e0b;
+}
+
+.status-badge-high {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1pt solid #ef4444;
+}
+
+.status-badge-critical {
+  background-color: #dc2626;
+  color: #ffffff;
+  border: 1pt solid #7f1d1d;
+}
+
+.status-badge-info {
+  background-color: #dbeafe;
+  color: #1e40af;
+  border: 1pt solid #3b82f6;
+}
+
+.status-badge-active {
+  background-color: #dcfce7;
+  color: #14532d;
+  border: 1pt solid #16a34a;
+}
+
+.status-badge-inactive {
+  background-color: #f3f4f6;
+  color: #374151;
+  border: 1pt solid #9ca3af;
+}
+
+/* Trend Indicators */
+.trend-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 2pt;
+  font-size: 9pt;
+  font-weight: 600;
+}
+
+.trend-up {
+  color: #ef4444;
+}
+
+.trend-down {
+  color: #3b82f6;
+}
+
+.trend-stable {
+  color: #10b981;
+}
+
+/* Icon with Text */
+.icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4pt;
+}
+
+/* Icon List (for legends) */
+.icon-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12pt;
+  margin: 8pt 0;
+}
+
+.icon-list-item {
+  display: flex;
+  align-items: center;
+  gap: 4pt;
+  font-size: 9pt;
+}
+
+/* Print Optimization */
+@media print {
+  .icon,
+  .status-badge,
+  .trend-indicator {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+</style>
+
+{% comment %}
+Usage Examples:
+
+1. Basic Icon:
+   <svg class="icon icon-md icon-primary">
+     <use xlink:href="#icon-heart-rate"></use>
+   </svg>
+
+2. Icon with Text:
+   <div class="icon-text">
+     <svg class="icon icon-sm icon-danger">
+       <use xlink:href="#icon-status-critical"></use>
+     </svg>
+     <span>Critical Result</span>
+   </div>
+
+3. Status Badge:
+   <span class="status-badge status-badge-high">
+     <svg class="icon icon-xs">
+       <use xlink:href="#icon-status-warning"></use>
+     </svg>
+     High
+   </span>
+
+4. Trend Indicator:
+   <div class="trend-indicator trend-up">
+     <svg class="icon icon-sm">
+       <use xlink:href="#icon-trend-up"></use>
+     </svg>
+     <span>+15%</span>
+   </div>
+
+5. Icon List (Legend):
+   <div class="icon-list">
+     <div class="icon-list-item">
+       <svg class="icon icon-sm icon-success">
+         <use xlink:href="#icon-status-normal"></use>
+       </svg>
+       <span>Normal</span>
+     </div>
+     <div class="icon-list-item">
+       <svg class="icon icon-sm icon-warning">
+         <use xlink:href="#icon-status-warning"></use>
+       </svg>
+       <span>Abnormal</span>
+     </div>
+   </div>
+{% endcomment %}
+
