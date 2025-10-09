@@ -2624,7 +2624,7 @@
             "description": "Implement utilities to extract and enrich medication data from FHIR resources with dosage information, frequency, and status indicators.",
             "dependencies": [],
             "details": "1. Create a new file `apps/reports/utils/medication_utils.py`.\n2. Implement an `enrich_medication_list` function that extracts MedicationRequest resources from a FHIR bundle.\n3. Add logic to parse dosage instructions, frequency, and route information.\n4. Create functions to determine medication status (active, discontinued, on-hold).\n5. Implement grouping by therapeutic class or medication type.\n6. Add functionality to detect potential interactions or duplications.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Create unit tests with sample FHIR MedicationRequest resources. Verify that the enrichment function correctly extracts all relevant medication data and properly determines medication status."
           },
           {
@@ -2702,7 +2702,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-09T02:47:22.462Z",
+      "updated": "2025-10-09T03:04:29.952Z",
       "description": "Tasks for master context"
     }
   }
