@@ -57,6 +57,8 @@
     .lab-results-table thead {
         background-color: var(--bg-secondary);
         border-bottom: 1px solid var(--border-primary);
+        page-break-inside: avoid;
+        page-break-after: avoid; /* Keep header with at least one row */
     }
     
     .lab-results-table th {
@@ -67,6 +69,10 @@
         font-size: var(--font-size-xs);
         text-transform: uppercase;
         letter-spacing: 0.3pt;
+    }
+    
+    .lab-results-table tbody {
+        page-break-inside: auto; /* Allow splits between rows but not within rows */
     }
     
     .lab-results-table tbody tr {

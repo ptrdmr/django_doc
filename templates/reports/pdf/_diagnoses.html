@@ -56,6 +56,8 @@
     .diagnoses-table thead {
         background-color: var(--bg-header);
         border-bottom: 2px solid var(--border-dark);
+        page-break-inside: avoid;
+        page-break-after: avoid; /* Keep header with at least one row */
     }
     
     .diagnoses-table th {
@@ -64,6 +66,10 @@
         font-weight: 600;
         color: var(--primary-dark);
         font-size: var(--font-size-sm);
+    }
+    
+    .diagnoses-table tbody {
+        page-break-inside: auto; /* Allow splits between rows but not within rows */
     }
     
     .diagnoses-table tbody tr {
