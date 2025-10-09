@@ -816,7 +816,7 @@ Successfully created `apps/reports/utils/anthropometric_utils.py` with comprehen
 - Ready for Phase 2 integration into report generation
 </info added on 2025-10-09T02:47:17.731Z>
 
-## 9. Create medication list enrichment with dosage/status [pending]
+## 9. Create medication list enrichment with dosage/status [done]
 ### Dependencies: None
 ### Description: Implement utilities to extract and enrich medication data from FHIR resources with dosage information, frequency, and status indicators.
 ### Details:
