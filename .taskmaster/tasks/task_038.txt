@@ -756,7 +756,7 @@ Successfully created apps/reports/utils/lab_utils.py with comprehensive FHIR lab
 - Ready for Phase 2 integration
 </info added on 2025-10-09T02:36:31.931Z>
 
-## 8. Build weight/BMI tracking calculations with trends [pending]
+## 8. Build weight/BMI tracking calculations with trends [done]
 ### Dependencies: 38.6
 ### Description: Implement utilities to extract weight measurements from FHIR data, calculate BMI, and generate trend data for display in reports.
 ### Details:
@@ -766,6 +766,55 @@ Successfully created apps/reports/utils/lab_utils.py with comprehensive FHIR lab
 4. Create a function to determine BMI category (underweight, normal, overweight, obese) based on calculated value.
 5. Generate trend data including percentage change between measurements.
 6. Add functionality to identify significant weight changes that should be highlighted.
+<info added on 2025-10-09T02:47:17.731Z>
+## Phase 2 Complete: Weight/BMI Tracking Utilities
+
+Successfully created `apps/reports/utils/anthropometric_utils.py` with comprehensive anthropometric data processing:
+
+**Key Features Implemented:**
+- LOINC code mapping for weight (29463-7, 3141-9) and height (8302-2, 8306-3, 3137-7) observations
+- BMI category classification (underweight, normal, overweight, obese classes 1-3)
+- Standard BMI calculation using weight(kg) / height(m)² formula
+- Metric conversion functions for weight (kg, lb, g) and height (m, cm, in, ft)
+- Percentage change calculation between measurements
+- Clinical significance detection (5% in 1mo, 7.5% in 3mo, 10% in 6mo)
+- FHIR Observation date parsing with multiple format support
+- Weight observation extraction and sorting by date
+- Height observation extraction (uses most recent)
+- BMI trends calculation with full metrics per measurement
+- Weight summary generation with overall statistics
+
+**Data Processing:**
+- Extracts weight/height observations from FHIR bundles
+- Converts all measurements to metric units (kg, meters)
+- Calculates BMI for each weight observation
+- Determines BMI category and display name
+- Tracks percentage change between consecutive measurements
+- Identifies clinically significant weight changes
+- Provides time delta in days between measurements
+
+**Summary Statistics:**
+- Latest and earliest measurements
+- Total weight change (kg and percentage)
+- Count of significant weight changes
+- Measurement count
+
+**Testing:**
+- Created comprehensive test suite with 47 unit tests
+- All tests passing ✅
+- Test coverage includes: BMI categories, BMI calculations, unit conversions, date parsing, weight extraction, height extraction, percentage change, significance detection, trends calculation, and summary generation
+
+**Files Created:**
+- apps/reports/utils/anthropometric_utils.py (550 lines)
+- apps/reports/tests/test_anthropometric_utils.py (750 lines)
+
+**Production Ready:**
+- No linting errors
+- Clean code structure
+- Comprehensive error handling
+- Works with multiple FHIR bundle formats
+- Ready for Phase 2 integration into report generation
+</info added on 2025-10-09T02:47:17.731Z>
 
 ## 9. Create medication list enrichment with dosage/status [pending]
 ### Dependencies: None
