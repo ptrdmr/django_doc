@@ -826,6 +826,77 @@ Successfully created `apps/reports/utils/anthropometric_utils.py` with comprehen
 4. Create functions to determine medication status (active, discontinued, on-hold).
 5. Implement grouping by therapeutic class or medication type.
 6. Add functionality to detect potential interactions or duplications.
+<info added on 2025-10-09T03:06:12.297Z>
+**Implementation Completed**
+
+Created comprehensive medication enrichment system in `apps/reports/utils/medication_utils.py` (508 lines) with full test coverage in `apps/reports/tests/test_medication_utils.py` (647 lines, 45 unit tests).
+
+**Core Functions Implemented:**
+
+1. **classify_medication(medication_text)** - Therapeutic classification
+   - Categorizes meds into classes (ACE Inhibitors, Statins, NSAIDs, etc.)
+   - Pattern-based matching with comprehensive drug dictionaries
+   - Returns 'Unknown' for unclassified medications
+
+2. **normalize_medication_name(medication_text)** - Name standardization
+   - Strips dosage forms (tablet, capsule, injection)
+   - Removes dosage amounts (10mg, 20mg)
+   - Preserves core medication name for duplicate detection
+
+3. **parse_dosage_instruction(dosage_text)** - Structured dosage parsing
+   - Extracts amount, frequency, route from free-text instructions
+   - Handles common patterns: "Take 1 tablet twice daily by mouth"
+   - Returns dict with structured dosage components
+
+4. **extract_medications_from_fhir(fhir_bundle)** - FHIR resource extraction
+   - Processes MedicationStatement resources (not MedicationRequest)
+   - Extracts: display name, dosage instructions, status, dates
+   - Handles nested CodeableConcept and Dosage structures
+
+5. **classify_medication_status(fhir_status)** - Status normalization
+   - Maps FHIR statuses to user-friendly labels
+   - active → Active, stopped → Discontinued, etc.
+   - Includes fallback for unknown statuses
+
+6. **enrich_medication_list(medications)** - Main enrichment pipeline
+   - Adds therapeutic_class, normalized_name, parsed_dosage
+   - Enriches each medication with classification and parsing
+   - Returns enhanced medication list for reporting
+
+7. **group_by_therapeutic_class(medications)** - Class-based grouping
+   - Groups medications by therapeutic classification
+   - Returns dict: {class_name: [medications]}
+   - Useful for organized report displays
+
+8. **detect_duplicate_medications(medications)** - Smart duplicate detection
+   - Identifies same meds with different descriptions
+   - Uses normalized names for matching
+   - Returns list of duplicate groups with indices
+
+9. **get_medication_summary(medications)** - Statistical summary
+   - Counts: total, active, inactive, therapeutic classes
+   - Generates class breakdown statistics
+   - Includes duplicate detection summary
+
+**Test Coverage:**
+- 45 unit tests organized in 9 test classes
+- Tests cover: classification, normalization, dosage parsing, FHIR extraction, status mapping, enrichment, grouping, duplicate detection, and summary statistics
+- All tests passing ✅
+
+**Key Design Decisions:**
+- Used MedicationStatement (not MedicationRequest) after inspecting actual FHIR data
+- Implemented pattern-based therapeutic classification (extensible drug dictionaries)
+- Created normalize_medication_name for robust duplicate detection
+- Structured dosage parsing handles common free-text formats
+- Status classification maps FHIR codes to friendly labels
+
+**Files Created:**
+- `apps/reports/utils/medication_utils.py` (508 lines)
+- `apps/reports/tests/test_medication_utils.py` (647 lines)
+
+**Integration Ready:**
+All utilities are ready for integration into PDF report generation (Phase 3).
+</info added on 2025-10-09T03:06:12.297Z>
 
 ## 10. Implement encounter data extraction for timeline [pending]
 ### Dependencies: 38.4
