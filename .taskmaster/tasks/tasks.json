@@ -2603,8 +2603,8 @@
             "dependencies": [
               "38.5"
             ],
-            "details": "1. Create a new file `apps/reports/utils/lab_utils.py`.\n2. Implement a LOINC category mapping dictionary that maps LOINC codes to clinical categories.\n3. Create a `group_lab_results` function that takes a patient FHIR bundle and returns lab results grouped by category.\n4. Add logic to extract relevant data from Observation resources including test name, value, unit, reference range, and date.\n5. Implement sorting within categories by date (newest first).\n6. Add functionality to detect abnormal results based on reference ranges.",
-            "status": "pending",
+            "details": "1. Create a new file `apps/reports/utils/lab_utils.py`.\n2. Implement a LOINC category mapping dictionary that maps LOINC codes to clinical categories.\n3. Create a `group_lab_results` function that takes a patient FHIR bundle and returns lab results grouped by category.\n4. Add logic to extract relevant data from Observation resources including test name, value, unit, reference range, and date.\n5. Implement sorting within categories by date (newest first).\n6. Add functionality to detect abnormal results based on reference ranges.\n<info added on 2025-10-09T02:36:31.931Z>\n## Implementation Summary:\nSuccessfully created apps/reports/utils/lab_utils.py with comprehensive FHIR lab data processing:\n\n**Key Features Implemented:**\n- LOINC category mapping (70+ common lab codes)\n- Categories: Hematology, Chemistry, Liver Function, Lipid Panel, Thyroid, Diabetes, Coagulation, Urinalysis, Cardiac, Electrolytes\n- group_lab_results() function to parse FHIR Observation resources\n- Reference range extraction with flexible formatting\n- Abnormal result detection (normal, low, high, critical) via interpretation codes and reference range comparison\n- Date parsing with multiple format support\n- Lab-specific filtering (LAB category + LOINC codes)\n- Sorting by date (newest first) within categories\n- Summary function for abnormal result counts\n\n**Testing:**\n- Created comprehensive test suite with 32 unit tests\n- All tests passing ✅\n- Test coverage includes: LOINC categories, reference ranges, abnormal detection, observation extraction, bundle grouping, date parsing, and summary generation\n\n**Files Created:**\n- apps/reports/utils/lab_utils.py (450 lines)\n- apps/reports/utils/__init__.py\n- apps/reports/tests/test_lab_utils.py (640 lines)\n- apps/reports/tests/__init__.py\n\n**Production Ready:**\n- No linting errors\n- Clean code structure\n- Comprehensive error handling\n- Works with multiple FHIR bundle formats\n- Ready for Phase 2 integration\n</info added on 2025-10-09T02:36:31.931Z>",
+            "status": "done",
             "testStrategy": "Create unit tests with sample FHIR Observation resources. Verify that the grouping function correctly categorizes lab results and that all relevant data is extracted properly."
           },
           {
@@ -2702,7 +2702,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-07T03:57:07.945Z",
+      "updated": "2025-10-09T02:37:28.248Z",
       "description": "Tasks for master context"
     }
   }
