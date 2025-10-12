@@ -298,20 +298,28 @@ class Document(BaseModel):
     
     def get_structured_medical_data(self):
         """
-        Get structured medical data if available.
-        Returns the decrypted structured_data dict or None.
+        Get structured medical data from ParsedData.
+        Returns the structured data dict from ParsedData.corrections or None.
         """
-        if not self.structured_data:
-            return None
-        return self.structured_data
+        from apps.documents.models import ParsedData
+        
+        try:
+            parsed_data = ParsedData.objects.filter(document=self).first()
+            if parsed_data and parsed_data.corrections:
+                return parsed_data.corrections.get('structured_data')
+        except Exception:
+            pass
+        
+        # Fallback to legacy document.structured_data field if ParsedData not available
+        return self.structured_data if self.structured_data else None
     
     def has_structured_data(self):
         """
-        Check if document has structured extraction data.
+        Check if document has ParsedData ready for review.
+        Returns True if ParsedData record exists for this document.
         """
-        return bool(self.structured_data and 
-                   isinstance(self.structured_data, dict) and 
-                   len(self.structured_data) > 0)
+        from apps.documents.models import ParsedData
+        return ParsedData.objects.filter(document=self).exists()
     
     def get_extraction_confidence(self):
         """

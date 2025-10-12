@@ -430,40 +430,40 @@ def process_document_async(self, document_id: int):
                         ai_result = {
                             'success': True,
                             'fields': [
-                                # Convert conditions
+                                # Convert conditions (with null safety for source)
                                 *[{
                                     'label': f'diagnosis_{i+1}',
                                     'value': condition.name,
                                     'confidence': condition.confidence,
-                                    'source_text': condition.source.text,
-                                    'char_position': condition.source.start_index
+                                    'source_text': condition.source.text if condition.source else '',
+                                    'char_position': condition.source.start_index if condition.source else 0
                                 } for i, condition in enumerate(structured_extraction.conditions)],
                                 
-                                # Convert medications
+                                # Convert medications (with null safety for source)
                                 *[{
                                     'label': f'medication_{i+1}',
                                     'value': f"{medication.name} {medication.dosage or ''}".strip(),
                                     'confidence': medication.confidence,
-                                    'source_text': medication.source.text,
-                                    'char_position': medication.source.start_index
+                                    'source_text': medication.source.text if medication.source else '',
+                                    'char_position': medication.source.start_index if medication.source else 0
                                 } for i, medication in enumerate(structured_extraction.medications)],
                                 
-                                # Convert vital signs
+                                # Convert vital signs (with null safety for source)
                                 *[{
                                     'label': f'vital_{vital.measurement.lower().replace(" ", "_")}',
                                     'value': f"{vital.value} {vital.unit or ''}".strip(),
                                     'confidence': vital.confidence,
-                                    'source_text': vital.source.text,
-                                    'char_position': vital.source.start_index
+                                    'source_text': vital.source.text if vital.source else '',
+                                    'char_position': vital.source.start_index if vital.source else 0
                                 } for vital in structured_extraction.vital_signs],
                                 
-                                # Convert lab results
+                                # Convert lab results (with null safety for source)
                                 *[{
                                     'label': f'lab_{lab.test_name.lower().replace(" ", "_")}',
                                     'value': f"{lab.value} {lab.unit or ''}".strip(),
                                     'confidence': lab.confidence,
-                                    'source_text': lab.source.text,
-                                    'char_position': lab.source.start_index
+                                    'source_text': lab.source.text if lab.source else '',
+                                    'char_position': lab.source.start_index if lab.source else 0
                                 } for lab in structured_extraction.lab_results]
                             ],
                             'model_used': 'structured_extraction_claude',
@@ -472,7 +472,8 @@ def process_document_async(self, document_id: int):
                                 'total_tokens': 0,  # Will be updated if available
                             },
                             'processing_duration_ms': 0,  # Will be updated if available
-                            'structured_data': structured_extraction  # Store the original structured data
+                            # NOTE: Do NOT store Pydantic model here - Celery cannot serialize it
+                            # Structured data is serialized at line 697 using .dict() for storage
                         }
                         
                         logger.info(f"Structured extraction successful: {len(ai_result['fields'])} fields extracted from structured data")
@@ -619,7 +620,7 @@ def process_document_async(self, document_id: int):
                         from apps.fhir.services import FHIRMetricsService
                         metrics_service = FHIRMetricsService()
                         capture_metrics = metrics_service.calculate_data_capture_metrics(
-                            ai_result['fields'], fhir_resources
+                            ai_result.get('fields', []), fhir_resources
                         )
                         
                         # Store metrics in AI result for reporting
@@ -694,7 +695,22 @@ def process_document_async(self, document_id: int):
                         # Prepare structured data for storage (serialize if available)
                         structured_data_dict = None
                         if structured_extraction:
-                            structured_data_dict = structured_extraction.dict()
+                            structured_data_dict = structured_extraction.model_dump()
+                        
+                        # Serialize FHIR resources to JSON-compatible dicts
+                        # StructuredDataConverter returns Pydantic models that need serialization
+                        serialized_fhir_resources = []
+                        if fhir_resources:
+                            for resource in fhir_resources:
+                                if hasattr(resource, 'model_dump'):
+                                    # Pydantic model - serialize it
+                                    serialized_fhir_resources.append(resource.model_dump())
+                                elif isinstance(resource, dict):
+                                    # Already a dict - use as-is
+                                    serialized_fhir_resources.append(resource)
+                                else:
+                                    # Unknown type - log warning and skip
+                                    logger.warning(f"Unexpected FHIR resource type: {type(resource)}")
                         
                         parsed_data, created = ParsedData.objects.update_or_create(
                             document=document,
@@ -702,7 +718,7 @@ def process_document_async(self, document_id: int):
                                 'patient': document.patient,
                                 'extraction_json': fields_data,
                                 'source_snippets': snippets_data,  # Store snippet data in new field
-                                'fhir_delta_json': fhir_resources if fhir_resources else {},
+                                'fhir_delta_json': serialized_fhir_resources if serialized_fhir_resources else {},
                                 'extraction_confidence': avg_confidence,
                                 'ai_model_used': ai_result.get('model_used', 'unknown'),
                                 'processing_time_seconds': processing_time,
