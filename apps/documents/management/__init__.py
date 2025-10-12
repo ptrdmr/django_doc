@@ -1,1 +1,1 @@
-# Django management commands for documents app 
+# Management commands for documents app

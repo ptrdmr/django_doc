@@ -950,7 +950,7 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             # 3. Vital Signs
             for i, vital in enumerate(structured_data.vital_signs):
                 field_list.append({
-                    'field_name': f'Vital Sign: {vital.name}',
+                    'field_name': f'Vital Sign: {vital.measurement}',
                     'field_value': f"{vital.value} {vital.unit}" if vital.unit else str(vital.value),
                     'confidence': vital.confidence,
                     'category': 'Vital Signs',
@@ -963,7 +963,7 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             # 4. Lab Results
             for i, lab in enumerate(structured_data.lab_results):
                 field_list.append({
-                    'field_name': f'Lab: {lab.name}',
+                    'field_name': f'Lab: {lab.test_name}',
                     'field_value': f"{lab.value} {lab.unit}" if lab.unit else str(lab.value),
                     'confidence': lab.confidence,
                     'category': 'Laboratory Results',
@@ -998,10 +998,10 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'field_path': f'procedures.{i}.name'
                 })
                 
-                if procedure.date:
+                if procedure.procedure_date:
                     field_list.append({
                         'field_name': f'Procedure {i+1} Date',
-                        'field_value': procedure.date,
+                        'field_value': procedure.procedure_date,
                         'confidence': procedure.confidence * 0.9,
                         'category': 'Medical History',
                         'snippet': procedure.source.text if procedure.source else '',

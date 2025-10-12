@@ -26,9 +26,10 @@ try:
     PDFTextExtractor = services_module.PDFTextExtractor
     DocumentAnalyzer = services_module.DocumentAnalyzer
     APIRateLimitError = services_module.APIRateLimitError
+    PatientDataComparisonService = services_module.PatientDataComparisonService
     
     # Make them available for import
-    __all__ = ['PDFTextExtractor', 'DocumentAnalyzer', 'APIRateLimitError']
+    __all__ = ['PDFTextExtractor', 'DocumentAnalyzer', 'APIRateLimitError', 'PatientDataComparisonService']
     
 except Exception as e:
     # Fallback: define minimal classes to prevent import errors
