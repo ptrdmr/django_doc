@@ -9,6 +9,7 @@ from celery import shared_task
 from meddocparser.celery import app
 import time
 import logging
+import json
 from django.conf import settings
 from django.utils import timezone
 from typing import Dict, Any, List
@@ -393,7 +394,7 @@ def process_document_async(self, document_id: int):
                             all_chunk_data.append(chunk_result.model_dump())
                         
                         # Aggregate results
-                        structured_extraction = self._aggregate_chunked_extractions(all_chunk_data)
+                        structured_extraction = _aggregate_chunked_extractions(all_chunk_data)
                         logger.info(f"[{task_id}] Chunked processing completed: {len(chunks)} chunks processed")
                     else:
                         # Single chunk, process normally
@@ -582,6 +583,28 @@ def process_document_async(self, document_id: int):
                             
                             logger.info(f"StructuredDataConverter created {len(fhir_resources)} resources from structured data")
                             
+                            # PORTHOLE: Capture FHIR conversion output from StructuredDataConverter
+                            # Note: Resources are still Pydantic models at this point, will be serialized later
+                            try:
+                                # Serialize for porthole capture (same logic as main serialization)
+                                porthole_resources = []
+                                for resource in fhir_resources:
+                                    if hasattr(resource, 'dict'):
+                                        porthole_resources.append(json.loads(json.dumps(resource.dict(exclude_none=True), default=str)))
+                                    elif hasattr(resource, 'model_dump'):
+                                        porthole_resources.append(json.loads(json.dumps(resource.model_dump(exclude_none=True), default=str)))
+                                    elif isinstance(resource, dict):
+                                        porthole_resources.append(json.loads(json.dumps(resource, default=str)))
+                                
+                                capture_fhir_data(
+                                    document_id=document_id,
+                                    fhir_resources=porthole_resources,
+                                    patient_id=patient_id,
+                                    stage="structured_fhir_conversion"
+                                )
+                            except Exception as porthole_exc:
+                                logger.warning(f"Porthole FHIR capture failed (non-critical): {porthole_exc}")
+                            
                         except Exception as struct_conv_exc:
                             logger.warning(f"StructuredDataConverter failed, falling back to legacy: {struct_conv_exc}")
                             structured_extraction = None  # Clear to trigger fallback
@@ -698,19 +721,37 @@ def process_document_async(self, document_id: int):
                             structured_data_dict = structured_extraction.model_dump()
                         
                         # Serialize FHIR resources to JSON-compatible dicts
-                        # StructuredDataConverter returns Pydantic models that need serialization
+                        # StructuredDataConverter returns FHIR resource models that need serialization
                         serialized_fhir_resources = []
                         if fhir_resources:
-                            for resource in fhir_resources:
-                                if hasattr(resource, 'model_dump'):
-                                    # Pydantic model - serialize it
-                                    serialized_fhir_resources.append(resource.model_dump())
-                                elif isinstance(resource, dict):
-                                    # Already a dict - use as-is
-                                    serialized_fhir_resources.append(resource)
-                                else:
-                                    # Unknown type - log warning and skip
-                                    logger.warning(f"Unexpected FHIR resource type: {type(resource)}")
+                            logger.info(f"Starting serialization of {len(fhir_resources)} FHIR resources for document {document_id}")
+                            for i, resource in enumerate(fhir_resources):
+                                try:
+                                    # Log the resource type for debugging
+                                    logger.debug(f"Serializing resource #{i+1}, type: {type(resource).__name__}")
+                                    
+                                    if hasattr(resource, 'dict'):
+                                        # FHIR resource model (fhir.resources) - serialize it
+                                        # Use exclude_none=True to remove null fields and reduce size
+                                        resource_dict = resource.dict(exclude_none=True)
+                                        # Convert datetime objects to ISO format strings for JSON compatibility
+                                        serialized_fhir_resources.append(json.loads(json.dumps(resource_dict, default=str)))
+                                    elif hasattr(resource, 'model_dump'):
+                                        # Pydantic v2 model - serialize it
+                                        resource_dict = resource.model_dump(exclude_none=True)
+                                        serialized_fhir_resources.append(json.loads(json.dumps(resource_dict, default=str)))
+                                    elif isinstance(resource, dict):
+                                        # Already a dict - ensure JSON compatibility
+                                        serialized_fhir_resources.append(json.loads(json.dumps(resource, default=str)))
+                                    else:
+                                        # Unknown type - log warning and skip
+                                        logger.warning(f"Unexpected FHIR resource type: {type(resource)}, skipping serialization")
+                                except Exception:
+                                    # Use logger.exception to capture full traceback
+                                    logger.exception(f"Failed to serialize FHIR resource #{i+1} of type {type(resource)}")
+                                    # Continue with other resources
+                            
+                            logger.info(f"Successfully serialized {len(serialized_fhir_resources)}/{len(fhir_resources)} FHIR resources for document {document_id}")
                         
                         parsed_data, created = ParsedData.objects.update_or_create(
                             document=document,
