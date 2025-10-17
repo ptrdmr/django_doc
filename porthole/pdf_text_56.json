@@ -1,0 +1,17 @@
+{
+  "document_id": 56,
+  "timestamp": "2025-10-11T21:59:31.893865",
+  "stage": "pdf_extraction",
+  "text_length": 1018,
+  "text_content": "--- Page 1 ---\nMock Medical Record\nPatient Name: Test Patient\nMRN: 52466596-TP\nDOB: 09/09/1973\nEncounter Date: 04/23/2024\nProvider: Dr. Robert Chang, MD\nDepartment: Pulmonology\n1. Reason for Visit\nPatient presents with persistent cough and shortness of breath. Denies fever.\n2. Past Medical History\n- Seasonal allergies\n- Depression\n- Hypothyroidism\n3. Medications\nMedication Dose & Frequency Notes\nLisinopril 10mg PO daily BP control\nMetformin 500mg PO BID For diabetes\nAtorvastatin 20mg PO nightly For cholesterol\nAlbuterol inhaler 2 puffs PRN For asthma\nOmeprazole 20mg PO daily For GERD\n4. Vital Signs\n- BP: 157/104 mm Hg\n- HR: 101 bpm\n- Temp: 98.8°F\n- Sp On: 94% RA\n- Weight: 73.5 kg\n- Height: 162 cm\n5. Assessment\n1. Hypertension, controlled\n2. Type II Diabetes, fair control\n3. Hyperlipidemia, on therapy\n\n--- Page 2 ---\n6. Plan\n- Start PPI therapy daily.\n- Refer for sleep study.\n- Recommend counseling for mood management.\n7. Signature\nDr. David Kumar, MD\nNPI: 1464824097\nSigned electronically 04/23/2024 8:15",
+  "metadata": {
+    "page_count": 2,
+    "file_size_mb": 0.0,
+    "pdf_metadata": {
+      "title": "(anonymous)",
+      "author": "(anonymous)",
+      "creator": "(unspecified)",
+      "creation_date": "D:20250908064536+00'00'"
+    }
+  }
+}

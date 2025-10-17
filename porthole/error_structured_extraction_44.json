@@ -1,0 +1,10 @@
+{
+  "document_id": 44,
+  "timestamp": "2025-10-06T10:57:44.957176",
+  "stage": "error_structured_extraction",
+  "error_message": "Unexpected error during structured analysis: Claude API error: Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CTr996Vid6udrN5R2TiLP'}",
+  "error_data": {
+    "context": "Da Doctor - Family Medicine",
+    "text_length": 1018
+  }
+}

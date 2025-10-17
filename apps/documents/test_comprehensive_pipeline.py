@@ -102,7 +102,7 @@ class TestFixtures:
             user = TestFixtures.create_test_user()
         
         if not content:
-            content = b"""
+            content = """
             MEDICAL RECORD
             
             Patient: John Doe
@@ -136,7 +136,7 @@ class TestFixtures:
         
         file_obj = SimpleUploadedFile(
             "test_medical_record.pdf",
-            content,
+            content.encode('utf-8') if isinstance(content, str) else content,
             content_type="application/pdf"
         )
         

@@ -1,6 +1,6 @@
 # Task ID: 38
 # Title: Implement Professional Medical Report Generation
-# Status: pending
+# Status: done
 # Dependencies: 16, 14, 15, 5, 6
 # Priority: medium
 # Description: Create a comprehensive system for transforming basic patient summary reports into professional, Moristat-style medical documents with clinical timelines, lab trend visualization, and healthcare-grade formatting using WeasyPrint.
@@ -1261,7 +1261,7 @@ All required medical table formatting has been implemented across component temp
 All table styling is production-ready pending real-world PDF testing in subtask 38.14.
 </info added on 2025-10-09T03:42:04.720Z>
 
-## 14. Integrate with WeasyPrint generator and test PDF output [pending]
+## 14. Integrate with WeasyPrint generator and test PDF output [done]
 ### Dependencies: 38.1, 38.2, 38.3, 38.4, 38.5, 38.6, 38.7, 38.8, 38.9, 38.10, 38.11, 38.12, 38.13
 ### Description: Create the final PDF generation system using WeasyPrint and implement the PatientSummaryReport class to orchestrate the entire report generation process.
 ### Details:

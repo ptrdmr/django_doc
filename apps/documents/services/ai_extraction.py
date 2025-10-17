@@ -339,6 +339,17 @@ CRITICAL REQUIREMENTS FOR STRUCTURED OUTPUT:
 3. Assign accurate confidence scores based on clarity and certainty
 4. Use proper medical terminology and classifications
 5. Include dates, values, and units exactly as written
+6. **EXTRACT ALL DATES**: Look for dates near each medical finding and extract them aggressively
+
+DATE EXTRACTION PRIORITY (CRITICAL):
+- Look for dates in any format: MM/DD/YYYY, MM/DD/YY, YYYY-MM-DD, spelled out dates
+- Extract dates that appear within or immediately adjacent to medical information
+- For vital signs: Extract timestamps (e.g., "HR: 90 10/19/24 03:47" → timestamp: "2024-10-19")
+- For procedures: Extract dates in parentheses (e.g., "CYSTOSCOPY (12/28/2023)" → procedure_date: "2023-12-28")
+- For conditions: Extract onset dates (e.g., "diabetes since 2015" → onset_date: "2015")
+- For medications: Extract start dates if mentioned (e.g., "started 10/2024" → start_date: "2024-10")
+- For lab results: Extract test dates (e.g., "Glucose 105 on 10/19/24" → test_date: "2024-10-19")
+- ALWAYS extract dates even if approximate (e.g., "2018" is valid, "Oct 2024" is valid)
 
 CONFIDENCE SCORING:
 - 0.9-1.0: Information explicitly and clearly stated
@@ -348,11 +359,11 @@ CONFIDENCE SCORING:
 - 0.1-0.3: Information possibly mentioned but very unclear
 
 STRUCTURED OUTPUT PRIORITY:
-- Medications (highest priority): names, dosages, routes, frequencies with source context
-- Conditions: diagnoses, symptoms, clinical findings with source context
-- Vital signs: all measurements with values, units, and source context
-- Lab results: test names, values, reference ranges, dates with source context
-- Procedures: surgical and diagnostic procedures with dates and source context
+- Medications (highest priority): names, dosages, routes, frequencies, START DATES with source context
+- Conditions: diagnoses, symptoms, clinical findings, ONSET DATES with source context
+- Vital signs: all measurements with values, units, TIMESTAMPS, and source context
+- Lab results: test names, values, reference ranges, TEST DATES with source context
+- Procedures: surgical and diagnostic procedures with PROCEDURE DATES and source context
 - Providers: all healthcare professionals mentioned with source context"""
             
             logger.info(f"[{extraction_id}] Using comprehensive extraction prompts (90%+ data capture target)")
@@ -371,6 +382,7 @@ CRITICAL REQUIREMENTS:
 1. Extract EVERY piece of medical information mentioned
 2. Provide source context for each extracted item (use the exact text snippet)
 3. Assign accurate confidence scores based on clarity
+4. **EXTRACT ALL DATES AGGRESSIVELY** - Look for dates in any format near medical findings (MM/DD/YY, MM/DD/YYYY, spelled out, etc.)
 4. Use proper medical terminology and classifications
 5. Include dates, values, and units exactly as written
 

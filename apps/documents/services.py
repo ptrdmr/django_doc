@@ -92,21 +92,37 @@ class PDFTextExtractor:
                 
                 # Combine all pages
                 full_text = '\n\n'.join(extracted_text)
+                page_count = len(pdf.pages)
                 
                 # Get file size
                 file_size = os.path.getsize(file_path) / (1024 * 1024)  # Convert to MB
                 
+                # OCR fallback: If no embedded text found, try OCR extraction
+                extraction_method = 'embedded_text'
+                if not full_text.strip():
+                    logger.warning(f"No embedded text found in {file_path}, attempting OCR extraction")
+                    ocr_text = self.extract_with_ocr(file_path, page_count)
+                    if ocr_text:
+                        full_text = ocr_text
+                        extraction_method = 'ocr'
+                        logger.info(f"OCR extraction recovered {len(ocr_text)} characters")
+                    else:
+                        logger.error(f"Both embedded text and OCR extraction failed for {file_path}")
+                
+                # Add extraction method to metadata
+                metadata['extraction_method'] = extraction_method
+                
                 result = {
                     'success': True,
                     'text': full_text,
-                    'page_count': len(pdf.pages),
+                    'page_count': page_count,
                     'file_size': round(file_size, 2),
                     'error_message': '',
                     'metadata': metadata
                 }
                 
                 logger.info(f"Successfully extracted text from PDF: {file_path} "
-                           f"({len(pdf.pages)} pages, {len(full_text)} characters)")
+                           f"({page_count} pages, {len(full_text)} characters, method: {extraction_method})")
                 
                 return result
                 
@@ -195,6 +211,70 @@ class PDFTextExtractor:
         text = re.sub(r'(\d+)\.(\d+)\.(\d+)', r'\1.\2.\3', text)  # Normalize decimal numbers
         
         return text.strip()
+    
+    def extract_with_ocr(self, file_path: str, page_count: int) -> str:
+        """
+        Extract text from scanned PDF using OCR (Tesseract).
+        Used as fallback when pdfplumber finds no embedded text.
+        
+        Args:
+            file_path: Path to PDF file
+            page_count: Number of pages in PDF
+            
+        Returns:
+            str: OCR-extracted text or empty string if OCR fails
+        """
+        try:
+            import pytesseract
+            from pdf2image import convert_from_path
+            from PIL import Image
+            
+            logger.info(f"Starting OCR extraction for {file_path} ({page_count} pages)")
+            
+        except ImportError as import_error:
+            logger.error(f"OCR libraries not available: {import_error}")
+            logger.error("Install with: pip install pytesseract pdf2image")
+            return ""
+        
+        try:
+            # Convert PDF pages to images at 300 DPI for good text recognition
+            images = convert_from_path(file_path, dpi=300)
+            
+            ocr_text_pages = []
+            for page_num, image in enumerate(images, 1):
+                try:
+                    # Run Tesseract OCR on the image
+                    # PSM 1 = Automatic page segmentation with OSD (best for documents)
+                    page_text = pytesseract.image_to_string(
+                        image,
+                        lang='eng',
+                        config='--psm 1'
+                    )
+                    
+                    if page_text and page_text.strip():
+                        # Clean the OCR text
+                        cleaned_text = self._clean_text(page_text)
+                        if cleaned_text:
+                            ocr_text_pages.append(f"--- Page {page_num} (OCR) ---\n{cleaned_text}")
+                            logger.info(f"OCR extracted {len(cleaned_text)} chars from page {page_num}")
+                    
+                except Exception as page_error:
+                    logger.warning(f"OCR failed for page {page_num}: {page_error}")
+                    continue
+            
+            # Combine all OCR pages
+            full_ocr_text = '\n\n'.join(ocr_text_pages)
+            
+            if full_ocr_text:
+                logger.info(f"OCR extraction successful: {len(full_ocr_text)} total characters from {len(ocr_text_pages)} pages")
+            else:
+                logger.warning(f"OCR extraction produced no text for {file_path}")
+            
+            return full_ocr_text
+            
+        except Exception as ocr_error:
+            logger.error(f"OCR extraction failed for {file_path}: {ocr_error}")
+            return ""
     
     def extract_text_with_layout(self, file_path: str) -> Dict[str, any]:
         """
