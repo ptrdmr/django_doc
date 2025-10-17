@@ -1,0 +1,697 @@
+{
+  "document_id": 62,
+  "timestamp": "2025-10-17T00:14:00.081873",
+  "stage": "structured_fhir_conversion",
+  "patient_id": "f77e1011-d3a8-41fa-8826-ea3e257fd248",
+  "resource_count": 35,
+  "fhir_resources": [
+    {
+      "resourceType": "Condition",
+      "id": "0df2351c-b22b-4135-aabc-62eda59393dd",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.075114+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "type 2 diabetes",
+            "display": "type 2 diabetes"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "4e19f0e7-5821-4906-a973-53067efad486",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.075315+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "COPD",
+            "display": "COPD"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "adefea43-427b-4be9-935c-94d70af6c828",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.075446+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "osteoarthritis",
+            "display": "osteoarthritis"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "b336e5f9-41ea-4b87-a417-862ecf8b2ff3",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.075556+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "hypertension",
+            "display": "hypertension"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "f41b18e6-001c-4645-8f50-43c2481e1757",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.075708+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "chronic kidney disease",
+            "display": "chronic kidney disease"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      }
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "daa46b94-8589-42fb-b7b4-27b5482126a2",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "1987-05-21 00:00:00+00:00"
+      },
+      "status": "adjusted",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "medication"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "effectiveDateTime": "1987-05-21 00:00:00+00:00"
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "d50e1aff-d9b7-4240-a6de-a427565c5ffb",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "1980-01-23 00:00:00+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "diabetes medication"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "effectiveDateTime": "1980-01-23 00:00:00+00:00"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "c46fb744-27fb-4ac1-b0fd-fcb721111743",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-18628",
+            "display": "Glucose"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "211"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "0d250b7d-2bff-45d7-b9f5-b7917f896d1b",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-75143",
+            "display": "Hb A1c"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "10.3"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "54c239bb-d92f-459e-b0e3-5cceac25fbbb",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-38423",
+            "display": "Creatinine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "1.67"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "ced9b479-4711-4110-b22f-7cd1801770ef",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-55586",
+            "display": "LDL"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "113"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "b5d402d2-616d-4fc8-bdfe-9a3d0d012f17",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-55203",
+            "display": "WBC"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "5.7"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "8352a620-7951-4be3-bbc1-4726231609a3",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-18628",
+            "display": "glucose"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "140"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "701a1729-0ab7-4216-8305-81236db3c0a4",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-38423",
+            "display": "creatinine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "0.96"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "2a59beb0-6a9f-4f8c-8967-3a29140fe021",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "1983-10-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-18628",
+            "display": "glucose"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "effectiveDateTime": "1983-10-05 00:00:00+00:00",
+      "valueString": "155"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "602351c0-aa29-4ed1-bf56-6afe052f7f84",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "1983-10-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-38423",
+            "display": "creatinine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "effectiveDateTime": "1983-10-05 00:00:00+00:00",
+      "valueString": "1.59"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "a02cdd09-9e3c-4bea-8d3e-9342fcdf2f14",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-18628",
+            "display": "glucose"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "175"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "0eed9870-0883-4a8b-8393-ab91da6f8713",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-38423",
+            "display": "creatinine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "0.89"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "acab1f07-8d36-4018-9d61-fa59b6f1fa00",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-18628",
+            "display": "glucose"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "186"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "82deb241-b3c1-4c05-a69f-be8544a68995",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-38423",
+            "display": "creatinine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "1.07"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "b1c5f3f0-bb49-46e0-9bed-0e0db69cd902",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-18628",
+            "display": "Glucose"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "127"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "190a147d-64cc-46f3-b13b-8144ec6389b5",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-75143",
+            "display": "Hb A1c"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "6.7"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "f199c80d-37b7-4b1b-a50e-f5a9e1da238a",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-38423",
+            "display": "Creatinine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "0.89"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "8d9825d5-1eea-4915-98cb-cdfee6054510",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-55586",
+            "display": "LDL"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "91"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "2259bcec-2aba-4815-a046-6bf7aaee9529",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-55203",
+            "display": "WBC"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/f77e1011-d3a8-41fa-8826-ea3e257fd248"
+      },
+      "valueString": "7.9"
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "73b73217-f283-4ec1-9135-e1bf25429a2c",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078454+00:00"
+      },
+      "name": [
+        {
+          "family": "Gomez",
+          "given": [
+            "L."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "a10988fd-af84-4421-b16a-e60cb93f88d2",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078537+00:00"
+      },
+      "name": [
+        {
+          "family": "Patel",
+          "given": [
+            "A."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "467a2c47-08e5-4f8e-988f-0088f2196589",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078599+00:00"
+      },
+      "name": [
+        {
+          "family": "Williams",
+          "given": [
+            "S."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "5a0c0f07-593b-40d9-8361-958270deb25f",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078658+00:00"
+      },
+      "name": [
+        {
+          "family": "Chen",
+          "given": [
+            "R."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "5383dd82-47a5-4c67-819a-572db573b4bd",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078715+00:00"
+      },
+      "name": [
+        {
+          "family": "Nguyen",
+          "given": [
+            "K."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "afbc4cad-cb5c-4a70-8dfe-763f550b20e0",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078770+00:00"
+      },
+      "name": [
+        {
+          "family": "Nguyen",
+          "given": [
+            "K."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "ff75e90e-56ac-4196-8c21-507c7a11cb98",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078825+00:00"
+      },
+      "name": [
+        {
+          "family": "Chen",
+          "given": [
+            "R."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "46782b7c-5088-48f2-a22e-481054746857",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078882+00:00"
+      },
+      "name": [
+        {
+          "family": "Williams",
+          "given": [
+            "S."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "50626a49-eb99-4b9f-99cf-ef97fceecc3e",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078937+00:00"
+      },
+      "name": [
+        {
+          "family": "Patel",
+          "given": [
+            "A."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "1a4f53ab-0bd3-46e0-9a88-8f9dc071407c",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-17 04:14:00.078992+00:00"
+      },
+      "name": [
+        {
+          "family": "Gomez",
+          "given": [
+            "L."
+          ]
+        }
+      ]
+    }
+  ],
+  "resource_types": {
+    "Condition": 5,
+    "MedicationStatement": 2,
+    "Observation": 18,
+    "Practitioner": 10
+  }
+}

@@ -1,0 +1,484 @@
+{
+  "document_id": 63,
+  "timestamp": "2025-10-17T00:30:03.274681",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "type 2 diabetes",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Impression: type 2 diabetes",
+          "start_index": 150,
+          "end_index": 175
+        }
+      },
+      {
+        "name": "COPD",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Impression: COPD",
+          "start_index": 680,
+          "end_index": 696
+        }
+      },
+      {
+        "name": "osteoarthritis",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Impression: osteoarthritis",
+          "start_index": 1250,
+          "end_index": 1276
+        }
+      },
+      {
+        "name": "hypertension",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Impression: hypertension",
+          "start_index": 3850,
+          "end_index": 3874
+        }
+      },
+      {
+        "name": "chronic kidney disease",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Impression: chronic kidney disease",
+          "start_index": 6200,
+          "end_index": 6234
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "medication",
+        "dosage": null,
+        "route": null,
+        "frequency": null,
+        "status": "adjusted",
+        "confidence": 0.85,
+        "start_date": "1987-05-21",
+        "stop_date": null,
+        "source": {
+          "text": "Medication adjusted increased on May 21 87",
+          "start_index": 220,
+          "end_index": 263
+        }
+      },
+      {
+        "name": "diabetes medication",
+        "dosage": null,
+        "route": null,
+        "frequency": null,
+        "status": "active",
+        "confidence": 0.8,
+        "start_date": "1980-01-23",
+        "stop_date": null,
+        "source": {
+          "text": "Medication adjusted restarted on 01/23/80",
+          "start_index": 150,
+          "end_index": 192
+        }
+      }
+    ],
+    "vital_signs": [],
+    "lab_results": [
+      {
+        "test_name": "Glucose",
+        "value": "211",
+        "unit": "mg/dL",
+        "reference_range": "70-99",
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Glucose 211 Ref: 70-99",
+          "start_index": 750,
+          "end_index": 773
+        }
+      },
+      {
+        "test_name": "Hb A1c",
+        "value": "10.3",
+        "unit": null,
+        "reference_range": "4.0-5.6",
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Hb A1c 10.3 (H) Ref: 4.0-5.6",
+          "start_index": 774,
+          "end_index": 804
+        }
+      },
+      {
+        "test_name": "Creatinine",
+        "value": "1.67",
+        "unit": "mg/dL",
+        "reference_range": "0.6-1.3",
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Creatinine 1.67 Ref: 0.6-1.3",
+          "start_index": 805,
+          "end_index": 834
+        }
+      },
+      {
+        "test_name": "LDL",
+        "value": "113",
+        "unit": "mg/dL",
+        "reference_range": "<100",
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "LDL 113 Ref: <100",
+          "start_index": 835,
+          "end_index": 853
+        }
+      },
+      {
+        "test_name": "WBC",
+        "value": "5.7",
+        "unit": null,
+        "reference_range": "4.0-10.5",
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "WBC 5.7 Ref: 4.0-10.5",
+          "start_index": 854,
+          "end_index": 876
+        }
+      },
+      {
+        "test_name": "glucose",
+        "value": "140",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": null,
+        "test_date": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "glucose 140 mg/d L",
+          "start_index": 520,
+          "end_index": 538
+        }
+      },
+      {
+        "test_name": "creatinine",
+        "value": "0.96",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": null,
+        "test_date": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "creatinine 0.96 mg/d L",
+          "start_index": 540,
+          "end_index": 563
+        }
+      },
+      {
+        "test_name": "glucose",
+        "value": "155",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": null,
+        "test_date": "1983-10-05",
+        "confidence": 0.9,
+        "source": {
+          "text": "Lab obtained 05-Oct-1983: glucose 155 mg/d L",
+          "start_index": 565,
+          "end_index": 610
+        }
+      },
+      {
+        "test_name": "creatinine",
+        "value": "1.59",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": null,
+        "test_date": "1983-10-05",
+        "confidence": 0.9,
+        "source": {
+          "text": "creatinine 1.59 mg/d L",
+          "start_index": 612,
+          "end_index": 635
+        }
+      },
+      {
+        "test_name": "glucose",
+        "value": "175",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "glucose 175 mg/d L",
+          "start_index": 80,
+          "end_index": 98
+        }
+      },
+      {
+        "test_name": "creatinine",
+        "value": "0.89",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "creatinine 0.89 mg/d L",
+          "start_index": 100,
+          "end_index": 122
+        }
+      },
+      {
+        "test_name": "glucose",
+        "value": "186",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "glucose 186 mg/d L",
+          "start_index": 700,
+          "end_index": 718
+        }
+      },
+      {
+        "test_name": "creatinine",
+        "value": "1.07",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "creatinine 1.07 mg/d L",
+          "start_index": 720,
+          "end_index": 742
+        }
+      },
+      {
+        "test_name": "Glucose",
+        "value": "127",
+        "unit": null,
+        "reference_range": "70-99",
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Glucose 127 (H) Ref: 70-99",
+          "start_index": 1500,
+          "end_index": 1527
+        }
+      },
+      {
+        "test_name": "Hb A1c",
+        "value": "6.7",
+        "unit": null,
+        "reference_range": "4.0-5.6",
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Hb A1c 6.7 Ref: 4.0-5.6",
+          "start_index": 1530,
+          "end_index": 1554
+        }
+      },
+      {
+        "test_name": "Creatinine",
+        "value": "0.89",
+        "unit": null,
+        "reference_range": "0.6-1.3",
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Creatinine 0.89 Ref: 0.6-1.3",
+          "start_index": 1560,
+          "end_index": 1589
+        }
+      },
+      {
+        "test_name": "LDL",
+        "value": "91",
+        "unit": null,
+        "reference_range": "<100",
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "LDL 91 (H) Ref: <100",
+          "start_index": 1590,
+          "end_index": 1611
+        }
+      },
+      {
+        "test_name": "WBC",
+        "value": "7.9",
+        "unit": null,
+        "reference_range": "4.0-10.5",
+        "status": "high",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "WBC 7.9 (H) Ref: 4.0-10.5",
+          "start_index": 1615,
+          "end_index": 1641
+        }
+      }
+    ],
+    "procedures": [],
+    "providers": [
+      {
+        "name": "L. Gomez",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: L. Gomez, PA-C",
+          "start_index": 629,
+          "end_index": 653
+        }
+      },
+      {
+        "name": "A. Patel",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: A. Patel, MD",
+          "start_index": 1850,
+          "end_index": 1872
+        }
+      },
+      {
+        "name": "S. Williams",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: S. Williams, NP",
+          "start_index": 4200,
+          "end_index": 4225
+        }
+      },
+      {
+        "name": "R. Chen",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: R. Chen, MD",
+          "start_index": 6100,
+          "end_index": 6121
+        }
+      },
+      {
+        "name": "K. Nguyen",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: K. Nguyen, DO",
+          "start_index": 8500,
+          "end_index": 8523
+        }
+      },
+      {
+        "name": "K. Nguyen",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: K. Nguyen, DO",
+          "start_index": 125,
+          "end_index": 148
+        }
+      },
+      {
+        "name": "R. Chen",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: R. Chen, MD",
+          "start_index": 1800,
+          "end_index": 1821
+        }
+      },
+      {
+        "name": "S. Williams",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: S. Williams, NP",
+          "start_index": 2000,
+          "end_index": 2025
+        }
+      },
+      {
+        "name": "A. Patel",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: A. Patel, MD",
+          "start_index": 2200,
+          "end_index": 2222
+        }
+      },
+      {
+        "name": "L. Gomez",
+        "specialty": null,
+        "role": "provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: L. Gomez, PA-C",
+          "start_index": 3000,
+          "end_index": 3024
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-10-17T04:30:03.273037+00:00",
+    "document_type": "chunked_document",
+    "confidence_average": 0.937
+  }
+}

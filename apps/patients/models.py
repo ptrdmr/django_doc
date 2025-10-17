@@ -1154,10 +1154,18 @@ class Patient(MedicalRecord):
                         if not procedure_data['display_name'] or procedure_data['display_name'] == 'Unknown Procedure':
                             procedure_data['display_name'] = coding.get('display', procedure_data['display_name'])
             
-            # Extract dates
-            if 'performedDateTime' in procedure:
+            # Extract dates (FHIR R4 uses occurrence[x] for Procedure)
+            if 'occurrenceDateTime' in procedure:
+                procedure_data['performed_date'] = procedure['occurrenceDateTime'][:10]
+            elif 'performedDateTime' in procedure:  # Legacy field name
                 procedure_data['performed_date'] = procedure['performedDateTime'][:10]
-            elif 'performedPeriod' in procedure:
+            elif 'occurrencePeriod' in procedure:
+                period = procedure['occurrencePeriod']
+                procedure_data['performed_period'] = {
+                    'start': period.get('start', '')[:10] if period.get('start') else None,
+                    'end': period.get('end', '')[:10] if period.get('end') else None
+                }
+            elif 'performedPeriod' in procedure:  # Legacy field name
                 period = procedure['performedPeriod']
                 procedure_data['performed_period'] = {
                     'start': period.get('start', '')[:10] if period.get('start') else None,
@@ -1202,8 +1210,27 @@ class Patient(MedicalRecord):
             }
             
             # Extract medication codes
-            # Handle simplified FHIR format with text field
-            if 'medicationCodeableConcept' in medication:
+            # Handle MedicationStatement with medication.concept (our FHIR structure)
+            if 'medication' in medication and 'concept' in medication['medication']:
+                concept = medication['medication']['concept']
+                if 'text' in concept and concept['text']:
+                    medication_data['display_name'] = concept['text']
+                    medication_data['codes'].append({
+                        'system': '',
+                        'code': '',
+                        'display': concept['text']
+                    })
+                elif 'coding' in concept:
+                    for coding in concept['coding']:
+                        medication_data['codes'].append({
+                            'system': coding.get('system', ''),
+                            'code': coding.get('code', ''),
+                            'display': coding.get('display', '')
+                        })
+                        if not medication_data['display_name'] or medication_data['display_name'] == 'Unknown Medication':
+                            medication_data['display_name'] = coding.get('display', medication_data['display_name'])
+            # Handle simplified FHIR format with medicationCodeableConcept
+            elif 'medicationCodeableConcept' in medication:
                 if 'text' in medication['medicationCodeableConcept'] and medication['medicationCodeableConcept']['text']:
                     medication_data['display_name'] = medication['medicationCodeableConcept']['text']
                     medication_data['codes'].append({
@@ -1220,6 +1247,7 @@ class Patient(MedicalRecord):
                         })
                         if not medication_data['display_name'] or medication_data['display_name'] == 'Unknown Medication':
                             medication_data['display_name'] = coding.get('display', medication_data['display_name'])
+            # Handle standard FHIR format with code
             elif 'code' in medication:
                 if 'text' in medication['code'] and medication['code']['text']:
                     medication_data['display_name'] = medication['code']['text']
@@ -1238,9 +1266,10 @@ class Patient(MedicalRecord):
                         if not medication_data['display_name'] or medication_data['display_name'] == 'Unknown Medication':
                             medication_data['display_name'] = coding.get('display', medication_data['display_name'])
             
-            # Extract dosage information
-            if 'dosageInstruction' in medication:
-                for dosage in medication['dosageInstruction']:
+            # Extract dosage information from dosageInstruction or dosage array
+            dosage_source = medication.get('dosageInstruction') or medication.get('dosage', [])
+            if dosage_source:
+                for dosage in dosage_source:
                     dosage_info = {}
                     if 'text' in dosage:
                         dosage_info['text'] = dosage['text']

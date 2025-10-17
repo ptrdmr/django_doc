@@ -93,7 +93,13 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
-                    <p class="text-sm text-gray-900">{{ patient.date_of_birth|date:"F j, Y" }}</p>
+                    <p class="text-sm text-gray-900">
+                        {% if patient.date_of_birth %}
+                            {{ patient.get_date_of_birth|date:"F j, Y"|default:"Not specified" }}
+                        {% else %}
+                            Not specified
+                        {% endif %}
+                    </p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Gender</label>

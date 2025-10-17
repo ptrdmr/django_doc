@@ -17,6 +17,7 @@ from fhir.resources.documentreference import DocumentReference as FHIRDocumentRe
 from fhir.resources.condition import Condition as FHIRCondition
 from fhir.resources.observation import Observation as FHIRObservation
 from fhir.resources.medicationstatement import MedicationStatement as FHIRMedicationStatement
+from fhir.resources.procedure import Procedure as FHIRProcedure
 from fhir.resources.practitioner import Practitioner as FHIRPractitioner
 from fhir.resources.provenance import Provenance as FHIRProvenance
 from fhir.resources.resource import Resource
@@ -751,6 +752,181 @@ class PractitionerResource(FHIRPractitioner):
             for identifier in self.identifier:
                 if identifier.system == "http://hl7.org/fhir/sid/us-npi":
                     return identifier.value
+        return None
+
+
+class ProcedureResource(FHIRProcedure):
+    """
+    Extended FHIR Procedure resource for medical procedures and interventions.
+    
+    Represents surgical operations, diagnostic procedures, therapeutic interventions,
+    and other healthcare procedures performed on or for a patient.
+    """
+    
+    @classmethod
+    def create_from_procedure_data(
+        cls,
+        patient_id: str,
+        procedure_name: str,
+        procedure_code: Optional[str] = None,
+        performed_date: Optional[Union[str, datetime, date]] = None,
+        status: str = "completed",
+        category: Optional[str] = None,
+        performer_name: Optional[str] = None,
+        outcome: Optional[str] = None,
+        notes: Optional[str] = None,
+        procedure_id: Optional[str] = None
+    ) -> 'ProcedureResource':
+        """
+        Create a Procedure resource from extracted procedure data.
+        
+        Args:
+            patient_id: FHIR Patient resource ID
+            procedure_name: Name/description of the procedure
+            procedure_code: Optional procedure code (CPT, SNOMED, etc.)
+            performed_date: When procedure was performed
+            status: Procedure status (completed, in-progress, etc.)
+            category: Procedure category (e.g., surgical, diagnostic)
+            performer_name: Name of provider who performed procedure
+            outcome: Outcome or result of the procedure
+            notes: Additional notes about the procedure
+            procedure_id: Optional FHIR resource ID
+            
+        Returns:
+            ProcedureResource instance
+        """
+        if not procedure_id:
+            procedure_id = str(uuid4())
+        
+        # Create procedure code
+        procedure_coding = []
+        if procedure_code:
+            # If it looks like a CPT code
+            if procedure_code.isdigit() and len(procedure_code) == 5:
+                system = "http://www.ama-assn.org/go/cpt"
+            # If it starts with our PROC- prefix
+            elif procedure_code.startswith("PROC-"):
+                system = "http://loinc.org"
+            else:
+                system = "http://snomed.info/sct"
+            
+            procedure_coding.append(Coding(
+                system=system,
+                code=procedure_code,
+                display=procedure_name
+            ))
+        else:
+            # No code - use auto-generated code
+            auto_code = f"PROC-{hash(procedure_name.lower()) % 100000:05d}"
+            procedure_coding.append(Coding(
+                system="http://loinc.org",
+                code=auto_code,
+                display=procedure_name
+            ))
+        
+        code = CodeableConcept(
+            coding=procedure_coding,
+            text=procedure_name
+        )
+        
+        # Create subject reference
+        subject = Reference(reference=f"Patient/{patient_id}")
+        
+        # Handle performed date
+        performed_datetime = None
+        if performed_date:
+            if isinstance(performed_date, str):
+                # Parse string date
+                try:
+                    if 'T' in performed_date:
+                        performed_datetime = datetime.fromisoformat(performed_date.replace('Z', '+00:00'))
+                    else:
+                        performed_datetime = datetime.fromisoformat(performed_date + 'T00:00:00+00:00')
+                except ValueError:
+                    performed_datetime = None
+            elif isinstance(performed_date, datetime):
+                performed_datetime = performed_date
+            elif isinstance(performed_date, date):
+                performed_datetime = datetime.combine(performed_date, datetime.min.time())
+        
+        # Create category if provided
+        category_concept = None
+        if category:
+            category_concept = [CodeableConcept(
+                coding=[Coding(
+                    system="http://snomed.info/sct",
+                    code="387713003",
+                    display=category
+                )],
+                text=category
+            )]
+        
+        # Create outcome if provided
+        outcome_concept = None
+        if outcome:
+            outcome_concept = CodeableConcept(text=outcome)
+        
+        # Create performer if provided
+        performer_list = None
+        if performer_name:
+            from fhir.resources.procedure import ProcedurePerformer
+            performer_list = [ProcedurePerformer(
+                actor=Reference(display=performer_name)
+            )]
+        
+        # Create note if provided
+        from fhir.resources.annotation import Annotation
+        note_list = None
+        if notes:
+            note_list = [Annotation(text=notes)]
+        
+        # Create meta
+        meta = Meta(
+            versionId="1",
+            lastUpdated=datetime.utcnow().isoformat() + "Z"
+        )
+        
+        # Build the resource data dict
+        resource_data = {
+            'id': procedure_id,
+            'meta': meta,
+            'status': status,
+            'code': code,
+            'subject': subject
+        }
+        
+        # Add optional fields only if they have values
+        if performed_datetime:
+            # Format as FHIR datetime (ISO with timezone)
+            resource_data['occurrenceDateTime'] = performed_datetime.isoformat()
+        
+        if category_concept:
+            resource_data['category'] = category_concept
+        
+        if outcome_concept:
+            resource_data['outcome'] = outcome_concept
+        
+        if performer_list:
+            resource_data['performer'] = performer_list
+        
+        if note_list:
+            resource_data['note'] = note_list
+        
+        return cls(**resource_data)
+    
+    def get_display_name(self) -> str:
+        """Get human-readable procedure name."""
+        if self.code:
+            if self.code.text:
+                return self.code.text
+            elif self.code.coding and len(self.code.coding) > 0:
+                return self.code.coding[0].display or self.code.coding[0].code
+        return "Unknown Procedure"
+    
+    def get_procedure_code(self) -> Optional[str]:
+        """Extract the primary procedure code."""
+        if self.code and self.code.coding and len(self.code.coding) > 0:
+            return self.code.coding[0].code
         return None
 
 

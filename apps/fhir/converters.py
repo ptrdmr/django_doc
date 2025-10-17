@@ -489,13 +489,13 @@ class DischargeSummaryConverter(BaseFHIRConverter):
 
             if "procedures" in data and isinstance(data["procedures"], list):
                 for procedure in data["procedures"]:
-                    proc_obs = self._create_procedure_observation(
+                    proc_resource = self._create_procedure_resource(
                         procedure,
                         patient_id,
                         admission_date or discharge_date,
                     )
-                    if proc_obs:
-                        resources.append(proc_obs)
+                    if proc_resource:
+                        resources.append(proc_resource)
 
             if "medications" in data and isinstance(data["medications"], list):
                 med_converter = MedicationListConverter()
@@ -540,28 +540,36 @@ class DischargeSummaryConverter(BaseFHIRConverter):
             self.logger.warning(f"Failed to create discharge condition: {exc}")
             return None
 
-    def _create_procedure_observation(self, procedure: Any, patient_id: str, procedure_date: datetime) -> Optional[ObservationResource]:
-        """Create an Observation resource for a procedure (simplified)."""
+    def _create_procedure_resource(self, procedure: Any, patient_id: str, procedure_date: datetime) -> Optional['ProcedureResource']:
+        """Create a proper Procedure resource (replaces old observation-based approach)."""
         try:
             if isinstance(procedure, dict):
                 proc_name = procedure.get("name", procedure.get("description", ""))
                 proc_code = procedure.get("code", "")
+                provider = procedure.get("provider")
+                outcome = procedure.get("outcome")
             else:
                 proc_name = str(procedure)
-                proc_code = f"PROC-{hash(proc_name.lower()) % 100000:05d}"
+                proc_code = None
+                provider = None
+                outcome = None
 
             if not proc_name:
                 return None
 
-            return ObservationResource.create_from_lab_result(
+            from apps.fhir.fhir_models import ProcedureResource
+            
+            return ProcedureResource.create_from_procedure_data(
                 patient_id=patient_id,
-                test_code=proc_code or f"PROC-{hash(proc_name.lower()) % 100000:05d}",
-                test_name=f"Procedure: {proc_name}",
-                value="Performed",
-                observation_date=procedure_date,
+                procedure_name=proc_name,
+                procedure_code=proc_code,
+                performed_date=procedure_date,
+                status="completed",
+                performer_name=provider,
+                outcome=outcome
             )
         except Exception as exc:
-            self.logger.warning(f"Failed to create procedure observation: {exc}")
+            self.logger.warning(f"Failed to create Procedure resource: {exc}")
             return None
 
 
@@ -841,9 +849,9 @@ class StructuredDataConverter(BaseFHIRConverter):
                 for i, procedure_data in enumerate(data["procedures"]):
                     conversion_stats['procedures_attempted'] += 1
                     try:
-                        observation = self._create_procedure_observation_structured(procedure_data, patient_id, metadata)
-                        if observation:
-                            resources.append(observation)
+                        procedure = self._create_procedure_resource_structured(procedure_data, patient_id, metadata)
+                        if procedure:
+                            resources.append(procedure)
                             conversion_stats['procedures_successful'] += 1
                         else:
                             self.logger.warning(f"Procedure {i} conversion returned None")
@@ -1148,10 +1156,11 @@ class StructuredDataConverter(BaseFHIRConverter):
             self.logger.warning(f"Failed to create lab observation from structured data: {exc}")
             return None
 
-    def _create_procedure_observation_structured(self, procedure_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[ObservationResource]:
-        """Create an Observation resource for procedures from structured data.
+    def _create_procedure_resource_structured(self, procedure_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional['ProcedureResource']:
+        """Create a proper Procedure resource from structured data.
         
         Task 35.7: Updated to use clinical dates from metadata instead of processing timestamps.
+        Replaces the old _create_procedure_observation_structured method.
         """
         try:
             procedure_date = None
@@ -1172,15 +1181,20 @@ class StructuredDataConverter(BaseFHIRConverter):
             if not procedure_date:
                 self.logger.warning(f"No clinical date available for procedure {procedure_data.get('name')}")
             
-            return ObservationResource.create_from_lab_result(
+            from apps.fhir.fhir_models import ProcedureResource
+            
+            return ProcedureResource.create_from_procedure_data(
                 patient_id=patient_id,
-                test_code=f"PROC-{hash(procedure_data['name'].lower()) % 100000:05d}",
-                test_name=f"Procedure: {procedure_data['name']}",
-                value=procedure_data.get("outcome", "Performed"),
-                observation_date=procedure_date,
+                procedure_name=procedure_data['name'],
+                procedure_code=None,  # Could extract from procedure_data if available
+                performed_date=procedure_date,
+                status="completed",  # Could map from procedure_data.get('status')
+                performer_name=procedure_data.get("provider"),
+                outcome=procedure_data.get("outcome"),
+                notes=None  # Could add if we have procedure notes
             )
         except Exception as exc:
-            self.logger.warning(f"Failed to create procedure observation from structured data: {exc}")
+            self.logger.warning(f"Failed to create Procedure resource from structured data: {exc}")
             return None
 
     def _create_provider_from_structured(self, provider_data: Dict[str, Any]) -> Optional[PractitionerResource]:

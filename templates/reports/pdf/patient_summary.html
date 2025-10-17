@@ -347,7 +347,12 @@
                     <span class="diagnosis-code">{{ condition.codes.0.code }}</span> – 
                     {% endif %}
                     <span class="{% if condition.status == 'active' %}diagnosis-name{% else %}diagnosis-inactive{% endif %}">
-                        {{ condition.display_name }}
+                        {# Show the readable display name from codes if available, otherwise use display_name #}
+                        {% if condition.codes and condition.codes.0.display %}
+                            {{ condition.codes.0.display }}
+                        {% else %}
+                            {{ condition.display_name }}
+                        {% endif %}
                     </span>
                     {% if condition.severity %}
                     <span class="text-muted">({{ condition.severity }})</span>
@@ -405,15 +410,18 @@
                     </div>
                     <div class="card-body">
                         {% if data.clinical_summary.observations %}
-                            {% for obs in data.clinical_summary.observations|slice:":6" %}
-                            <div class="card-item">
-                                <span class="card-label">{{ obs.display_name }}</span>
-                                <div class="card-value {% if obs.interpretation == 'High' or obs.interpretation == 'Critical' %}value-elevated{% endif %}">
-                                    {% if obs.effective_date %}{{ obs.effective_date|date:"m/d/Y" }}: {% endif %}
-                                    <strong>{{ obs.value|default:"—" }}</strong>
-                                    {% if obs.unit %} {{ obs.unit }}{% endif %}
+                            {% for obs in data.clinical_summary.observations %}
+                                {# Only show lab results (Glucose, CBC, etc) - exclude procedures and vitals #}
+                                {% if not 'Procedure:' in obs.display_name and not 'Pain' in obs.display_name and not 'Sedation' in obs.display_name %}
+                                <div class="card-item">
+                                    <span class="card-label">{{ obs.display_name }}</span>
+                                    <div class="card-value {% if obs.interpretation == 'High' or obs.interpretation == 'Critical' %}value-elevated{% endif %}">
+                                        {% if obs.effective_date %}{{ obs.effective_date|date:"m/d/Y" }}: {% endif %}
+                                        <strong>{{ obs.value|default:"—" }}</strong>
+                                        {% if obs.unit %} {{ obs.unit }}{% endif %}
+                                    </div>
                                 </div>
-                            </div>
+                                {% endif %}
                             {% endfor %}
                         {% else %}
                         <p class="text-muted" style="font-style: italic;">No lab results available</p>
@@ -429,17 +437,20 @@
                     </div>
                     <div class="card-body">
                         {% if data.clinical_summary.observations %}
-                            {% for obs in data.clinical_summary.observations|slice:"6:12" %}
-                            <div class="card-item">
-                                <span class="card-label">{{ obs.display_name }}</span>
-                                <div class="card-value {% if obs.interpretation == 'High' or obs.interpretation == 'Critical' %}value-critical{% endif %}">
-                                    {% if obs.effective_date %}{{ obs.effective_date|date:"m/d/Y" }}:<br>{% endif %}
-                                    <strong class="{% if obs.interpretation == 'High' %}text-red{% endif %}">
-                                        {{ obs.value|default:"—" }}
-                                        {% if obs.unit %} {{ obs.unit }}{% endif %}
-                                    </strong>
+                            {% for obs in data.clinical_summary.observations %}
+                                {# Only show vital signs (Pain scales, sedation, etc) - exclude procedures and labs #}
+                                {% if 'Pain' in obs.display_name or 'Sedation' in obs.display_name %}
+                                <div class="card-item">
+                                    <span class="card-label">{{ obs.display_name }}</span>
+                                    <div class="card-value {% if obs.interpretation == 'High' or obs.interpretation == 'Critical' %}value-critical{% endif %}">
+                                        {% if obs.effective_date %}{{ obs.effective_date|date:"m/d/Y" }}:<br>{% endif %}
+                                        <strong class="{% if obs.interpretation == 'High' %}text-red{% endif %}">
+                                            {{ obs.value|default:"—" }}
+                                            {% if obs.unit %} {{ obs.unit }}{% endif %}
+                                        </strong>
+                                    </div>
                                 </div>
-                            </div>
+                                {% endif %}
                             {% endfor %}
                         {% else %}
                         <p class="text-muted" style="font-style: italic;">No vital signs recorded</p>
@@ -459,19 +470,24 @@
             {% if data.clinical_summary.medications %}
             <ul class="hospitalization-list">
                 {% for med in data.clinical_summary.medications %}
-                <li>
-                    <strong>{{ med.display_name }}</strong>
-                    {% if med.dosage %}
-                        – {% for dose in med.dosage|slice:":1" %}
-                            {% if dose.dose %}{{ dose.dose }}{% endif %}
-                            {% if dose.route %} {{ dose.route }}{% endif %}
-                            {% if dose.frequency %}, {{ dose.frequency }}{% endif %}
-                        {% endfor %}
+                    {# Only show active or prescribed medications, skip administered (intraop) meds #}
+                    {% if med.status == 'active' or med.status == 'prescribed' %}
+                    <li>
+                        <strong>{{ med.display_name }}</strong>
+                        {% if med.dosage %}
+                            – {% for dose in med.dosage|slice:":1" %}
+                                {% if dose.text %}{{ dose.text }}{% else %}
+                                    {% if dose.dose %}{{ dose.dose }}{% endif %}
+                                    {% if dose.route %} {{ dose.route }}{% endif %}
+                                    {% if dose.frequency %}, {{ dose.frequency }}{% endif %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                        <span class="text-muted">
+                            ({{ med.status|default:"Active" }})
+                        </span>
+                    </li>
                     {% endif %}
-                    <span class="text-muted">
-                        ({{ med.status|default:"Active" }})
-                    </span>
-                </li>
                 {% endfor %}
             </ul>
             {% else %}
