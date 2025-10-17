@@ -10,13 +10,16 @@ ENV DJANGO_SETTINGS_MODULE=meddocparser.settings.production
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies required for PostgreSQL and other packages
+# Install system dependencies required for PostgreSQL, OCR, and other packages
 RUN apt-get update && apt-get install -y \
     postgresql-client \
     gcc \
     python3-dev \
     libpq-dev \
     curl \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security (HIPAA best practice)

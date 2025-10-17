@@ -1,0 +1,799 @@
+{
+  "document_id": 50,
+  "timestamp": "2025-10-10T21:29:01.616851",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Urinary retention",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "R33.9",
+        "source": {
+          "text": "Pt c/o urinary retention x 1 day",
+          "start_index": 1234,
+          "end_index": 1265
+        }
+      },
+      {
+        "name": "Hypertension",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "medical history stated for hypertension",
+          "start_index": 1456,
+          "end_index": 1492
+        }
+      },
+      {
+        "name": "Prostate cancer",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "prostate cancer status post radiation therapy",
+          "start_index": 1494,
+          "end_index": 1540
+        }
+      },
+      {
+        "name": "Aortic aneurysm",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "AA (aortic aneurysm)",
+          "start_index": 2145,
+          "end_index": 2165
+        }
+      },
+      {
+        "name": "Heart murmur",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Heart murmur",
+          "start_index": 2166,
+          "end_index": 2178
+        }
+      },
+      {
+        "name": "Hematuria",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hematuria",
+          "start_index": 2179,
+          "end_index": 2188
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "lidocaine",
+        "dosage": "2%",
+        "route": "topical gel",
+        "frequency": "Once",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "lidocaine 2% topical gel with applicator, 200 mg= 10 m L, Ure THRAL, Once",
+          "start_index": 2234,
+          "end_index": 2308
+        }
+      },
+      {
+        "name": "amlodipine",
+        "dosage": "10 mg",
+        "route": "oral",
+        "frequency": "QEvening",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "am Lo OD. Pine 10 mg oral tablet, 10 mg= 1 tab, Oral, QEvening",
+          "start_index": 2309,
+          "end_index": 2372
+        }
+      },
+      {
+        "name": "ezetimibe",
+        "dosage": "10 mg",
+        "route": "oral",
+        "frequency": "Daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "ezetimibe 10 mg oral tablet, 10 mg= 1 tab, Oral, Daily",
+          "start_index": 2373,
+          "end_index": 2428
+        }
+      },
+      {
+        "name": "Flomax",
+        "dosage": "0.4 mg",
+        "route": "oral",
+        "frequency": "Daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Flomax 0.4 mg oral capsule, 0.4 mg, Oral, Daily",
+          "start_index": 2429,
+          "end_index": 2477
+        }
+      },
+      {
+        "name": "losartan",
+        "dosage": "100 mg",
+        "route": "oral",
+        "frequency": "Daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "losartan 100 mg oral tablet, 100 mg= 1 tab, Oral, Daily",
+          "start_index": 2478,
+          "end_index": 2535
+        }
+      },
+      {
+        "name": "solifenacin",
+        "dosage": "5 mg",
+        "route": "oral",
+        "frequency": "Daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "solifenacin, 5 mg, Oral, Daily",
+          "start_index": 2536,
+          "end_index": 2567
+        }
+      },
+      {
+        "name": "tamsulosin",
+        "dosage": "0.4 mg",
+        "route": "oral",
+        "frequency": "BID",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "tamsulosin 0.4 mg oral capsule, 0.4 mg= 1 cap, Oral, BID",
+          "start_index": 2568,
+          "end_index": 2626
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Heart Rate",
+        "value": "90",
+        "unit": "bpm",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "HR: 90 10/19/24 03:47",
+          "start_index": 1789,
+          "end_index": 1810
+        }
+      },
+      {
+        "measurement": "Blood Pressure",
+        "value": "167/103",
+        "unit": "mmHg",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "BP: 167/103 10/19/24 03:47",
+          "start_index": 1845,
+          "end_index": 1871
+        }
+      },
+      {
+        "measurement": "Oxygen Saturation",
+        "value": "97",
+        "unit": "%",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "SPO2: 97 10/19/24 03:47",
+          "start_index": 1872,
+          "end_index": 1896
+        }
+      },
+      {
+        "measurement": "Temperature",
+        "value": "36.8",
+        "unit": "°C",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "T: 36.8 °C (98.2 °F ) (Oral)",
+          "start_index": 2627,
+          "end_index": 2655
+        }
+      },
+      {
+        "measurement": "Heart Rate",
+        "value": "100",
+        "unit": "bpm",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "HR: 100 (Peripheral)",
+          "start_index": 2656,
+          "end_index": 2675
+        }
+      },
+      {
+        "measurement": "Respiratory Rate",
+        "value": "19",
+        "unit": "breaths/min",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "RR: 19",
+          "start_index": 2676,
+          "end_index": 2682
+        }
+      },
+      {
+        "measurement": "Blood Pressure",
+        "value": "283/82",
+        "unit": "mmHg",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "BP: * 283/82",
+          "start_index": 2683,
+          "end_index": 2696
+        }
+      },
+      {
+        "measurement": "Oxygen Saturation",
+        "value": "99",
+        "unit": "%",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Sp O2: 99%",
+          "start_index": 2697,
+          "end_index": 2707
+        }
+      }
+    ],
+    "lab_results": [
+      {
+        "test_name": "Glucose Level",
+        "value": "105",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "abnormal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Glucose Level 105mg/d L*",
+          "start_index": 3456,
+          "end_index": 3481
+        }
+      },
+      {
+        "test_name": "Creatinine",
+        "value": "0.87",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Creatinine 0.87mg/d L",
+          "start_index": 3482,
+          "end_index": 3504
+        }
+      },
+      {
+        "test_name": "eGFR CKD-EPI",
+        "value": "92",
+        "unit": "mL/min/1.73 m2",
+        "reference_range": null,
+        "status": "abnormal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "e GFRer CKD-EPI 92m L/nin/1.73 m2*",
+          "start_index": 3505,
+          "end_index": 3540
+        }
+      },
+      {
+        "test_name": "BUN/Creat Ratio",
+        "value": "26",
+        "unit": null,
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "BUN/Creat Ratio 26",
+          "start_index": 3541,
+          "end_index": 3560
+        }
+      },
+      {
+        "test_name": "Sodium",
+        "value": "139",
+        "unit": "mmol/L",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Sodium 139mmol/L",
+          "start_index": 3561,
+          "end_index": 3577
+        }
+      },
+      {
+        "test_name": "Potassium",
+        "value": "3.9",
+        "unit": "mmol/L",
+        "reference_range": null,
+        "status": "abnormal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Potassium 3.9mmol/L*",
+          "start_index": 3583,
+          "end_index": 3604
+        }
+      },
+      {
+        "test_name": "Chloride",
+        "value": "104",
+        "unit": "mmol/L",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Chloride 104mmol/L",
+          "start_index": 3605,
+          "end_index": 3623
+        }
+      },
+      {
+        "test_name": "CO2",
+        "value": "19",
+        "unit": "mmol/L",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "co2 19mmol/L",
+          "start_index": 3624,
+          "end_index": 3636
+        }
+      },
+      {
+        "test_name": "Anion Gap",
+        "value": "16",
+        "unit": null,
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Anion Gap 16",
+          "start_index": 3637,
+          "end_index": 3649
+        }
+      },
+      {
+        "test_name": "Calcium",
+        "value": "10.0",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Calcium 10.0mg/d L",
+          "start_index": 3650,
+          "end_index": 3669
+        }
+      },
+      {
+        "test_name": "Protein, Total",
+        "value": "7.2",
+        "unit": "g/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Protein, Total 7.2g/d L",
+          "start_index": 3670,
+          "end_index": 3694
+        }
+      },
+      {
+        "test_name": "Albumin",
+        "value": "4.6",
+        "unit": "g/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Albumin 4.69/d L",
+          "start_index": 3695,
+          "end_index": 3711
+        }
+      },
+      {
+        "test_name": "Alb/Glob Ratio",
+        "value": "1.8",
+        "unit": null,
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Alb/Glob Ratio 1.8",
+          "start_index": 3712,
+          "end_index": 3731
+        }
+      },
+      {
+        "test_name": "Bilirubin Total",
+        "value": "0.5",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Bilirubin Total 0.5mg/d L",
+          "start_index": 3732,
+          "end_index": 3757
+        }
+      },
+      {
+        "test_name": "AST",
+        "value": "43",
+        "unit": "U/L",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "AST 43U/L",
+          "start_index": 3758,
+          "end_index": 3767
+        }
+      },
+      {
+        "test_name": "ALT",
+        "value": "38",
+        "unit": "U/L",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "ALT 38U/L",
+          "start_index": 4123,
+          "end_index": 4132
+        }
+      },
+      {
+        "test_name": "Alkaline Phos",
+        "value": "55",
+        "unit": "U/L",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Alkaline Phos SSl U/L",
+          "start_index": 4133,
+          "end_index": 4155
+        }
+      },
+      {
+        "test_name": "Color, UR",
+        "value": "Yellow",
+        "unit": null,
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Color, UR Berivtit Yellow",
+          "start_index": 4234,
+          "end_index": 4259
+        }
+      },
+      {
+        "test_name": "Appearance, UR",
+        "value": "Clear",
+        "unit": null,
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Appearance, UR Clear",
+          "start_index": 4260,
+          "end_index": 4280
+        }
+      },
+      {
+        "test_name": "Glucose, UR",
+        "value": "Negative",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Glucose, UR Negativemg/d L",
+          "start_index": 4281,
+          "end_index": 4308
+        }
+      },
+      {
+        "test_name": "pH, UR",
+        "value": "6.0",
+        "unit": null,
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "p H, UR 6.0",
+          "start_index": 4309,
+          "end_index": 4320
+        }
+      },
+      {
+        "test_name": "Ketones, UR",
+        "value": "Trace",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "abnormal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Ketones, UR Tracemg/d L",
+          "start_index": 4321,
+          "end_index": 4345
+        }
+      },
+      {
+        "test_name": "Protein, UR",
+        "value": "Negative",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Protein, UR Negativemg/d L",
+          "start_index": 4346,
+          "end_index": 4373
+        }
+      },
+      {
+        "test_name": "Bilirubin, UR",
+        "value": "Negative",
+        "unit": null,
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Bilirubin, UR Negative",
+          "start_index": 4374,
+          "end_index": 4397
+        }
+      },
+      {
+        "test_name": "Blood, UR",
+        "value": "Negative",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Blood, UR Negativemg/d L",
+          "start_index": 4398,
+          "end_index": 4423
+        }
+      },
+      {
+        "test_name": "Urobilinogen, UR",
+        "value": "0.2",
+        "unit": "mg/dL",
+        "reference_range": "Normal",
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Urobilinogen, UR 0.2{Normal)mg/d L",
+          "start_index": 4424,
+          "end_index": 4459
+        }
+      },
+      {
+        "test_name": "Specific Gravity, UR",
+        "value": "1.017",
+        "unit": null,
+        "reference_range": "1.005-1.030",
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Specific Gravity, UR 1.017",
+          "start_index": 4460,
+          "end_index": 4487
+        }
+      },
+      {
+        "test_name": "Nitrite, UR",
+        "value": "Negative",
+        "unit": null,
+        "reference_range": "Negative",
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Nitrite. UR Negative",
+          "start_index": 4488,
+          "end_index": 4508
+        }
+      },
+      {
+        "test_name": "Leukocyte esterase, UR",
+        "value": "Negative",
+        "unit": "mg/dl",
+        "reference_range": null,
+        "status": "normal",
+        "test_date": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Leukocyte esterase, ue: Negativemg/dl",
+          "start_index": 4509,
+          "end_index": 4547
+        }
+      }
+    ],
+    "procedures": [
+      {
+        "name": "Bladder scan",
+        "procedure_date": null,
+        "provider": null,
+        "outcome": "496 cc urine",
+        "confidence": 0.95,
+        "source": {
+          "text": "Bladder scan in ED 496",
+          "start_index": 1266,
+          "end_index": 1289
+        }
+      },
+      {
+        "name": "CYSTOSCOPY",
+        "procedure_date": null,
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "CYSTOSCOPY (12/28/2023)",
+          "start_index": 2189,
+          "end_index": 2213
+        }
+      },
+      {
+        "name": "BLADDER FULGURATION",
+        "procedure_date": null,
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "WITH BLADDER FULGURATION (12/28/2023)",
+          "start_index": 2214,
+          "end_index": 2252
+        }
+      },
+      {
+        "name": "CLOT EVACUATION",
+        "procedure_date": null,
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "WITH CLOT EVACUATION (12/28/2023)",
+          "start_index": 2253,
+          "end_index": 2287
+        }
+      },
+      {
+        "name": "Prostatectomy",
+        "procedure_date": null,
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Prostatectomy (2018)",
+          "start_index": 2288,
+          "end_index": 2309
+        }
+      }
+    ],
+    "providers": [
+      {
+        "name": "Da Doctor",
+        "specialty": "Family Medicine",
+        "role": "Primary Care Provider",
+        "contact_info": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Da Doctor - Family Medicine",
+          "start_index": 9800,
+          "end_index": 9830
+        }
+      },
+      {
+        "name": "SCHENK MD,ERIC J",
+        "specialty": "Emergency Medicine",
+        "role": "Attending Physician",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Attending Physician: SCHENK MD,ERIC J",
+          "start_index": 1123,
+          "end_index": 1161
+        }
+      },
+      {
+        "name": "THALY MD, RAHUL",
+        "specialty": "Urology",
+        "role": "Consulting Urologist",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "THALY MD, RAHUL, Urology 9321 W Thomas Rd Ste 320 Phoenix, AZ 85037- (623) 935-5522",
+          "start_index": 5234,
+          "end_index": 5319
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-10-11T01:29:01.614778+00:00",
+    "document_type": "chunked_document",
+    "confidence_average": 0.941
+  }
+}

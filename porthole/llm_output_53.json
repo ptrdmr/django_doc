@@ -1,0 +1,326 @@
+{
+  "document_id": 53,
+  "timestamp": "2025-10-11T21:36:31.539715",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Seasonal allergies",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Seasonal allergies",
+          "start_index": 285,
+          "end_index": 301
+        }
+      },
+      {
+        "name": "Depression",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Depression",
+          "start_index": 304,
+          "end_index": 314
+        }
+      },
+      {
+        "name": "Hypothyroidism",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hypothyroidism",
+          "start_index": 317,
+          "end_index": 331
+        }
+      },
+      {
+        "name": "Hypertension, controlled",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hypertension, controlled",
+          "start_index": 665,
+          "end_index": 689
+        }
+      },
+      {
+        "name": "Type II Diabetes, fair control",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Type II Diabetes, fair control",
+          "start_index": 693,
+          "end_index": 723
+        }
+      },
+      {
+        "name": "Hyperlipidemia, on therapy",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hyperlipidemia, on therapy",
+          "start_index": 727,
+          "end_index": 753
+        }
+      },
+      {
+        "name": "persistent cough",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "persistent cough",
+          "start_index": 178,
+          "end_index": 194
+        }
+      },
+      {
+        "name": "shortness of breath",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "shortness of breath",
+          "start_index": 199,
+          "end_index": 218
+        }
+      },
+      {
+        "name": "asthma",
+        "status": "active",
+        "confidence": 0.8,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "For asthma",
+          "start_index": 498,
+          "end_index": 508
+        }
+      },
+      {
+        "name": "GERD",
+        "status": "active",
+        "confidence": 0.8,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "For GERD",
+          "start_index": 548,
+          "end_index": 556
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Lisinopril",
+        "dosage": "10mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Lisinopril 10mg PO daily BP control",
+          "start_index": 378,
+          "end_index": 414
+        }
+      },
+      {
+        "name": "Metformin",
+        "dosage": "500mg",
+        "route": "PO",
+        "frequency": "BID",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Metformin 500mg PO BID For diabetes",
+          "start_index": 415,
+          "end_index": 451
+        }
+      },
+      {
+        "name": "Atorvastatin",
+        "dosage": "20mg",
+        "route": "PO",
+        "frequency": "nightly",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Atorvastatin 20mg PO nightly For cholesterol",
+          "start_index": 452,
+          "end_index": 497
+        }
+      },
+      {
+        "name": "Albuterol inhaler",
+        "dosage": "2 puffs",
+        "route": null,
+        "frequency": "PRN",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Albuterol inhaler 2 puffs PRN For asthma",
+          "start_index": 498,
+          "end_index": 539
+        }
+      },
+      {
+        "name": "Omeprazole",
+        "dosage": "20mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Omeprazole 20mg PO daily For GERD",
+          "start_index": 540,
+          "end_index": 574
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Blood Pressure",
+        "value": "157/104",
+        "unit": "mm Hg",
+        "timestamp": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "BP: 157/104 mm Hg",
+          "start_index": 590,
+          "end_index": 608
+        }
+      },
+      {
+        "measurement": "Heart Rate",
+        "value": "101",
+        "unit": "bpm",
+        "timestamp": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "HR: 101 bpm",
+          "start_index": 611,
+          "end_index": 623
+        }
+      },
+      {
+        "measurement": "Temperature",
+        "value": "98.8",
+        "unit": "°F",
+        "timestamp": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Temp: 98.8°F",
+          "start_index": 626,
+          "end_index": 639
+        }
+      },
+      {
+        "measurement": "Oxygen Saturation",
+        "value": "94%",
+        "unit": "RA",
+        "timestamp": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Sp On: 94% RA",
+          "start_index": 642,
+          "end_index": 656
+        }
+      },
+      {
+        "measurement": "Weight",
+        "value": "73.5",
+        "unit": "kg",
+        "timestamp": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Weight: 73.5 kg",
+          "start_index": 659,
+          "end_index": 675
+        }
+      },
+      {
+        "measurement": "Height",
+        "value": "162",
+        "unit": "cm",
+        "timestamp": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Height: 162 cm",
+          "start_index": 678,
+          "end_index": 693
+        }
+      }
+    ],
+    "lab_results": [],
+    "procedures": [
+      {
+        "name": "sleep study",
+        "procedure_date": null,
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.8,
+        "source": {
+          "text": "Refer for sleep study",
+          "start_index": 800,
+          "end_index": 821
+        }
+      }
+    ],
+    "providers": [
+      {
+        "name": "Dr. Robert Chang",
+        "specialty": "Pulmonology",
+        "role": "Provider",
+        "contact_info": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Provider: Dr. Robert Chang, MD Department: Pulmonology",
+          "start_index": 118,
+          "end_index": 172
+        }
+      },
+      {
+        "name": "Dr. David Kumar",
+        "specialty": null,
+        "role": "Signing Provider",
+        "contact_info": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Dr. David Kumar, MD NPI: 1464824097",
+          "start_index": 880,
+          "end_index": 916
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-10-11T21:36:31.538473",
+    "document_type": "Da Doctor - Family Medicine",
+    "confidence_average": 0.887
+  }
+}

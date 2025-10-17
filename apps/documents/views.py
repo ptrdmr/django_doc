@@ -813,11 +813,12 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     field_data['id'] = field_id
                     field_data['category_slug'] = field_data['category'].lower().replace(' ', '-').replace('_', '-')
                     
-                    # Add clinical date information (Task 35.5)
-                    field_data['parsed_data_id'] = parsed_data_id
-                    field_data['clinical_date'] = clinical_date
-                    field_data['date_source'] = date_source
-                    field_data['date_status'] = date_status
+                    # Add parsed_data_id if not already set (for per-resource date management)
+                    if 'parsed_data_id' not in field_data:
+                        field_data['parsed_data_id'] = parsed_data_id
+                    
+                    # Note: clinical_date, date_source, and date_status are now set per-resource
+                    # during field creation (Task 35 fix for per-resource dates)
                     
                     categorized_data[field_data['category']].append(field_data)
                 
@@ -884,6 +885,10 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             
             # 1. Conditions/Diagnoses
             for i, condition in enumerate(structured_data.conditions):
+                # Get date metadata if it exists
+                condition_dict = structured_data_dict.get('conditions', [])[i] if i < len(structured_data_dict.get('conditions', [])) else {}
+                date_metadata = condition_dict.get('date_metadata', {})
+                
                 field_list.append({
                     'field_name': f'Condition {i+1}',
                     'field_value': condition.name,
@@ -892,7 +897,10 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'snippet': condition.source.text if condition.source else '',
                     'resource_type': 'condition',
                     'resource_index': i,
-                    'field_path': f'conditions.{i}.name'
+                    'field_path': f'conditions.{i}.name',
+                    'clinical_date': condition.onset_date,
+                    'date_source': date_metadata.get('source', 'extracted' if condition.onset_date else None),
+                    'date_status': 'verified' if date_metadata.get('verified') else 'pending',
                 })
                 
                 # Add secondary condition info if available
@@ -912,6 +920,10 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             
             # 2. Medications
             for i, medication in enumerate(structured_data.medications):
+                # Get date metadata if it exists
+                medication_dict = structured_data_dict.get('medications', [])[i] if i < len(structured_data_dict.get('medications', [])) else {}
+                date_metadata = medication_dict.get('date_metadata', {})
+                
                 field_list.append({
                     'field_name': f'Medication {i+1}',
                     'field_value': medication.name,
@@ -920,7 +932,10 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'snippet': medication.source.text if medication.source else '',
                     'resource_type': 'medication',
                     'resource_index': i,
-                    'field_path': f'medications.{i}.name'
+                    'field_path': f'medications.{i}.name',
+                    'clinical_date': medication.start_date,
+                    'date_source': date_metadata.get('source', 'extracted' if medication.start_date else None),
+                    'date_status': 'verified' if date_metadata.get('verified') else 'pending',
                 })
                 
                 if medication.dosage:
@@ -949,6 +964,10 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             
             # 3. Vital Signs
             for i, vital in enumerate(structured_data.vital_signs):
+                # Get date metadata if it exists
+                vital_dict = structured_data_dict.get('vital_signs', [])[i] if i < len(structured_data_dict.get('vital_signs', [])) else {}
+                date_metadata = vital_dict.get('date_metadata', {})
+                
                 field_list.append({
                     'field_name': f'Vital Sign: {vital.measurement}',
                     'field_value': f"{vital.value} {vital.unit}" if vital.unit else str(vital.value),
@@ -957,11 +976,18 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'snippet': vital.source.text if vital.source else '',
                     'resource_type': 'vital_sign',
                     'resource_index': i,
-                    'field_path': f'vital_signs.{i}.value'
+                    'field_path': f'vital_signs.{i}.value',
+                    'clinical_date': vital.timestamp,
+                    'date_source': date_metadata.get('source', 'extracted' if vital.timestamp else None),
+                    'date_status': 'verified' if date_metadata.get('verified') else 'pending',
                 })
             
             # 4. Lab Results
             for i, lab in enumerate(structured_data.lab_results):
+                # Get date metadata if it exists
+                lab_dict = structured_data_dict.get('lab_results', [])[i] if i < len(structured_data_dict.get('lab_results', [])) else {}
+                date_metadata = lab_dict.get('date_metadata', {})
+                
                 field_list.append({
                     'field_name': f'Lab: {lab.test_name}',
                     'field_value': f"{lab.value} {lab.unit}" if lab.unit else str(lab.value),
@@ -970,12 +996,15 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'snippet': lab.source.text if lab.source else '',
                     'resource_type': 'lab_result',
                     'resource_index': i,
-                    'field_path': f'lab_results.{i}.value'
+                    'field_path': f'lab_results.{i}.value',
+                    'clinical_date': lab.test_date,
+                    'date_source': date_metadata.get('source', 'extracted' if lab.test_date else None),
+                    'date_status': 'verified' if date_metadata.get('verified') else 'pending',
                 })
                 
                 if lab.reference_range:
                     field_list.append({
-                        'field_name': f'Lab: {lab.name} Reference Range',
+                        'field_name': f'Lab: {lab.test_name} Reference Range',
                         'field_value': lab.reference_range,
                         'confidence': lab.confidence * 0.8,
                         'category': 'Laboratory Results',
@@ -987,6 +1016,10 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             
             # 5. Procedures
             for i, procedure in enumerate(structured_data.procedures):
+                # Get date metadata if it exists
+                procedure_dict = structured_data_dict.get('procedures', [])[i] if i < len(structured_data_dict.get('procedures', [])) else {}
+                date_metadata = procedure_dict.get('date_metadata', {})
+                
                 field_list.append({
                     'field_name': f'Procedure {i+1}',
                     'field_value': procedure.name,
@@ -995,7 +1028,10 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'snippet': procedure.source.text if procedure.source else '',
                     'resource_type': 'procedure',
                     'resource_index': i,
-                    'field_path': f'procedures.{i}.name'
+                    'field_path': f'procedures.{i}.name',
+                    'clinical_date': procedure.procedure_date,
+                    'date_source': date_metadata.get('source', 'extracted' if procedure.procedure_date else None),
+                    'date_status': 'verified' if date_metadata.get('verified') else 'pending',
                 })
                 
                 if procedure.procedure_date:
@@ -2442,13 +2478,15 @@ def add_missing_field(request, document_id):
 @require_POST
 def save_clinical_date(request):
     """
-    Save or update a clinical date for parsed data.
+    Save or update a clinical date for a specific medical resource (condition, medication, lab, etc.).
     
     Args:
         request: HTTP POST request with:
             - parsed_data_id: ID of the ParsedData object
             - clinical_date: Date in YYYY-MM-DD format
             - document_id: ID of the source document (for permissions)
+            - resource_type: Type of resource (condition, medication, lab_result, etc.)
+            - resource_index: Index of the resource in the structured data array
     
     Returns:
         JsonResponse: Success status and message
@@ -2458,11 +2496,22 @@ def save_clinical_date(request):
         parsed_data_id = request.POST.get('parsed_data_id')
         clinical_date_str = request.POST.get('clinical_date')
         document_id = request.POST.get('document_id')
+        resource_type = request.POST.get('resource_type')
+        resource_index = request.POST.get('resource_index')
         
-        if not all([parsed_data_id, clinical_date_str, document_id]):
+        if not all([parsed_data_id, clinical_date_str, document_id, resource_type, resource_index is not None]):
             return JsonResponse({
                 'success': False,
-                'error': 'Missing required parameters'
+                'error': 'Missing required parameters (need parsed_data_id, clinical_date, document_id, resource_type, resource_index)'
+            }, status=400)
+        
+        # Convert resource_index to int
+        try:
+            resource_index = int(resource_index)
+        except (ValueError, TypeError):
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid resource_index - must be a number'
             }, status=400)
         
         # Get the document for permission checking
@@ -2512,32 +2561,97 @@ def save_clinical_date(request):
                 'error': 'Date must be after 1900'
             }, status=400)
         
-        # Save the clinical date
+        # Map resource type to date field name
+        date_field_map = {
+            'condition': 'onset_date',
+            'medication': 'start_date',
+            'lab_result': 'test_date',
+            'procedure': 'procedure_date',
+            'vital_sign': 'timestamp',
+        }
+        
+        # Map resource type to plural key in structured_data
+        resource_plural_map = {
+            'condition': 'conditions',
+            'medication': 'medications',
+            'lab_result': 'lab_results',
+            'procedure': 'procedures',
+            'vital_sign': 'vital_signs',
+        }
+        
+        if resource_type not in date_field_map:
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid resource_type: {resource_type}'
+            }, status=400)
+        
+        date_field = date_field_map[resource_type]
+        resource_key = resource_plural_map[resource_type]
+        
+        # Save the clinical date to the specific resource
         try:
-            # Determine if this is a new date or an edit
-            is_new = not parsed_data.has_clinical_date()
-            source = 'manual'  # User is manually entering/editing
-            status = 'pending'  # New manual entries need verification
+            # Get structured data from corrections
+            if not parsed_data.corrections:
+                parsed_data.corrections = {}
             
-            parsed_data.set_clinical_date(
-                date=parsed_date,
-                source=source,
-                status=status
-            )
+            if 'structured_data' not in parsed_data.corrections:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No structured data available to update'
+                }, status=400)
             
-            # Log the action for HIPAA audit trail using proper event types
+            structured_data = parsed_data.corrections['structured_data']
+            
+            # Validate resource exists
+            if resource_key not in structured_data:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'No {resource_key} found in structured data'
+                }, status=400)
+            
+            resources = structured_data[resource_key]
+            if not isinstance(resources, list) or resource_index >= len(resources):
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Invalid resource index {resource_index} for {resource_key}'
+                }, status=400)
+            
+            # Get the specific resource
+            resource = resources[resource_index]
+            old_date = resource.get(date_field)
+            is_new = old_date is None
+            
+            # Update the date field
+            resource[date_field] = parsed_date.isoformat()
+            
+            # Mark as manually entered by adding metadata
+            if 'date_metadata' not in resource:
+                resource['date_metadata'] = {}
+            
+            resource['date_metadata']['source'] = 'manual'
+            resource['date_metadata']['entered_by'] = request.user.username
+            resource['date_metadata']['entered_at'] = timezone.now().isoformat()
+            resource['date_metadata']['verified'] = False
+            
+            # Save back to database
+            parsed_data.save(update_fields=['corrections', 'updated_at'])
+            
+            # Log the action for HIPAA audit trail
             from apps.core.models import AuditLog
             AuditLog.log_event(
                 event_type='phi_update',
                 user=request.user,
                 request=request,
-                description=f"{'Updated' if not is_new else 'Added'} clinical date for document {document.id}",
+                description=f"{'Updated' if not is_new else 'Added'} clinical date for {resource_type} in document {document.id}",
                 details={
                     'parsed_data_id': str(parsed_data.id),
                     'document_id': str(document.id),
+                    'resource_type': resource_type,
+                    'resource_index': resource_index,
+                    'resource_name': resource.get('name') or resource.get('test_name') or resource.get('measurement'),
                     'clinical_date': parsed_date.isoformat(),
-                    'date_source': source,
-                    'date_status': status,
+                    'old_date': old_date,
+                    'date_source': 'manual',
                     'action': 'update' if not is_new else 'create',
                 },
                 patient_mrn=document.patient.mrn if hasattr(document, 'patient') and document.patient else None,
@@ -2546,18 +2660,22 @@ def save_clinical_date(request):
                 severity='info'
             )
             
-            logger.info(f"Clinical date {'updated' if not is_new else 'saved'} for ParsedData {parsed_data.id} by user {request.user.id}: {parsed_date}")
+            logger.info(f"Clinical date {'updated' if not is_new else 'saved'} for {resource_type}[{resource_index}] in ParsedData {parsed_data.id} by user {request.user.id}: {parsed_date}")
             
             return JsonResponse({
                 'success': True,
                 'message': 'Clinical date saved successfully',
                 'clinical_date': parsed_date.isoformat(),
-                'date_source': source,
-                'date_status': status
+                'date_source': 'manual',
+                'date_status': 'pending',
+                'resource_type': resource_type,
+                'resource_index': resource_index
             })
             
         except Exception as save_error:
-            logger.error(f"Error saving clinical date for ParsedData {parsed_data.id}: {save_error}")
+            logger.error(f"Error saving clinical date for {resource_type}[{resource_index}] in ParsedData {parsed_data.id}: {save_error}")
+            import traceback
+            traceback.print_exc()
             return JsonResponse({
                 'success': False,
                 'error': f'Failed to save clinical date: {str(save_error)}'

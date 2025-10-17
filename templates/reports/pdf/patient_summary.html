@@ -1,0 +1,439 @@
+{% extends "reports/pdf/base.html" %}
+{% load static %}
+
+{% block custom_styles %}
+/* Additional custom styles for patient summary report */
+.medications-section {
+    page-break-inside: avoid;
+    margin-bottom: var(--space-xl);
+}
+
+.medications-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+}
+
+.medications-count {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.medications-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: var(--space-md);
+    font-size: var(--font-size-sm);
+}
+
+.medications-table thead {
+    background-color: var(--bg-header);
+    border-bottom: 2px solid var(--border-dark);
+}
+
+.medications-table th {
+    padding: var(--space-sm) var(--space-md);
+    text-align: left;
+    font-weight: 600;
+    color: var(--primary-dark);
+}
+
+.medications-table tbody tr {
+    border-bottom: 1px solid var(--border-light);
+    page-break-inside: avoid;
+}
+
+.medications-table tbody tr:nth-child(even) {
+    background-color: var(--bg-secondary);
+}
+
+.medications-table td {
+    padding: var(--space-sm) var(--space-md);
+    vertical-align: top;
+}
+
+.medication-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.medication-class {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.med-status {
+    display: inline-block;
+    padding: 2pt 6pt;
+    border-radius: 2pt;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.med-status.active {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.med-status.completed {
+    background-color: #f3f4f6;
+    color: #6b7280;
+}
+
+.med-status.stopped {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.procedures-section {
+    page-break-inside: avoid;
+    margin-bottom: var(--space-xl);
+}
+
+.procedures-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+}
+
+.procedures-count {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.procedures-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+
+.procedures-table thead {
+    background-color: var(--bg-header);
+    border-bottom: 2px solid var(--border-dark);
+}
+
+.procedures-table th {
+    padding: var(--space-sm) var(--space-md);
+    text-align: left;
+    font-weight: 600;
+    color: var(--primary-dark);
+}
+
+.procedures-table tbody tr {
+    border-bottom: 1px solid var(--border-light);
+    page-break-inside: avoid;
+}
+
+.procedures-table tbody tr:nth-child(even) {
+    background-color: var(--bg-secondary);
+}
+
+.procedures-table td {
+    padding: var(--space-sm) var(--space-md);
+}
+
+.procedure-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.no-data {
+    padding: var(--space-lg);
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+    background-color: var(--bg-secondary);
+    border-radius: 4pt;
+    border: 1px dashed var(--border-light);
+}
+{% endblock %}
+
+{% block content %}
+<!-- Patient Demographics Header -->
+{% if patient %}
+    {% include "reports/pdf/_patient_header.html" with patient=patient %}
+{% endif %}
+
+<!-- Report Summary Overview -->
+{% if data.clinical_summary %}
+<div class="content-section">
+    <div class="report-metadata">
+        <h3 style="margin-top: 0; margin-bottom: var(--space-sm); color: var(--primary-dark);">Report Summary</h3>
+        <div class="metadata-row">
+            <span class="metadata-label">Total Conditions:</span>
+            <span class="metadata-value">{{ data.clinical_summary.conditions|length|default:0 }}</span>
+        </div>
+        <div class="metadata-row">
+            <span class="metadata-label">Active Medications:</span>
+            <span class="metadata-value">{{ data.clinical_summary.medications|length|default:0 }}</span>
+        </div>
+        <div class="metadata-row">
+            <span class="metadata-label">Lab Results:</span>
+            <span class="metadata-value">{{ data.clinical_summary.observations|length|default:0 }}</span>
+        </div>
+        <div class="metadata-row">
+            <span class="metadata-label">Procedures:</span>
+            <span class="metadata-value">{{ data.clinical_summary.procedures|length|default:0 }}</span>
+        </div>
+        <div class="metadata-row">
+            <span class="metadata-label">Encounters:</span>
+            <span class="metadata-value">{{ data.clinical_summary.encounters|length|default:0 }}</span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Diagnoses Section -->
+{% if data.clinical_summary.conditions %}
+    {% include "reports/pdf/_diagnoses.html" with diagnoses=data.clinical_summary.conditions %}
+{% else %}
+<div class="content-section">
+    <h2>Diagnoses</h2>
+    <div class="no-data">
+        <p>No diagnoses recorded for this patient.</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Medications Section -->
+<div class="medications-section content-section">
+    <div class="medications-header">
+        <h2>Medications</h2>
+        {% if data.clinical_summary.medications %}
+        <span class="medications-count">
+            {{ data.clinical_summary.medications|length }} Medication{{ data.clinical_summary.medications|length|pluralize }}
+        </span>
+        {% endif %}
+    </div>
+    
+    {% if data.clinical_summary.medications %}
+        <table class="medications-table">
+            <thead>
+                <tr>
+                    <th style="width: 40%;">Medication</th>
+                    <th style="width: 35%;">Dosage</th>
+                    <th style="width: 15%;">Status</th>
+                    <th style="width: 10%;">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for medication in data.clinical_summary.medications %}
+                <tr>
+                    <td>
+                        <span class="medication-name">{{ medication.display_name|default:"Unknown Medication" }}</span>
+                        {% if medication.therapeutic_class %}
+                        <br><span class="medication-class">{{ medication.therapeutic_class }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if medication.dosage %}
+                            {% for dose in medication.dosage %}
+                                {{ dose.text|default:"See instructions" }}
+                                {% if not forloop.last %}<br>{% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted">No dosage information</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if medication.status %}
+                        <span class="med-status {{ medication.status|lower }}">
+                            {{ medication.status }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="dx-date">
+                        {% if medication.effective_date %}
+                        {{ medication.effective_date|date:"M d, Y" }}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="no-data">
+            <p>No medications recorded for this patient.</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Laboratory Results Section -->
+{% if data.clinical_summary.observations %}
+    {% include "reports/pdf/_lab_results.html" with observations=data.clinical_summary.observations %}
+{% else %}
+<div class="content-section">
+    <h2>Laboratory Results</h2>
+    <div class="no-data">
+        <p>No laboratory results recorded for this patient.</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Vital Signs Section -->
+{% if data.clinical_summary.vital_signs %}
+    {% include "reports/pdf/_vital_signs.html" with vital_signs=data.clinical_summary.vital_signs %}
+{% else %}
+<div class="content-section">
+    <h2>Vital Signs</h2>
+    <div class="no-data">
+        <p>No vital signs recorded for this patient.</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Clinical Timeline Section -->
+{% if data.clinical_summary.timeline_events %}
+    {% include "reports/pdf/_timeline.html" with timeline_events=data.clinical_summary.timeline_events %}
+{% else %}
+<div class="content-section">
+    <h2>Clinical Timeline</h2>
+    <div class="no-data">
+        <p>No clinical events recorded for this patient.</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Procedures Section -->
+<div class="procedures-section content-section">
+    <div class="procedures-header">
+        <h2>Procedures</h2>
+        {% if data.clinical_summary.procedures %}
+        <span class="procedures-count">
+            {{ data.clinical_summary.procedures|length }} Procedure{{ data.clinical_summary.procedures|length|pluralize }}
+        </span>
+        {% endif %}
+    </div>
+    
+    {% if data.clinical_summary.procedures %}
+        <table class="procedures-table">
+            <thead>
+                <tr>
+                    <th style="width: 45%;">Procedure</th>
+                    <th style="width: 15%;">Status</th>
+                    <th style="width: 25%;">Provider</th>
+                    <th style="width: 15%;">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for procedure in data.clinical_summary.procedures %}
+                <tr>
+                    <td>
+                        <span class="procedure-name">{{ procedure.display_name|default:"Unknown Procedure" }}</span>
+                    </td>
+                    <td>
+                        {% if procedure.status %}
+                        {{ procedure.status|title }}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if procedure.performer %}
+                        {{ procedure.performer }}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="dx-date">
+                        {% if procedure.performed_date %}
+                        {{ procedure.performed_date|date:"M d, Y" }}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="no-data">
+            <p>No procedures recorded for this patient.</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Encounters Summary -->
+{% if data.clinical_summary.encounters %}
+<div class="content-section">
+    <h2>Encounters Summary</h2>
+    <p class="mb-md"><strong>Total Encounters:</strong> {{ data.clinical_summary.encounters|length }}</p>
+    <table class="procedures-table">
+        <thead>
+            <tr>
+                <th style="width: 30%;">Type</th>
+                <th style="width: 20%;">Class</th>
+                <th style="width: 30%;">Location</th>
+                <th style="width: 20%;">Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for encounter in data.clinical_summary.encounters|slice:":15" %}
+            <tr>
+                <td>{{ encounter.type_display|default:"Unknown Type" }}</td>
+                <td>{{ encounter.class_display|default:"—" }}</td>
+                <td>
+                    {% if encounter.location %}
+                    {{ encounter.location }}
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="dx-date">
+                    {% if encounter.period_start %}
+                    {{ encounter.period_start|date:"M d, Y" }}
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% if data.clinical_summary.encounters|length > 15 %}
+            <tr>
+                <td colspan="4" class="text-center text-muted" style="font-style: italic; padding: var(--space-md);">
+                    Showing first 15 of {{ data.clinical_summary.encounters|length }} encounters
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Report Footer Metadata -->
+<div class="content-section" style="margin-top: var(--space-xl); padding-top: var(--space-lg); border-top: 2px solid var(--border-primary);">
+    <h3>Report Information</h3>
+    <div class="report-metadata">
+        {% if data.report_metadata.date_range_start and data.report_metadata.date_range_end %}
+        <div class="metadata-row">
+            <span class="metadata-label">Date Range:</span>
+            <span class="metadata-value">{{ data.report_metadata.date_range_start|date:"M d, Y" }} to {{ data.report_metadata.date_range_end|date:"M d, Y" }}</span>
+        </div>
+        {% endif %}
+        
+        <div class="metadata-row">
+            <span class="metadata-label">Report ID:</span>
+            <span class="metadata-value">{{ data.report_metadata.report_id|default:"N/A" }}</span>
+        </div>
+        
+        {% if data.report_metadata.data_sources %}
+        <div class="metadata-row">
+            <span class="metadata-label">Data Sources:</span>
+            <span class="metadata-value">{{ data.report_metadata.data_sources|join:", " }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+
