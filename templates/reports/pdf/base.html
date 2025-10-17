@@ -214,6 +214,16 @@
             margin-bottom: var(--space-xl);
         }
         
+        .report-logo {
+            text-align: center;
+            margin-bottom: var(--space-md);
+        }
+        
+        .report-logo img {
+            height: 50pt;
+            width: auto;
+        }
+        
         .report-title {
             text-align: center;
             margin-bottom: var(--space-lg);
@@ -347,6 +357,11 @@
     <!-- Report Header -->
     <header class="report-header">
         {% block report_header %}
+        {% load static %}
+        <div class="report-logo">
+            <img src="{% static 'img/moristat_logo.png' %}" alt="Moristat">
+        </div>
+        
         <div class="report-title">
             <h1>{{ title|default:"Medical Report" }}</h1>
         </div>

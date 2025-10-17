@@ -114,16 +114,31 @@ class PatientForm(forms.ModelForm):
         return ssn
     
     def clean_mrn(self):
-        """Validate MRN uniqueness."""
+        """Validate MRN uniqueness, checking both active and soft-deleted patients."""
         mrn = self.cleaned_data.get('mrn')
         if mrn:
-            # Check for uniqueness, excluding current instance if editing
+            # Check for uniqueness in active patients
             queryset = Patient.objects.filter(mrn=mrn)
             if self.instance and self.instance.pk:
                 queryset = queryset.exclude(pk=self.instance.pk)
             
             if queryset.exists():
                 raise ValidationError("A patient with this MRN already exists.")
+            
+            # Also check soft-deleted patients (they still block MRN reuse at DB level)
+            soft_deleted_queryset = Patient.all_objects.filter(mrn=mrn, deleted_at__isnull=False)
+            if self.instance and self.instance.pk:
+                soft_deleted_queryset = soft_deleted_queryset.exclude(pk=self.instance.pk)
+            
+            if soft_deleted_queryset.exists():
+                from django.conf import settings
+                if settings.DEBUG:
+                    raise ValidationError(
+                        f"A patient with MRN '{mrn}' was previously deleted but still exists in the database. "
+                        "Please permanently remove soft-deleted patients using the cleanup utility before reusing this MRN."
+                    )
+                else:
+                    raise ValidationError("A patient with this MRN already exists.")
         
         return mrn
     
