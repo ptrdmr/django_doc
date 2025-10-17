@@ -17,6 +17,9 @@ urlpatterns = [
     # View report details
     path('<int:pk>/', views.ReportDetailView.as_view(), name='detail'),
     
+    # Preview report in browser
+    path('<int:pk>/preview/', views.ReportPreviewView.as_view(), name='preview'),
+    
     # Download generated report
     path('<int:pk>/download/', views.ReportDownloadView.as_view(), name='download'),
     

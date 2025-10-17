@@ -252,6 +252,42 @@ class ReportDetailView(LoginRequiredMixin, DetailView):
         return GeneratedReport.objects.filter(created_by=self.request.user)
 
 
+class ReportPreviewView(LoginRequiredMixin, View):
+    """
+    View for previewing reports in the browser before downloading.
+    """
+    
+    def get(self, request, pk):
+        """Render report as HTML preview."""
+        # Get report (checks ownership via queryset)
+        report = get_object_or_404(
+            GeneratedReport.objects.filter(created_by=request.user),
+            pk=pk
+        )
+        
+        # Get the report's parameters to regenerate the data
+        parameters = report.parameters_snapshot
+        
+        # Regenerate report data (don't generate file, just get data)
+        from .generators import PatientReportTemplate
+        
+        if parameters.get('patient_id'):
+            generator = PatientReportTemplate(parameters)
+            report_data = generator.generate()
+            
+            # Render HTML preview template
+            return render(request, 'reports/preview/patient_summary.html', {
+                'report': report,
+                'data': report_data,
+                'title': 'Patient Summary Report',
+                'generated_at': report.created_at,
+            })
+        
+        # Fallback for unsupported report types
+        messages.warning(request, 'Preview not available for this report type.')
+        return redirect('reports:dashboard')
+
+
 class ReportDownloadView(LoginRequiredMixin, View):
     """
     View for downloading generated reports.

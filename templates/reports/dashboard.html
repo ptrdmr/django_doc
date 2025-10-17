@@ -85,7 +85,10 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             {% if report.status == 'completed' %}
-                            <a href="{% url 'reports:download' report.pk %}" class="text-blue-600 hover:text-blue-900 mr-4">
+                            <a href="{% url 'reports:preview' report.pk %}" class="text-blue-600 hover:text-blue-900 mr-4">
+                                View
+                            </a>
+                            <a href="{% url 'reports:download' report.pk %}" class="text-green-600 hover:text-green-900 mr-4">
                                 Download
                             </a>
                             {% endif %}

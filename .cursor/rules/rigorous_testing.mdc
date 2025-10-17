@@ -1,0 +1,535 @@
+---
+description: Enforce rigorous, comprehensive testing that catches real bugs and validates complete functionality
+globs: **/test_*.py, **/tests.py, **/tests/**/*.py
+alwaysApply: true
+---
+
+# Rigorous Testing Standards
+
+## **NEVER Softball Tests - Build Tests That Actually Validate**
+
+Tests exist to catch bugs, validate business logic, and prevent regressions. Weak tests are worse than no tests because they provide false confidence.
+
+### **Core Testing Principles**
+
+**✅ DO: Write Tests That Can Fail**
+```python
+# ✅ DO: Test actual business logic and edge cases
+def test_patient_mrn_uniqueness_enforced(self):
+    """Verify that duplicate MRNs are rejected at database level"""
+    patient1 = Patient.objects.create(
+        first_name='John',
+        last_name='Doe',
+        mrn='TEST-001',
+        date_of_birth='1980-01-01'
+    )
+    
+    # This MUST raise IntegrityError
+    with self.assertRaises(IntegrityError):
+        Patient.objects.create(
+            first_name='Jane',
+            last_name='Smith',
+            mrn='TEST-001',  # Duplicate MRN
+            date_of_birth='1985-05-15'
+        )
+
+# ✅ DO: Test validation with invalid data
+def test_patient_form_rejects_future_birth_date(self):
+    """Birth date validation must reject future dates"""
+    future_date = timezone.now().date() + timedelta(days=30)
+    form = PatientForm(data={
+        'first_name': 'Test',
+        'last_name': 'Patient',
+        'mrn': 'TEST-002',
+        'date_of_birth': future_date
+    })
+    
+    self.assertFalse(form.is_valid())
+    self.assertIn('date_of_birth', form.errors)
+    self.assertIn('future', str(form.errors['date_of_birth']).lower())
+
+# ✅ DO: Test HIPAA requirements are actually enforced
+def test_phi_access_requires_permission(self):
+    """Verify that PHI access is denied without proper permissions"""
+    # User without PHI permission
+    user = User.objects.create_user(
+        username='noaccess',
+        email='noaccess@test.com',
+        password='testpass123'
+    )
+    
+    patient = Patient.objects.create(
+        first_name='Protected',
+        last_name='Patient',
+        mrn='TEST-003',
+        date_of_birth='1975-01-01'
+    )
+    
+    self.client.force_login(user)
+    response = self.client.get(f'/patients/{patient.id}/')
+    
+    # Must return 403 Forbidden, not 200 or 404
+    self.assertEqual(response.status_code, 403)
+```
+
+**❌ DON'T: Write Tests That Can't Fail**
+```python
+# ❌ DON'T: Test that objects can be created (trivial)
+def test_patient_creation(self):
+    """This test provides zero value"""
+    patient = Patient.objects.create(
+        first_name='Test',
+        last_name='Patient',
+        mrn='TEST-001',
+        date_of_birth='1980-01-01'
+    )
+    self.assertIsNotNone(patient)  # This always passes
+
+# ❌ DON'T: Test implementation details instead of behavior
+def test_patient_has_fields(self):
+    """This just tests Django's ORM, not our code"""
+    patient = Patient()
+    self.assertTrue(hasattr(patient, 'first_name'))
+    self.assertTrue(hasattr(patient, 'last_name'))
+
+# ❌ DON'T: Mock away the actual functionality you're testing
+def test_document_processing_with_mock(self):
+    """This doesn't test if processing actually works"""
+    with patch('apps.documents.tasks.process_document') as mock_process:
+        mock_process.return_value = {'status': 'success'}
+        result = process_document(document_id=1)
+        self.assertEqual(result['status'], 'success')
+    # We never tested if process_document actually works!
+```
+
+---
+
+## **HIPAA/Medical Data Testing Requirements**
+
+### **Encryption & PHI Protection**
+```python
+# ✅ DO: Verify encryption is actually happening
+def test_patient_ssn_stored_encrypted(self):
+    """SSN must be encrypted in database, not plaintext"""
+    patient = Patient.objects.create(
+        first_name='John',
+        last_name='Doe',
+        ssn='123-45-6789',
+        mrn='TEST-004',
+        date_of_birth='1980-01-01'
+    )
+    
+    # Check encrypted value in database
+    from django.db import connection
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT ssn FROM patients WHERE id = %s",
+            [patient.id]
+        )
+        raw_value = cursor.fetchone()[0]
+    
+    # Raw value must NOT be plaintext SSN
+    self.assertNotEqual(raw_value, '123-45-6789')
+    self.assertNotIn('123-45-6789', str(raw_value))
+    
+    # But decrypted value should match
+    patient.refresh_from_db()
+    self.assertEqual(patient.ssn, '123-45-6789')
+
+# ✅ DO: Test audit logging actually records access
+def test_patient_view_creates_audit_log(self):
+    """PHI access must create audit trail"""
+    user = self.create_user_with_phi_permission()
+    patient = self.create_test_patient()
+    
+    # Count audit logs before
+    initial_count = AuditLog.objects.count()
+    
+    self.client.force_login(user)
+    response = self.client.get(f'/patients/{patient.id}/')
+    
+    # Verify audit log was created
+    self.assertEqual(AuditLog.objects.count(), initial_count + 1)
+    
+    audit = AuditLog.objects.latest('timestamp')
+    self.assertEqual(audit.user, user)
+    self.assertEqual(audit.patient, patient)
+    self.assertEqual(audit.action, 'viewed')
+    self.assertIsNotNone(audit.ip_address)
+```
+
+### **FHIR Data Integrity**
+```python
+# ✅ DO: Validate FHIR bundles are actually valid
+def test_fhir_bundle_validates_against_spec(self):
+    """FHIR resources must conform to specification"""
+    from fhir.resources.patient import Patient as FHIRPatient
+    
+    patient = self.create_test_patient()
+    fhir_data = patient.cumulative_fhir_json
+    
+    # Must have Patient resource
+    self.assertIn('Patient', fhir_data)
+    self.assertGreater(len(fhir_data['Patient']), 0)
+    
+    # Each Patient resource must validate
+    for resource in fhir_data['Patient']:
+        # This will raise ValidationError if invalid
+        validated = FHIRPatient(**resource)
+        self.assertIsNotNone(validated.id)
+        self.assertIsNotNone(validated.resourceType)
+        self.assertEqual(validated.resourceType, 'Patient')
+
+# ✅ DO: Test data is appended, not overwritten
+def test_fhir_resources_are_cumulative(self):
+    """New FHIR data must append, never replace"""
+    patient = self.create_test_patient()
+    
+    # Add first condition
+    condition1 = {
+        'resourceType': 'Condition',
+        'code': {'coding': [{'code': 'E11.9', 'display': 'Type 2 diabetes'}]}
+    }
+    patient.add_fhir_resources([condition1], document_id=1)
+    
+    # Add second condition
+    condition2 = {
+        'resourceType': 'Condition',
+        'code': {'coding': [{'code': 'I10', 'display': 'Hypertension'}]}
+    }
+    patient.add_fhir_resources([condition2], document_id=2)
+    
+    # Both conditions must exist
+    patient.refresh_from_db()
+    conditions = patient.cumulative_fhir_json.get('Condition', [])
+    self.assertEqual(len(conditions), 2)
+    
+    # Verify both are present
+    codes = [c['code']['coding'][0]['code'] for c in conditions]
+    self.assertIn('E11.9', codes)
+    self.assertIn('I10', codes)
+```
+
+---
+
+## **Error Handling & Edge Cases**
+
+### **Test Failure Scenarios**
+```python
+# ✅ DO: Test what happens when things go wrong
+def test_document_processing_handles_corrupted_pdf(self):
+    """System must gracefully handle corrupted files"""
+    document = Document.objects.create(
+        patient=self.patient,
+        uploaded_by=self.user,
+        file='path/to/corrupted.pdf'
+    )
+    
+    # Create actually corrupted file
+    with open(document.file.path, 'wb') as f:
+        f.write(b'NOT A REAL PDF')
+    
+    # Processing should fail gracefully, not crash
+    with self.assertRaises(DocumentProcessingError):
+        result = process_document_sync(document.id)
+    
+    # Document status should reflect failure
+    document.refresh_from_db()
+    self.assertEqual(document.status, 'failed')
+    self.assertIsNotNone(document.error_message)
+    self.assertIn('corrupted', document.error_message.lower())
+
+# ✅ DO: Test database constraint violations
+def test_patient_requires_mrn(self):
+    """MRN is mandatory field"""
+    with self.assertRaises(IntegrityError):
+        Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            date_of_birth='1980-01-01'
+            # Missing required MRN
+        )
+
+# ✅ DO: Test permission boundaries
+def test_user_cannot_access_other_org_patients(self):
+    """Organization isolation must be enforced"""
+    org1 = Organization.objects.create(name='Hospital A')
+    org2 = Organization.objects.create(name='Hospital B')
+    
+    user1 = User.objects.create_user(
+        username='user1',
+        organization=org1
+    )
+    
+    patient2 = Patient.objects.create(
+        first_name='John',
+        last_name='Doe',
+        mrn='ORG2-001',
+        date_of_birth='1980-01-01',
+        organization=org2
+    )
+    
+    self.client.force_login(user1)
+    response = self.client.get(f'/patients/{patient2.id}/')
+    
+    # Must be denied (403 or 404, but NOT 200)
+    self.assertIn(response.status_code, [403, 404])
+```
+
+---
+
+## **Performance & Scale Testing**
+
+```python
+# ✅ DO: Test with realistic data volumes
+def test_patient_list_performs_with_large_dataset(self):
+    """List view must remain fast with many records"""
+    # Create 100 patients
+    patients = [
+        Patient(
+            first_name=f'Test{i}',
+            last_name=f'Patient{i}',
+            mrn=f'TEST-{i:04d}',
+            date_of_birth='1980-01-01',
+            organization=self.org
+        )
+        for i in range(100)
+    ]
+    Patient.objects.bulk_create(patients)
+    
+    # Query count must be reasonable (no N+1)
+    with self.assertNumQueries(3):  # Expect: auth, patients, count
+        response = self.client.get('/patients/')
+    
+    self.assertEqual(response.status_code, 200)
+
+# ✅ DO: Test JSONB query performance
+def test_fhir_search_is_indexed(self):
+    """JSONB queries must use indexes"""
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+    
+    # Create patient with FHIR data
+    patient = self.create_patient_with_fhir_conditions()
+    
+    # Query should use GIN index on JSONB field
+    with CaptureQueriesContext(connection) as queries:
+        results = Patient.objects.filter(
+            cumulative_fhir_json__Condition__contains=[{
+                'code': {'coding': [{'code': 'E11.9'}]}
+            }]
+        )
+        list(results)  # Execute query
+    
+    # Verify index usage (check EXPLAIN)
+    query_sql = queries[0]['sql']
+    self.assertIn('cumulative_fhir_json', query_sql)
+```
+
+---
+
+## **Integration Testing Standards**
+
+```python
+# ✅ DO: Test complete workflows end-to-end
+def test_document_upload_to_fhir_extraction_workflow(self):
+    """Complete document processing pipeline must work"""
+    # Upload document
+    with open('test_files/sample_medical_record.pdf', 'rb') as f:
+        response = self.client.post('/documents/upload/', {
+            'file': f,
+            'patient': self.patient.id,
+            'uploaded_by': self.user.id
+        })
+    
+    self.assertEqual(response.status_code, 302)
+    document = Document.objects.latest('created_at')
+    
+    # Process document (synchronously for testing)
+    result = process_document_sync(document.id)
+    
+    # Verify processing succeeded
+    document.refresh_from_db()
+    self.assertEqual(document.status, 'completed')
+    self.assertIsNotNone(document.processed_at)
+    
+    # Verify FHIR data was extracted
+    self.patient.refresh_from_db()
+    fhir_bundle = self.patient.cumulative_fhir_json
+    
+    # Must have at minimum Patient and DocumentReference
+    self.assertIn('Patient', fhir_bundle)
+    self.assertIn('DocumentReference', fhir_bundle)
+    
+    # DocumentReference must link to our document
+    doc_refs = fhir_bundle['DocumentReference']
+    self.assertTrue(
+        any(str(document.id) in str(ref) for ref in doc_refs)
+    )
+
+# ✅ DO: Test Celery task execution
+def test_async_document_processing_task(self):
+    """Celery tasks must execute correctly"""
+    document = self.create_test_document()
+    
+    # Execute task synchronously (CELERY_TASK_ALWAYS_EAGER=True)
+    result = process_document.delay(document.id)
+    
+    # Task must complete successfully
+    self.assertTrue(result.successful())
+    
+    # Document must be processed
+    document.refresh_from_db()
+    self.assertEqual(document.status, 'completed')
+```
+
+---
+
+## **Testing Anti-Patterns to AVOID**
+
+### **❌ DON'T: Test the Framework**
+```python
+# ❌ DON'T: Test Django's built-in functionality
+def test_django_saves_models(self):
+    patient = Patient(first_name='John')
+    patient.save()
+    self.assertIsNotNone(patient.id)  # Django works, we know
+
+# ❌ DON'T: Test library behavior
+def test_datetime_works(self):
+    now = timezone.now()
+    self.assertIsInstance(now, datetime)  # stdlib works
+```
+
+### **❌ DON'T: Mock Everything**
+```python
+# ❌ DON'T: Mock the actual code you're testing
+@patch('apps.patients.models.Patient')
+@patch('apps.patients.forms.PatientForm')
+def test_patient_creation_fully_mocked(self, mock_form, mock_patient):
+    # This tests nothing - all behavior is mocked
+    mock_form.is_valid.return_value = True
+    mock_patient.objects.create.return_value = Mock()
+    
+    result = create_patient(form_data)
+    self.assertTrue(result)  # Meaningless
+```
+
+### **❌ DON'T: Test Trivia**
+```python
+# ❌ DON'T: Test string representation
+def test_patient_str_method(self):
+    patient = Patient(first_name='John', last_name='Doe')
+    self.assertEqual(str(patient), 'John Doe')
+    # Who cares? This doesn't prevent bugs
+
+# ❌ DON'T: Test getters/setters
+def test_patient_name_property(self):
+    patient = Patient(first_name='John')
+    self.assertEqual(patient.first_name, 'John')
+    # This is just testing Python
+```
+
+---
+
+## **Test Quality Checklist**
+
+Before submitting a test, verify:
+
+- [ ] **Can this test actually fail?** If not, delete it.
+- [ ] **Does it test business logic?** Not framework/library behavior.
+- [ ] **Are edge cases covered?** Empty strings, None, max values, etc.
+- [ ] **Are error cases tested?** Invalid input, missing permissions, etc.
+- [ ] **Is mocking minimal?** Only mock external services, not our code.
+- [ ] **Are assertions specific?** Not just `assertIsNotNone` or `assertTrue`.
+- [ ] **Does it test outcomes?** Not implementation details.
+- [ ] **Is it deterministic?** Same result every time, no random data.
+- [ ] **Does it clean up?** No database pollution between tests.
+- [ ] **Is it documented?** Docstring explains WHAT and WHY.
+
+---
+
+## **Required Test Coverage by Component**
+
+### **Models (100% Coverage Required)**
+- Field validation (all constraints)
+- Custom save methods
+- Custom managers/querysets
+- Model methods with business logic
+- Unique constraints
+- Foreign key cascades
+
+### **Forms (100% Coverage Required)**
+- Valid data acceptance
+- Invalid data rejection
+- Custom clean methods
+- Field-level validation
+- Cross-field validation
+
+### **Views (90%+ Coverage Required)**
+- Permission checks
+- GET/POST/PUT/DELETE methods
+- Query optimization (N+1 prevention)
+- Error handling
+- Redirect logic
+
+### **Services (100% Coverage Required)**
+- All public methods
+- Error handling
+- Integration with external systems
+- Celery tasks
+
+### **HIPAA Compliance (100% Coverage Required)**
+- PHI encryption
+- Audit logging
+- Access control
+- Data retention
+- Secure deletion
+
+---
+
+## **Performance Benchmarks**
+
+Tests must enforce performance requirements:
+
+```python
+# ✅ DO: Benchmark critical operations
+def test_patient_search_performance(self):
+    """Search must return results in <200ms"""
+    # Create 1000 patients
+    self.create_bulk_patients(1000)
+    
+    start = time.time()
+    results = Patient.objects.filter(
+        Q(first_name__icontains='John') |
+        Q(last_name__icontains='Smith')
+    )[:20]
+    list(results)  # Force evaluation
+    duration = time.time() - start
+    
+    # Must be fast even with large dataset
+    self.assertLess(duration, 0.2, 
+                   f"Search took {duration:.3f}s, exceeds 200ms limit")
+```
+
+---
+
+## **When in Doubt**
+
+**Ask yourself:**
+1. "If I break this feature, will this test catch it?"
+2. "Could this test pass even if the feature is broken?"
+3. "Am I testing my code or Django/Python?"
+4. "What is the WORST that could happen if this fails in production?"
+
+**If you can't answer #1 with "YES" and #4 with something scary, write a better test.**
+
+---
+
+**Remember:** 
+- Tests are documentation of requirements
+- Tests are regression prevention
+- Tests are your safety net for refactoring
+- **Weak tests are worse than no tests** because they create false confidence
+
+**In a HIPAA-regulated medical application, comprehensive testing isn't optional - it's patient safety.**
