@@ -533,11 +533,49 @@ Key implementation details:
 - ServiceRequestService already exists and will be updated to handle this model
 </info added on 2025-10-30T03:51:10.554Z>
 
-## 11. Create DiagnosticReport Pydantic model [pending]
+## 11. Create DiagnosticReport Pydantic model [done]
 ### Dependencies: None
 ### Description: Develop a comprehensive DiagnosticReport Pydantic model for AI extraction.
 ### Details:
 In apps/documents/services/ai_extraction.py, create a DiagnosticReport model with: 1) All required FHIR DiagnosticReport fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.
+<info added on 2025-10-30T03:58:05.444Z>
+Implementation complete and verified:
+
+✅ Created DiagnosticReport Pydantic model in apps/documents/services/ai_extraction.py (lines 223-234)
+✅ Added all required FHIR DiagnosticReport fields:
+   - report_id: Optional[str]
+   - report_type: str (REQUIRED)
+   - findings: str (REQUIRED - key findings/results)
+   - conclusion: Optional[str] (diagnostic conclusion/impression)
+   - recommendations: Optional[str] (follow-up actions)
+   - status: Optional[str] (preliminary, final, amended, corrected)
+   - report_date: Optional[str]
+   - ordering_provider: Optional[str]
+   - confidence: float (0.0-1.0 validated)
+   - source: SourceContext (REQUIRED)
+✅ Added diagnostic_reports field to StructuredMedicalExtraction (lines 273-276)
+✅ Updated confidence_average validator to include diagnostic_reports in calculation
+
+✅ Created test file: apps/documents/tests/test_diagnostic_report_pydantic_model.py
+✅ All 8 tests passed successfully:
+   - test_diagnostic_report_model_valid_full_data: Full model with all fields
+   - test_diagnostic_report_model_minimal_required_data: Only required fields (report_type, findings)
+   - test_diagnostic_report_model_missing_required_fields: ValidationError for missing report_type or findings
+   - test_diagnostic_report_model_invalid_confidence: ValidationError for confidence outside 0.0-1.0
+   - test_diagnostic_report_serialization: model_dump() produces correct dict
+   - test_diagnostic_report_deserialization: Creation from dict works
+   - test_diagnostic_report_in_structured_extraction: Integration with StructuredMedicalExtraction
+   - test_confidence_average_includes_diagnostic_reports: Confidence calculation includes reports
+
+Key implementation details:
+- Model follows exact pattern of ServiceRequest, Encounter, Provider models
+- Required fields: report_type, findings, confidence, source
+- Optional fields: report_id, conclusion, recommendations, status, report_date, ordering_provider
+- findings is REQUIRED (unlike other models where only type/name is required)
+- confidence validated in 0.0-1.0 range
+- Ready for AI extraction in Phase 2 (40.12 will add prompt instructions)
+- DiagnosticReportService already exists and will be updated to handle this model
+</info added on 2025-10-30T03:58:05.444Z>
 
 ## 12. Update AI extraction system prompt for Phase 2 models [pending]
 ### Dependencies: 40.9, 40.10, 40.11
