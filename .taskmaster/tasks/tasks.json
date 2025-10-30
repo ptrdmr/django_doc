@@ -2890,8 +2890,8 @@
               14,
               15
             ],
-            "details": "Update the AI extraction system prompt to: 1) Include instructions for extracting AllergyIntolerance, CarePlan, and Organization data, 2) Provide examples of correct extraction format, 3) Specify required fields and validation rules, 4) Maintain instructions for existing models.",
-            "status": "pending",
+            "details": "Update the AI extraction system prompt to: 1) Include instructions for extracting AllergyIntolerance, CarePlan, and Organization data, 2) Provide examples of correct extraction format, 3) Specify required fields and validation rules, 4) Maintain instructions for existing models.\n<info added on 2025-10-30T04:22:11.691Z>\nUpdated the AI extraction system prompt with comprehensive instructions for AllergyIntolerance, CarePlan, and Organization resources. Added detailed extraction guidelines including required fields, validation rules, and format examples for each resource type. Implemented trigger phrase detection to improve extraction accuracy. Modified both comprehensive and fallback prompts to support all 12 FHIR resource types. All 5 test cases now pass successfully, confirming the AI system can properly extract and format all supported resource types according to specifications.\n</info added on 2025-10-30T04:22:11.691Z>",
+            "status": "done",
             "testStrategy": "Test the updated prompt with sample documents to verify the LLM correctly extracts the new model types."
           },
           {
@@ -2949,7 +2949,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-30T04:19:09.494Z",
+      "updated": "2025-10-30T04:22:12.165Z",
       "description": "Tasks for master context"
     }
   }

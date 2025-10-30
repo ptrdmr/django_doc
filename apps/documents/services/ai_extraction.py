@@ -475,6 +475,9 @@ STRUCTURED OUTPUT PRIORITY:
 - Encounters: ALL visit/encounter details with DATES, location, reason, participants
 - Service Requests: ALL orders, referrals, requests with REQUEST DATES and priority
 - Diagnostic Reports: ALL test results, findings, conclusions, REPORT DATES
+- Allergies: ALL documented allergies with allergen, reaction, severity, dates
+- Care Plans: ALL treatment plans with goals, activities, timelines
+- Organizations: ALL healthcare facilities with names, types, addresses
 
 ENCOUNTER EXTRACTION (NEW - Phase 2):
 Extract ALL encounter/visit information:
@@ -508,8 +511,42 @@ Extract ALL test results and diagnostic findings:
 - ordering_provider: Provider who ordered the test
 Examples: "CT scan shows...", "Lab results: Glucose 105", "Echo report: EF 55%", "Path report: benign tissue"
 
-CRITICAL for NEW extractions:
-- Look for phrases like "referred to", "order for", "consult with" → ServiceRequest
+ALLERGY/INTOLERANCE EXTRACTION (NEW - Phase 3):
+Extract ALL documented allergies:
+- allergen: Substance causing allergy (medication, food, environmental agent)
+- reaction: Type of reaction (rash, anaphylaxis, GI upset, swelling, etc.)
+- severity: Severity level (mild, moderate, severe, life-threatening)
+- onset_date: Date allergy first observed or documented
+- status: Current status (active, inactive, resolved)
+- verification_status: Verification level (confirmed, unconfirmed, refuted)
+Examples: "NKDA", "Penicillin allergy - anaphylaxis", "Allergic to shellfish", "Latex sensitivity"
+
+CARE PLAN EXTRACTION (NEW - Phase 3):
+Extract documented treatment plans:
+- plan_description: Overview of care plan or treatment plan (REQUIRED)
+- goals: List of care goals and objectives
+- activities: List of planned activities and interventions
+- period_start: Care plan start date
+- period_end: Care plan end date
+- status: Plan status (draft, active, completed, cancelled)
+- intent: Intent (proposal, plan, order)
+Examples: "Diabetes management plan", "Post-op care protocol", "CHF treatment plan"
+
+ORGANIZATION EXTRACTION (NEW - Phase 3):
+Extract healthcare organizations and facilities:
+- name: Organization or facility name (REQUIRED)
+- identifier: NPI, tax ID, or other identifier
+- organization_type: Type (hospital, clinic, lab, pharmacy, payer, etc.)
+- address: Physical address
+- city, state, postal_code: Location details
+- phone: Contact phone number
+Examples: "General Hospital", "Community Clinic", "Regional Lab Services", "Springfield Medical Center"
+
+CRITICAL for ALL extractions:
+- Look for "allergy to", "allergic to", "NKDA" → AllergyIntolerance
+- Look for "care plan", "treatment plan", "protocol", "goals:" → CarePlan
+- Look for "Hospital", "Clinic", "Medical Center", "Lab" → Organization
+- Look for "referred to", "order for", "consult with" → ServiceRequest
 - Look for "ER visit", "admitted to", "seen in clinic" → Encounter  
 - Look for "report shows", "results:", "findings:", "impression:" → DiagnosticReport"""
             
@@ -540,16 +577,19 @@ CONFIDENCE SCORING:
 - 0.3-0.5: Information suggested but unclear
 - 0.1-0.3: Information possibly mentioned but very unclear
 
-Extract these resource types:
+Extract these 12 resource types:
 - Conditions: diagnoses, symptoms, clinical findings with onset dates
 - Medications: names, dosages, routes, frequencies with start/stop dates
 - Vital Signs: measurements with values, units, timestamps
 - Lab Results: test names, values, reference ranges, test dates
 - Procedures: surgical and diagnostic procedures with procedure dates
 - Providers: healthcare professionals with specialties and roles
-- Encounters (NEW): ALL visits, admissions, encounters with dates, location, reason, participants
-- Service Requests (NEW): ALL orders, referrals, requests with type, requester, reason, priority, request dates
-- Diagnostic Reports (NEW): ALL test results with report type, findings (required), conclusions, recommendations, report dates
+- Encounters: ALL visits, admissions, encounters with dates, location, reason, participants
+- Service Requests: ALL orders, referrals, requests with type, requester, reason, priority, request dates
+- Diagnostic Reports: ALL test results with report type, findings (required), conclusions, recommendations, report dates
+- Allergies: ALL documented allergies with allergen, reaction, severity, verification
+- Care Plans: ALL treatment plans with description (required), goals, activities, timelines
+- Organizations: ALL healthcare facilities with name (required), type, address, contact info
 
 Focus on:
 - Medications (highest priority): names, dosages, routes, frequencies
