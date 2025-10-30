@@ -3,6 +3,8 @@ FHIR Metrics Service
 
 Provides comprehensive metrics tracking for FHIR data capture improvements.
 Calculates capture rates by comparing extracted AI data with processed FHIR resources.
+
+Updated for Task 40.8: Dynamic resource type detection from FHIRProcessor.
 """
 
 import logging
@@ -15,21 +17,100 @@ logger = logging.getLogger(__name__)
 class FHIRMetricsService:
     """Service for calculating and tracking FHIR data capture metrics."""
     
-    def __init__(self):
-        """Initialize the metrics service."""
-        self.supported_resource_types = [
+    def __init__(self, fhir_processor=None):
+        """
+        Initialize the metrics service.
+        
+        Args:
+            fhir_processor: Optional FHIRProcessor instance for dynamic resource type detection.
+                          If not provided, uses default list for backward compatibility.
+        """
+        # Dynamic resource type detection from FHIRProcessor (Phase 1 improvement)
+        if fhir_processor is not None:
+            try:
+                self.supported_resource_types = fhir_processor.get_supported_resource_types()
+                logger.info(f"FHIRMetricsService initialized with {len(self.supported_resource_types)} "
+                          f"resource types from FHIRProcessor")
+            except Exception as e:
+                logger.warning(f"Could not get resource types from FHIRProcessor: {e}, using defaults")
+                self.supported_resource_types = self._get_default_resource_types()
+        else:
+            # Fallback to default list for backward compatibility
+            self.supported_resource_types = self._get_default_resource_types()
+            logger.info(f"FHIRMetricsService initialized with default resource types")
+    
+    def _get_default_resource_types(self) -> List[str]:
+        """
+        Get default list of resource types for backward compatibility.
+        
+        Returns:
+            List of default FHIR resource type names
+        """
+        return [
+            'Condition',
             'MedicationStatement',
+            'Observation',
             'DiagnosticReport', 
             'ServiceRequest',
             'Encounter',
-            'Condition',
-            'Observation',
             'Procedure',
+            'Practitioner',
             'AllergyIntolerance',
             'CarePlan',
-            'Organization',
-            'Practitioner'
+            'Organization'
         ]
+    
+    def validate_against_processor(self, fhir_processor) -> Dict[str, Any]:
+        """
+        Validate that metrics service resource types match FHIRProcessor capabilities.
+        
+        Args:
+            fhir_processor: FHIRProcessor instance to validate against
+            
+        Returns:
+            Dictionary with validation results
+        """
+        validation = {
+            'valid': True,
+            'metrics_types': self.supported_resource_types.copy(),
+            'processor_types': [],
+            'missing_in_processor': [],
+            'missing_in_metrics': [],
+            'warnings': []
+        }
+        
+        try:
+            processor_types = fhir_processor.get_supported_resource_types()
+            validation['processor_types'] = processor_types
+            
+            # Check for types in metrics but not in processor
+            for resource_type in self.supported_resource_types:
+                if resource_type not in processor_types:
+                    validation['missing_in_processor'].append(resource_type)
+                    validation['valid'] = False
+                    warning_msg = f"Resource type '{resource_type}' in metrics but not implemented in FHIRProcessor"
+                    validation['warnings'].append(warning_msg)
+                    logger.warning(warning_msg)
+            
+            # Check for types in processor but not in metrics
+            for resource_type in processor_types:
+                if resource_type not in self.supported_resource_types:
+                    validation['missing_in_metrics'].append(resource_type)
+                    warning_msg = f"Resource type '{resource_type}' in FHIRProcessor but not tracked in metrics"
+                    validation['warnings'].append(warning_msg)
+                    logger.warning(warning_msg)
+            
+            if validation['valid']:
+                logger.info(f"Metrics validation passed: {len(processor_types)} resource types aligned")
+            else:
+                logger.error(f"Metrics validation failed: {len(validation['missing_in_processor'])} types missing in processor")
+                
+        except Exception as e:
+            validation['valid'] = False
+            validation['warnings'].append(f"Validation error: {str(e)}")
+            logger.error(f"Error validating metrics against processor: {e}")
+        
+        return validation
         
     def calculate_data_capture_metrics(
         self, 

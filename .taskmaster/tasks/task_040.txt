@@ -420,11 +420,32 @@ Implementation of FHIRProcessor integration for ProcedureService and Practitione
 Phase 1 integration is now complete with 8/12 resource types fully implemented and functional.
 </info added on 2025-10-30T03:31:26.747Z>
 
-## 8. Update FHIRMetricsService for dynamic resource detection [pending]
+## 8. Update FHIRMetricsService for dynamic resource detection [done]
 ### Dependencies: 40.7
 ### Description: Enhance the FHIRMetricsService to dynamically detect and report on all resource types.
 ### Details:
 Modify the FHIRMetricsService to: 1) Dynamically detect all resource types being processed, 2) Update metrics collection to track all resource types, 3) Ensure metrics are properly categorized and labeled.
+<info added on 2025-10-30T03:42:01.966Z>
+Implementation completed for dynamic resource type detection in FHIRMetricsService:
+
+1. Updated apps/fhir/services/metrics_service.py with:
+   - Optional fhir_processor parameter in __init__()
+   - Dynamic resource type detection using FHIRProcessor.get_supported_resource_types()
+   - _get_default_resource_types() method for backward compatibility
+   - validate_against_processor() method to verify alignment between metrics and processor
+
+2. Created comprehensive test suite in apps/fhir/tests/test_metrics_service_dynamic.py:
+   - All 7 tests passing, covering initialization scenarios, validation, and error handling
+   - Verified dynamic detection works correctly with processor (8 types)
+   - Confirmed backward compatibility when no processor provided (11 types)
+   - Validated detection of misalignments between metrics and processor
+
+3. Implementation details:
+   - Service dynamically adapts to processor's supported resource types
+   - Maintains backward compatibility for existing code
+   - Implements proper logging (INFO for initialization, WARNING for mismatches, ERROR for validation failures)
+   - Current validation shows expected Phase 1 gaps (AllergyIntolerance, CarePlan, Organization)
+</info added on 2025-10-30T03:42:01.966Z>
 
 ## 9. Create Encounter Pydantic model [pending]
 ### Dependencies: None
