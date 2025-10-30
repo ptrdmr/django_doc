@@ -311,11 +311,44 @@ Key implementation details:
 - Confidence scores added to extension
 </info added on 2025-10-30T03:15:55.102Z>
 
-## 5. Implement ProcedureService for existing Pydantic model [pending]
+## 5. Implement ProcedureService for existing Pydantic model [done]
 ### Dependencies: None
 ### Description: Create a new ProcedureService to process the existing Procedure Pydantic model.
 ### Details:
 Create apps/fhir/services/procedure_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR Procedure resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.
+<info added on 2025-10-30T03:20:11.256Z>
+Implementation complete and verified:
+
+✅ Created new apps/fhir/services/procedure_service.py following ConditionService pattern
+✅ Implemented process_procedures() main entry point with dual-format support
+✅ Added _create_procedure_from_structured() method to process Procedure Pydantic models
+✅ Added _create_procedure_from_field() for legacy fallback compatibility
+✅ Used ClinicalDateParser for procedure_date handling
+✅ Added comprehensive logging indicating which path (structured vs legacy) was used
+
+✅ Created test file: apps/fhir/tests/test_procedure_service_dual_format.py
+✅ All 9 tests passed successfully:
+   - test_structured_input_happy_path: Verifies full Procedure Pydantic processing with date, provider, outcome
+   - test_structured_input_minimal_data: Validates required fields only (name)
+   - test_legacy_fields_format_regression: Confirms backward compatibility with fields processing
+   - test_structured_empty_procedures_list: Edge case handling
+   - test_missing_patient_id: Error handling
+   - test_invalid_structured_data: Malformed data handling (missing name)
+   - test_multiple_procedures_structured: Batch processing (3 procedures)
+   - test_date_parser_used_for_structured_dates: ClinicalDateParser integration verification
+   - test_structured_path_priority_over_legacy: Path prioritization
+
+Key implementation details:
+- File created: apps/fhir/services/procedure_service.py (~260 lines)
+- Structured path logs as INFO "Processing N procedures via structured path"
+- Legacy fallback logs as WARNING "Falling back to legacy fields processing for procedures"
+- Default status: completed (for documented procedures)
+- Procedure date added to performedDateTime using ClinicalDateParser
+- Provider added to performer array with actor display
+- Outcome preserved in outcome.text field
+- Source context and confidence preserved in FHIR metadata
+- Legacy path also extracts dates from procedure text using ClinicalDateParser
+</info added on 2025-10-30T03:20:11.256Z>
 
 ## 6. Implement PractitionerService for existing Pydantic model [pending]
 ### Dependencies: None

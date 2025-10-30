@@ -2774,8 +2774,8 @@
             "title": "Implement ProcedureService for existing Pydantic model",
             "description": "Create a new ProcedureService to process the existing Procedure Pydantic model.",
             "dependencies": [],
-            "details": "Create apps/fhir/services/procedure_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR Procedure resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.",
-            "status": "pending",
+            "details": "Create apps/fhir/services/procedure_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR Procedure resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.\n<info added on 2025-10-30T03:20:11.256Z>\nImplementation complete and verified:\n\n✅ Created new apps/fhir/services/procedure_service.py following ConditionService pattern\n✅ Implemented process_procedures() main entry point with dual-format support\n✅ Added _create_procedure_from_structured() method to process Procedure Pydantic models\n✅ Added _create_procedure_from_field() for legacy fallback compatibility\n✅ Used ClinicalDateParser for procedure_date handling\n✅ Added comprehensive logging indicating which path (structured vs legacy) was used\n\n✅ Created test file: apps/fhir/tests/test_procedure_service_dual_format.py\n✅ All 9 tests passed successfully:\n   - test_structured_input_happy_path: Verifies full Procedure Pydantic processing with date, provider, outcome\n   - test_structured_input_minimal_data: Validates required fields only (name)\n   - test_legacy_fields_format_regression: Confirms backward compatibility with fields processing\n   - test_structured_empty_procedures_list: Edge case handling\n   - test_missing_patient_id: Error handling\n   - test_invalid_structured_data: Malformed data handling (missing name)\n   - test_multiple_procedures_structured: Batch processing (3 procedures)\n   - test_date_parser_used_for_structured_dates: ClinicalDateParser integration verification\n   - test_structured_path_priority_over_legacy: Path prioritization\n\nKey implementation details:\n- File created: apps/fhir/services/procedure_service.py (~260 lines)\n- Structured path logs as INFO \"Processing N procedures via structured path\"\n- Legacy fallback logs as WARNING \"Falling back to legacy fields processing for procedures\"\n- Default status: completed (for documented procedures)\n- Procedure date added to performedDateTime using ClinicalDateParser\n- Provider added to performer array with actor display\n- Outcome preserved in outcome.text field\n- Source context and confidence preserved in FHIR metadata\n- Legacy path also extracts dates from procedure text using ClinicalDateParser\n</info added on 2025-10-30T03:20:11.256Z>",
+            "status": "done",
             "testStrategy": "Write comprehensive unit tests for the new service, testing both structured and legacy input formats."
           },
           {
@@ -2949,7 +2949,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-30T03:15:55.502Z",
+      "updated": "2025-10-30T03:20:11.479Z",
       "description": "Tasks for master context"
     }
   }
