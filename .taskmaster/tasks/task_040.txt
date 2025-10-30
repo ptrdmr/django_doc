@@ -1,0 +1,304 @@
+# Task ID: 40
+# Title: Implement FHIR Resource Alignment for Pydantic Models
+# Status: pending
+# Dependencies: 6, 30, 35
+# Priority: high
+# Description: Achieve complete alignment between AI extraction Pydantic models and FHIR processing services to eliminate data loss during document processing, increasing resource type alignment from 6/12 to 12/12.
+# Details:
+Implement the FHIR resource alignment in four phases:
+
+PHASE 1: Update Existing Services and Create New Ones (Target: 8/12 alignment)
+1. Update 4 existing FHIR services to accept structured Pydantic input:
+   - Modify `ConditionService` in `apps/fhir/services/condition_service.py`
+   - Modify `MedicationService` in `apps/fhir/services/medication_service.py`
+   - Modify `ObservationService` in `apps/fhir/services/observation_service.py`
+   - Modify `EncounterService` in `apps/fhir/services/encounter_service.py`
+   - Add dual-format support with structured Pydantic-derived dicts as primary and legacy fields as fallback
+
+2. Create 2 new services for existing Pydantic models:
+   - Implement `ProcedureService` in `apps/fhir/services/procedure_service.py`
+   - Implement `PractitionerService` in `apps/fhir/services/practitioner_service.py`
+
+3. Update `FHIRProcessor` in `apps/fhir/services/fhir_processor.py` to wire in new services
+4. Update `FHIRMetricsService` for dynamic resource detection
+
+PHASE 2: Create New Pydantic Models and Update Services (Target: 11/12 alignment)
+1. Create 3 new Pydantic models in `apps/documents/services/ai_extraction.py`:
+   - `Encounter` model with full field schema
+   - `ServiceRequest` model with full field schema
+   - `DiagnosticReport` model with full field schema
+
+2. Update AI extraction system prompt to instruct LLM to extract these types
+3. Update 3 existing FHIR services to process new structured models
+
+PHASE 3: Complete Alignment with Final Models (Target: 12/12 alignment)
+1. Create 3 final Pydantic models in `apps/documents/services/ai_extraction.py`:
+   - `AllergyIntolerance` model with full field schema
+   - `CarePlan` model with full field schema
+   - `Organization` model with full field schema
+
+2. Update AI prompt for new model extraction
+3. Create 3 corresponding FHIR services:
+   - `AllergyIntoleranceService` in `apps/fhir/services/allergy_intolerance_service.py`
+   - `CarePlanService` in `apps/fhir/services/care_plan_service.py`
+   - `OrganizationService` in `apps/fhir/services/organization_service.py`
+
+4. Wire all new services into `FHIRProcessor`
+
+PHASE 4: Pipeline Configuration and Validation
+1. Ensure structured path is primary in pipeline configuration
+2. Add comprehensive logging for observability
+3. Run validation suite on 20-30 sample documents
+4. Update documentation
+
+Technical Requirements:
+- All services must support dual-format: structured Pydantic-derived dicts (primary) and legacy fields (fallback)
+- Use `ClinicalDateParser` from Task #35 for all date handling to ensure consistency
+- Maintain test coverage ≥95% on all new/modified code
+- Ensure AI extraction recall ≥85% for each resource type
+- Prevent regression on existing functionality
+- Follow unittest.TestCase framework for all tests
+
+# Test Strategy:
+To verify the correct implementation of the FHIR resource alignment:
+
+1. Unit Tests for Each Phase:
+   - Create test cases for each updated and new FHIR service:
+     ```python
+     from django.test import TestCase
+     from apps.fhir.services.condition_service import ConditionService
+     
+     class ConditionServiceTests(TestCase):
+         def setUp(self):
+             self.service = ConditionService()
+             self.pydantic_data = {...}  # Sample Pydantic-derived dict
+             self.legacy_data = {...}    # Sample legacy format dict
+             
+         def test_process_pydantic_data(self):
+             fhir_resource = self.service.process(self.pydantic_data)
+             self.assertIsNotNone(fhir_resource)
+             self.assertEqual(fhir_resource.resource_type, "Condition")
+             # Verify all expected fields are present
+             
+         def test_process_legacy_data(self):
+             fhir_resource = self.service.process(self.legacy_data)
+             self.assertIsNotNone(fhir_resource)
+             # Verify fallback processing works correctly
+     ```
+   - Repeat similar tests for all 12 services
+
+2. Integration Tests:
+   - Test the complete pipeline from AI extraction to FHIR resource creation:
+     ```python
+     def test_extraction_to_fhir_pipeline(self):
+         # Mock AI extraction response
+         extraction_result = {...}  # Sample extraction with all 12 resource types
+         
+         # Process through FHIRProcessor
+         processor = FHIRProcessor()
+         fhir_resources = processor.process_extraction(extraction_result)
+         
+         # Verify all expected resource types are present
+         resource_types = [r.resource_type for r in fhir_resources]
+         self.assertIn("Condition", resource_types)
+         self.assertIn("Medication", resource_types)
+         # Check all 12 types
+     ```
+
+3. Data Loss Tests:
+   - Create tests specifically to verify no data is lost during conversion:
+     ```python
+     def test_no_data_loss_during_conversion(self):
+         # Create a complex Pydantic model instance with all fields populated
+         complex_model = ComplexPydanticModel(...)
+         
+         # Process through appropriate service
+         service = RelevantService()
+         fhir_resource = service.process(complex_model.dict())
+         
+         # Verify all fields from the model are represented in the FHIR resource
+         self.assertIn(complex_model.field1, fhir_resource.as_json())
+         # Check all fields
+     ```
+
+4. Regression Tests:
+   - Ensure existing functionality continues to work:
+     ```python
+     def test_existing_functionality_preserved(self):
+         # Use known test cases from before the changes
+         legacy_input = {...}  # Input that worked before changes
+         
+         # Process through updated service
+         result = updated_service.process(legacy_input)
+         
+         # Verify output matches expected pre-change output
+         self.assertEqual(result, expected_output)
+     ```
+
+5. End-to-End Tests:
+   - Run the complete document processing pipeline on 20-30 sample documents
+   - Verify all 12 resource types are correctly extracted and processed
+   - Measure extraction recall for each resource type (target ≥85%)
+   - Check for any data loss between extraction and final FHIR resources
+
+6. Performance Tests:
+   - Measure processing time before and after changes
+   - Ensure no significant performance degradation
+
+7. Manual Validation:
+   - Perform manual review of a subset of processed documents
+   - Compare extracted data with source documents
+   - Verify correct handling of edge cases and complex medical terminology
+
+# Subtasks:
+## 1. Update ConditionService for dual-format support [done]
+### Dependencies: None
+### Description: Modify the ConditionService to accept structured Pydantic input while maintaining backward compatibility with legacy fields.
+### Details:
+In apps/fhir/services/condition_service.py, update the service to: 1) Accept Pydantic-derived dict as primary input, 2) Fall back to legacy fields if structured data is missing, 3) Add type hints and documentation, 4) Ensure all FHIR resource fields are properly mapped.
+<info added on 2025-10-30T02:53:14.569Z>
+Implementation complete and verified:
+
+✅ Updated apps/fhir/services/condition_service.py with dual-format support
+✅ Added _create_condition_from_structured() method to process MedicalCondition Pydantic models
+✅ Modified process_conditions() to prioritize structured data over legacy fields
+✅ Maintained 100% backward compatibility with legacy fields processing
+✅ Used ClinicalDateParser for all date handling
+✅ Added comprehensive logging indicating which path (structured vs legacy) was used
+
+✅ Created test file: apps/fhir/tests/test_condition_service_dual_format.py
+✅ All 10 tests passed successfully:
+   - test_structured_input_happy_path: Verifies full Pydantic model processing
+   - test_structured_input_minimal_data: Validates required fields only
+   - test_structured_input_status_mapping: Tests status code mapping
+   - test_legacy_fields_format_regression: Confirms backward compatibility
+   - test_structured_input_empty_conditions_list: Edge case handling
+   - test_missing_patient_id: Error handling
+   - test_invalid_structured_data: Malformed data handling
+   - test_multiple_conditions_structured: Batch processing
+   - test_date_parser_used_for_structured_dates: ClinicalDateParser integration
+   - test_structured_path_priority_over_legacy: Path prioritization
+
+Key implementation details:
+- Structured path logs as INFO with message "Processing N conditions via structured path"
+- Legacy fallback logs as WARNING "Falling back to legacy fields processing"
+- Status mapping: active, inactive, resolved, remission, recurrence (defaults to active)
+- ICD codes included when present in structured data
+- Source context preserved in FHIR note field
+- Confidence scores added to meta tags
+</info added on 2025-10-30T02:53:14.569Z>
+
+## 2. Update MedicationService for dual-format support [pending]
+### Dependencies: None
+### Description: Modify the MedicationService to accept structured Pydantic input while maintaining backward compatibility with legacy fields.
+### Details:
+In apps/fhir/services/medication_service.py, update the service to: 1) Accept Pydantic-derived dict as primary input, 2) Fall back to legacy fields if structured data is missing, 3) Add type hints and documentation, 4) Ensure all FHIR resource fields are properly mapped.
+
+## 3. Update ObservationService for dual-format support [pending]
+### Dependencies: None
+### Description: Modify the ObservationService to accept structured Pydantic input while maintaining backward compatibility with legacy fields.
+### Details:
+In apps/fhir/services/observation_service.py, update the service to: 1) Accept Pydantic-derived dict as primary input, 2) Fall back to legacy fields if structured data is missing, 3) Add type hints and documentation, 4) Ensure all FHIR resource fields are properly mapped.
+
+## 4. Update EncounterService for dual-format support [pending]
+### Dependencies: None
+### Description: Modify the EncounterService to accept structured Pydantic input while maintaining backward compatibility with legacy fields.
+### Details:
+In apps/fhir/services/encounter_service.py, update the service to: 1) Accept Pydantic-derived dict as primary input, 2) Fall back to legacy fields if structured data is missing, 3) Add type hints and documentation, 4) Ensure all FHIR resource fields are properly mapped.
+
+## 5. Implement ProcedureService for existing Pydantic model [pending]
+### Dependencies: None
+### Description: Create a new ProcedureService to process the existing Procedure Pydantic model.
+### Details:
+Create apps/fhir/services/procedure_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR Procedure resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.
+
+## 6. Implement PractitionerService for existing Pydantic model [pending]
+### Dependencies: None
+### Description: Create a new PractitionerService to process the existing Practitioner Pydantic model.
+### Details:
+Create apps/fhir/services/practitioner_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR Practitioner resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.
+
+## 7. Update FHIRProcessor to integrate new services [pending]
+### Dependencies: 40.1, 40.2, 40.3, 40.4, 40.5, 40.6
+### Description: Modify the FHIRProcessor to use the newly created and updated services.
+### Details:
+In apps/fhir/services/fhir_processor.py: 1) Import new service classes, 2) Initialize new services in constructor, 3) Update process_document method to route data to appropriate services, 4) Ensure proper error handling and logging.
+
+## 8. Update FHIRMetricsService for dynamic resource detection [pending]
+### Dependencies: 40.7
+### Description: Enhance the FHIRMetricsService to dynamically detect and report on all resource types.
+### Details:
+Modify the FHIRMetricsService to: 1) Dynamically detect all resource types being processed, 2) Update metrics collection to track all resource types, 3) Ensure metrics are properly categorized and labeled.
+
+## 9. Create Encounter Pydantic model [pending]
+### Dependencies: None
+### Description: Develop a comprehensive Encounter Pydantic model for AI extraction.
+### Details:
+In apps/documents/services/ai_extraction.py, create an Encounter model with: 1) All required FHIR Encounter fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.
+
+## 10. Create ServiceRequest Pydantic model [pending]
+### Dependencies: None
+### Description: Develop a comprehensive ServiceRequest Pydantic model for AI extraction.
+### Details:
+In apps/documents/services/ai_extraction.py, create a ServiceRequest model with: 1) All required FHIR ServiceRequest fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.
+
+## 11. Create DiagnosticReport Pydantic model [pending]
+### Dependencies: None
+### Description: Develop a comprehensive DiagnosticReport Pydantic model for AI extraction.
+### Details:
+In apps/documents/services/ai_extraction.py, create a DiagnosticReport model with: 1) All required FHIR DiagnosticReport fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.
+
+## 12. Update AI extraction system prompt for Phase 2 models [pending]
+### Dependencies: 40.9, 40.10, 40.11
+### Description: Modify the AI extraction system prompt to instruct the LLM to extract the new Phase 2 models.
+### Details:
+Update the AI extraction system prompt to: 1) Include instructions for extracting Encounter, ServiceRequest, and DiagnosticReport data, 2) Provide examples of correct extraction format, 3) Specify required fields and validation rules, 4) Maintain instructions for existing models.
+
+## 13. Create AllergyIntolerance Pydantic model [pending]
+### Dependencies: None
+### Description: Develop a comprehensive AllergyIntolerance Pydantic model for AI extraction.
+### Details:
+In apps/documents/services/ai_extraction.py, create an AllergyIntolerance model with: 1) All required FHIR AllergyIntolerance fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.
+
+## 14. Create CarePlan Pydantic model [pending]
+### Dependencies: None
+### Description: Develop a comprehensive CarePlan Pydantic model for AI extraction.
+### Details:
+In apps/documents/services/ai_extraction.py, create a CarePlan model with: 1) All required FHIR CarePlan fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.
+
+## 15. Create Organization Pydantic model [pending]
+### Dependencies: None
+### Description: Develop a comprehensive Organization Pydantic model for AI extraction.
+### Details:
+In apps/documents/services/ai_extraction.py, create an Organization model with: 1) All required FHIR Organization fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.
+
+## 16. Update AI extraction system prompt for Phase 3 models [pending]
+### Dependencies: 40.13, 40.14, 40.15
+### Description: Modify the AI extraction system prompt to instruct the LLM to extract the new Phase 3 models.
+### Details:
+Update the AI extraction system prompt to: 1) Include instructions for extracting AllergyIntolerance, CarePlan, and Organization data, 2) Provide examples of correct extraction format, 3) Specify required fields and validation rules, 4) Maintain instructions for existing models.
+
+## 17. Implement AllergyIntoleranceService [pending]
+### Dependencies: 40.13
+### Description: Create a new AllergyIntoleranceService to process the AllergyIntolerance Pydantic model.
+### Details:
+Create apps/fhir/services/allergy_intolerance_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR AllergyIntolerance resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.
+
+## 18. Implement CarePlanService [pending]
+### Dependencies: 40.14
+### Description: Create a new CarePlanService to process the CarePlan Pydantic model.
+### Details:
+Create apps/fhir/services/care_plan_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR CarePlan resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.
+
+## 19. Implement OrganizationService [pending]
+### Dependencies: 40.15
+### Description: Create a new OrganizationService to process the Organization Pydantic model.
+### Details:
+Create apps/fhir/services/organization_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR Organization resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.
+
+## 20. Update FHIRProcessor for final integration and validation [pending]
+### Dependencies: 40.7, 40.8, 40.12, 40.16, 40.17, 40.18, 40.19
+### Description: Complete the FHIRProcessor integration with all services and implement comprehensive validation.
+### Details:
+1) Update FHIRProcessor to integrate all new services, 2) Configure pipeline to prioritize structured path, 3) Add comprehensive logging for observability, 4) Implement validation checks for all resource types, 5) Update documentation with new resource types and processing flow, 6) Run validation suite on 20-30 sample documents to verify end-to-end functionality.
+

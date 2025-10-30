@@ -30,8 +30,14 @@ class ConditionService:
         """
         Process all conditions from extracted data into FHIR Condition resources.
         
+        Supports dual-format input:
+        1. Structured Pydantic-derived dicts (primary path)
+        2. Legacy 'fields' list (fallback path)
+        
         Args:
-            extracted_data: Dictionary containing 'fields' list with diagnosis data
+            extracted_data: Dictionary containing either:
+                - 'structured_data' dict with 'conditions' list (Pydantic MedicalCondition models)
+                - 'fields' list with diagnosis data (legacy format)
             
         Returns:
             List of FHIR Condition resources
@@ -42,9 +48,25 @@ class ConditionService:
         if not patient_id:
             self.logger.warning("No patient_id provided for condition processing")
             return conditions
-            
-        # Handle fields list format (from structured extraction)
+        
+        # PRIMARY PATH: Handle structured Pydantic data
+        if 'structured_data' in extracted_data:
+            structured_data = extracted_data['structured_data']
+            if isinstance(structured_data, dict) and 'conditions' in structured_data:
+                conditions_list = structured_data['conditions']
+                if conditions_list:
+                    self.logger.info(f"Processing {len(conditions_list)} conditions via structured path")
+                    for condition_dict in conditions_list:
+                        if isinstance(condition_dict, dict):
+                            condition_resource = self._create_condition_from_structured(condition_dict, patient_id)
+                            if condition_resource:
+                                conditions.append(condition_resource)
+                    self.logger.info(f"Successfully processed {len(conditions)} conditions via structured path")
+                    return conditions
+        
+        # FALLBACK PATH: Handle legacy fields list format
         if 'fields' in extracted_data:
+            self.logger.warning(f"Falling back to legacy fields processing for conditions")
             self.logger.info(f"Processing {len(extracted_data['fields'])} fields for conditions")
             
             for field in extracted_data['fields']:
@@ -57,8 +79,131 @@ class ConditionService:
                             conditions.append(condition_resource)
                             self.logger.debug(f"Created condition resource for {label}")
         
-        self.logger.info(f"Successfully processed {len(conditions)} condition resources")
+        self.logger.info(f"Successfully processed {len(conditions)} condition resources via legacy path")
         return conditions
+    
+    def _create_condition_from_structured(self, condition_dict: Dict[str, Any], patient_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Create a FHIR Condition resource from structured Pydantic-derived dict.
+        
+        This is the primary path for processing MedicalCondition Pydantic models.
+        
+        Args:
+            condition_dict: Dictionary from MedicalCondition Pydantic model with fields:
+                - name: str (condition name)
+                - status: str (active, inactive, resolved)
+                - onset_date: Optional[str] (ISO format date)
+                - icd_code: Optional[str] (ICD-10 code)
+                - confidence: float (0.0-1.0)
+                - source: dict with text, start_index, end_index
+            patient_id: Patient UUID for subject reference
+            
+        Returns:
+            FHIR Condition resource dictionary or None if invalid
+        """
+        name = condition_dict.get('name')
+        if not name or not isinstance(name, str) or not name.strip():
+            self.logger.warning(f"Invalid or empty name in condition: {condition_dict}")
+            return None
+        
+        # Parse onset date using ClinicalDateParser
+        onset_date = None
+        date_source = "structured"
+        raw_onset = condition_dict.get('onset_date')
+        
+        if raw_onset:
+            # Use ClinicalDateParser for consistent date handling
+            extracted_dates = self.date_parser.extract_dates(raw_onset)
+            if extracted_dates:
+                best_date = max(extracted_dates, key=lambda x: x.confidence)
+                onset_date = best_date.extracted_date.isoformat()
+                self.logger.debug(f"Parsed structured onset date {onset_date} with confidence {best_date.confidence}")
+        
+        # Map condition status to FHIR clinical status
+        condition_status = condition_dict.get('status', 'active').lower()
+        status_mapping = {
+            'active': 'active',
+            'inactive': 'inactive',
+            'resolved': 'resolved',
+            'recurrence': 'recurrence',
+            'remission': 'remission'
+        }
+        clinical_status_code = status_mapping.get(condition_status, 'active')
+        
+        # Create FHIR Condition resource
+        condition = {
+            "resourceType": "Condition",
+            "id": str(uuid4()),
+            "clinicalStatus": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                    "code": clinical_status_code,
+                    "display": clinical_status_code.capitalize()
+                }]
+            },
+            "verificationStatus": {
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+                    "code": "confirmed",
+                    "display": "Confirmed"
+                }]
+            },
+            "code": {
+                "text": name.strip()
+            },
+            "subject": {
+                "reference": f"Patient/{patient_id}"
+            },
+            "recordedDate": datetime.now().isoformat(),
+            "meta": {
+                "source": "Structured Pydantic extraction",
+                "profile": ["http://hl7.org/fhir/StructureDefinition/Condition"],
+                "tag": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                    "code": "extraction-source",
+                    "display": "Structured data path"
+                }]
+            }
+        }
+        
+        # Add ICD code if available
+        icd_code = condition_dict.get('icd_code')
+        if icd_code:
+            condition["code"]["coding"] = [{
+                "system": "http://hl7.org/fhir/sid/icd-10",
+                "code": icd_code.strip(),
+                "display": name.strip()
+            }]
+        
+        # Add onset date if available
+        if onset_date:
+            condition["onsetDateTime"] = onset_date
+            condition["meta"]["tag"].append({
+                "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                "code": "date-source",
+                "display": f"Date source: {date_source}"
+            })
+        
+        # Add extraction confidence
+        confidence = condition_dict.get('confidence')
+        if confidence is not None:
+            condition["meta"]["tag"].append({
+                "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                "code": "extraction-confidence",
+                "display": f"Extraction confidence: {confidence}"
+            })
+        
+        # Add source context if available
+        source = condition_dict.get('source')
+        if source and isinstance(source, dict):
+            source_text = source.get('text', '')
+            if source_text:
+                condition["note"] = [{
+                    "text": f"Source: {source_text[:200]}"  # Limit length
+                }]
+        
+        self.logger.debug(f"Created Condition resource from structured data: {name[:50]}...")
+        return condition
     
     def _create_condition_resource(self, field: Dict[str, Any], patient_id: str, clinical_date: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
