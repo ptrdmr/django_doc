@@ -2747,8 +2747,8 @@
             "title": "Update MedicationService for dual-format support",
             "description": "Modify the MedicationService to accept structured Pydantic input while maintaining backward compatibility with legacy fields.",
             "dependencies": [],
-            "details": "In apps/fhir/services/medication_service.py, update the service to: 1) Accept Pydantic-derived dict as primary input, 2) Fall back to legacy fields if structured data is missing, 3) Add type hints and documentation, 4) Ensure all FHIR resource fields are properly mapped.",
-            "status": "pending",
+            "details": "In apps/fhir/services/medication_service.py, update the service to: 1) Accept Pydantic-derived dict as primary input, 2) Fall back to legacy fields if structured data is missing, 3) Add type hints and documentation, 4) Ensure all FHIR resource fields are properly mapped.\n<info added on 2025-10-30T03:05:00.646Z>\nImplementation complete and verified:\n\n✅ Updated apps/fhir/services/medication_service.py with dual-format support\n✅ Added _create_medication_from_structured() method to process Medication Pydantic models\n✅ Modified process_medications() to prioritize structured data over legacy formats\n✅ Maintained 100% backward compatibility with legacy medication processing\n✅ Used ClinicalDateParser for start_date and stop_date handling\n✅ Added comprehensive logging indicating which path (structured vs legacy) was used\n\n✅ Created test file: apps/fhir/tests/test_medication_service_dual_format.py\n✅ All 11 tests passed successfully:\n   - test_structured_input_happy_path: Verifies full Pydantic model processing with dosage, route, frequency\n   - test_structured_input_minimal_data: Validates required fields only\n   - test_structured_input_with_stop_date: Tests start_date and stop_date handling\n   - test_structured_input_status_mapping: Tests status code mapping (active, stopped, completed, on-hold, intended)\n   - test_legacy_format_regression: Confirms backward compatibility\n   - test_structured_input_empty_medications_list: Edge case handling\n   - test_missing_patient_id: Error handling\n   - test_invalid_structured_data: Malformed data handling\n   - test_multiple_medications_structured: Batch processing (3 medications)\n   - test_date_parser_used_for_structured_dates: ClinicalDateParser integration verification\n   - test_structured_path_priority_over_legacy: Path prioritization\n\nKey implementation details:\n- Structured path logs as INFO \"Processing N medications via structured path\"\n- Legacy fallback logs as WARNING \"Falling back to legacy processing for medications\"\n- Status mapping: active, stopped, completed, on-hold, intended (defaults to active)\n- Dosage, route, and frequency preserved in FHIR dosage array\n- Start/stop dates added to effectivePeriod using ClinicalDateParser\n- Source context preserved in FHIR note field\n- Confidence scores added to meta tags\n</info added on 2025-10-30T03:05:00.646Z>",
+            "status": "done",
             "testStrategy": "Create unit tests with both structured and legacy input formats to verify correct resource creation and field mapping."
           },
           {
@@ -2949,7 +2949,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-30T02:53:14.762Z",
+      "updated": "2025-10-30T03:05:00.961Z",
       "description": "Tasks for master context"
     }
   }

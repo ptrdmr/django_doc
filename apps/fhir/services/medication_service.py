@@ -9,6 +9,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
+from apps.core.date_parser import ClinicalDateParser
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +24,20 @@ class MedicationService:
     
     def __init__(self):
         self.logger = logger
+        self.date_parser = ClinicalDateParser()
         
     def process_medications(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Process all medications with complete dosage and schedule information.
         
+        Supports dual-format input:
+        1. Structured Pydantic-derived dicts (primary path)
+        2. Legacy extraction formats (fallback path)
+        
         Args:
-            extracted_data: Dictionary containing extracted medical data with medications
+            extracted_data: Dictionary containing either:
+                - 'structured_data' dict with 'medications' list (Pydantic Medication models)
+                - 'medications' list or 'fields' list (legacy formats)
             
         Returns:
             List of FHIR MedicationStatement resources
@@ -37,7 +45,27 @@ class MedicationService:
         medications = []
         patient_id = extracted_data.get('patient_id')
         
-        # Handle different medication data structures
+        if not patient_id:
+            self.logger.warning("No patient_id provided for medication processing")
+            return medications
+        
+        # PRIMARY PATH: Handle structured Pydantic data
+        if 'structured_data' in extracted_data:
+            structured_data = extracted_data['structured_data']
+            if isinstance(structured_data, dict) and 'medications' in structured_data:
+                medications_list = structured_data['medications']
+                if medications_list:
+                    self.logger.info(f"Processing {len(medications_list)} medications via structured path")
+                    for med_dict in medications_list:
+                        if isinstance(med_dict, dict):
+                            med_resource = self._create_medication_from_structured(med_dict, patient_id)
+                            if med_resource:
+                                medications.append(med_resource)
+                    self.logger.info(f"Successfully processed {len(medications)} medications via structured path")
+                    return medications
+        
+        # FALLBACK PATH: Handle legacy formats
+        self.logger.warning(f"Falling back to legacy processing for medications")
         medication_data = self._extract_medication_data(extracted_data)
         
         for med_data in medication_data:
@@ -50,8 +78,144 @@ class MedicationService:
                 self.logger.error(f"Failed to create MedicationStatement for {med_data}: {e}")
                 continue
                 
-        self.logger.info(f"Processed {len(medications)} medications from {len(medication_data)} extracted entries")
+        self.logger.info(f"Processed {len(medications)} medications from {len(medication_data)} extracted entries via legacy path")
         return medications
+    
+    def _create_medication_from_structured(self, med_dict: Dict[str, Any], patient_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Create a FHIR MedicationStatement resource from structured Pydantic-derived dict.
+        
+        This is the primary path for processing Medication Pydantic models.
+        
+        Args:
+            med_dict: Dictionary from Medication Pydantic model with fields:
+                - name: str (medication name)
+                - dosage: Optional[str] (dosage amount)
+                - route: Optional[str] (route of administration)
+                - frequency: Optional[str] (dosing frequency)
+                - status: str (active, stopped, etc.)
+                - start_date: Optional[str] (when started)
+                - stop_date: Optional[str] (when stopped)
+                - confidence: float (0.0-1.0)
+                - source: dict with text, start_index, end_index
+            patient_id: Patient UUID for subject reference
+            
+        Returns:
+            FHIR MedicationStatement resource dictionary or None if invalid
+        """
+        name = med_dict.get('name')
+        if not name or not isinstance(name, str) or not name.strip():
+            self.logger.warning(f"Invalid or empty medication name: {med_dict}")
+            return None
+        
+        # Parse dates using ClinicalDateParser
+        start_date = None
+        stop_date = None
+        
+        raw_start = med_dict.get('start_date')
+        if raw_start:
+            extracted_dates = self.date_parser.extract_dates(raw_start)
+            if extracted_dates:
+                best_date = max(extracted_dates, key=lambda x: x.confidence)
+                start_date = best_date.extracted_date.isoformat()
+                self.logger.debug(f"Parsed medication start date {start_date}")
+        
+        raw_stop = med_dict.get('stop_date')
+        if raw_stop:
+            extracted_dates = self.date_parser.extract_dates(raw_stop)
+            if extracted_dates:
+                best_date = max(extracted_dates, key=lambda x: x.confidence)
+                stop_date = best_date.extracted_date.isoformat()
+                self.logger.debug(f"Parsed medication stop date {stop_date}")
+        
+        # Map medication status
+        med_status = med_dict.get('status', 'active').lower()
+        status_mapping = {
+            'active': 'active',
+            'stopped': 'stopped',
+            'completed': 'completed',
+            'on-hold': 'on-hold',
+            'intended': 'intended'
+        }
+        fhir_status = status_mapping.get(med_status, 'active')
+        
+        # Create FHIR MedicationStatement resource
+        medication = {
+            "resourceType": "MedicationStatement",
+            "id": str(uuid4()),
+            "status": fhir_status,
+            "medicationCodeableConcept": {
+                "text": name.strip()
+            },
+            "subject": {
+                "reference": f"Patient/{patient_id}"
+            },
+            "meta": {
+                "source": "Structured Pydantic extraction",
+                "profile": ["http://hl7.org/fhir/StructureDefinition/MedicationStatement"],
+                "versionId": "1",
+                "lastUpdated": datetime.now().isoformat(),
+                "tag": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                    "code": "extraction-source",
+                    "display": "Structured data path"
+                }]
+            }
+        }
+        
+        # Add dosage information if available
+        dosage_info = {}
+        
+        dosage = med_dict.get('dosage')
+        if dosage:
+            dosage_info["text"] = dosage.strip()
+        
+        frequency = med_dict.get('frequency')
+        if frequency:
+            dosage_info["timing"] = {
+                "code": {
+                    "text": frequency.strip()
+                }
+            }
+        
+        route = med_dict.get('route')
+        if route:
+            dosage_info["route"] = {
+                "text": route.strip()
+            }
+        
+        # Add dosage to resource if we have any dosage information
+        if dosage_info:
+            medication["dosage"] = [dosage_info]
+        
+        # Add effective period if dates available
+        if start_date or stop_date:
+            medication["effectivePeriod"] = {}
+            if start_date:
+                medication["effectivePeriod"]["start"] = start_date
+            if stop_date:
+                medication["effectivePeriod"]["end"] = stop_date
+        
+        # Add extraction confidence
+        confidence = med_dict.get('confidence')
+        if confidence is not None:
+            medication["meta"]["tag"].append({
+                "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                "code": "extraction-confidence",
+                "display": f"Extraction confidence: {confidence}"
+            })
+        
+        # Add source context if available
+        source = med_dict.get('source')
+        if source and isinstance(source, dict):
+            source_text = source.get('text', '')
+            if source_text:
+                medication["note"] = [{
+                    "text": f"Source: {source_text[:200]}"
+                }]
+        
+        self.logger.debug(f"Created MedicationStatement from structured data: {name[:50]}...")
+        return medication
         
     def _extract_medication_data(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
