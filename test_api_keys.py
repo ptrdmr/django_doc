@@ -41,7 +41,7 @@ def test_anthropic_key():
         
         # Make a minimal test request
         message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-5-20250929",
             max_tokens=10,
             messages=[
                 {"role": "user", "content": "Say 'test'"}

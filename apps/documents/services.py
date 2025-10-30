@@ -424,7 +424,7 @@ class DocumentAnalyzer:
             )
         
         # Configuration from Django settings (must be set before initializing clients)
-        self.primary_model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620')
+        self.primary_model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-sonnet-4-5-20250929')
         self.fallback_model = getattr(settings, 'AI_MODEL_FALLBACK', 'gpt-4o-mini')
         self.max_tokens = getattr(settings, 'AI_MAX_TOKENS', 4096)
         self.chunk_threshold = getattr(settings, 'AI_CHUNK_THRESHOLD', 30000)  # Now properly in tokens, not chars

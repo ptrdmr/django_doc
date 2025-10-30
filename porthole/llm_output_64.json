@@ -1,0 +1,302 @@
+{
+  "document_id": 64,
+  "timestamp": "2025-10-22T11:59:42.865561",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Seasonal allergies",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Seasonal allergies",
+          "start_index": 285,
+          "end_index": 301
+        }
+      },
+      {
+        "name": "Depression",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Depression",
+          "start_index": 304,
+          "end_index": 314
+        }
+      },
+      {
+        "name": "Hypothyroidism",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hypothyroidism",
+          "start_index": 317,
+          "end_index": 331
+        }
+      },
+      {
+        "name": "Hypertension, controlled",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hypertension, controlled",
+          "start_index": 703,
+          "end_index": 727
+        }
+      },
+      {
+        "name": "Type II Diabetes, fair control",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Type II Diabetes, fair control",
+          "start_index": 731,
+          "end_index": 761
+        }
+      },
+      {
+        "name": "Hyperlipidemia, on therapy",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hyperlipidemia, on therapy",
+          "start_index": 765,
+          "end_index": 791
+        }
+      },
+      {
+        "name": "Asthma",
+        "status": "active",
+        "confidence": 0.8,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "For asthma",
+          "start_index": 516,
+          "end_index": 526
+        }
+      },
+      {
+        "name": "GERD",
+        "status": "active",
+        "confidence": 0.8,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "For GERD",
+          "start_index": 568,
+          "end_index": 576
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Lisinopril",
+        "dosage": "10mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Lisinopril 10mg PO daily BP control",
+          "start_index": 374,
+          "end_index": 410
+        }
+      },
+      {
+        "name": "Metformin",
+        "dosage": "500mg",
+        "route": "PO",
+        "frequency": "BID",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Metformin 500mg PO BID For diabetes",
+          "start_index": 411,
+          "end_index": 447
+        }
+      },
+      {
+        "name": "Atorvastatin",
+        "dosage": "20mg",
+        "route": "PO",
+        "frequency": "nightly",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Atorvastatin 20mg PO nightly For cholesterol",
+          "start_index": 448,
+          "end_index": 493
+        }
+      },
+      {
+        "name": "Albuterol inhaler",
+        "dosage": "2 puffs",
+        "route": "inhaled",
+        "frequency": "PRN",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Albuterol inhaler 2 puffs PRN For asthma",
+          "start_index": 494,
+          "end_index": 535
+        }
+      },
+      {
+        "name": "Omeprazole",
+        "dosage": "20mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Omeprazole 20mg PO daily For GERD",
+          "start_index": 536,
+          "end_index": 570
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Blood Pressure",
+        "value": "157/104",
+        "unit": "mm Hg",
+        "timestamp": "2024-04-23",
+        "confidence": 0.9,
+        "source": {
+          "text": "BP: 157/104 mm Hg",
+          "start_index": 590,
+          "end_index": 608
+        }
+      },
+      {
+        "measurement": "Heart Rate",
+        "value": "101",
+        "unit": "bpm",
+        "timestamp": "2024-04-23",
+        "confidence": 0.9,
+        "source": {
+          "text": "HR: 101 bpm",
+          "start_index": 611,
+          "end_index": 623
+        }
+      },
+      {
+        "measurement": "Temperature",
+        "value": "98.8",
+        "unit": "°F",
+        "timestamp": "2024-04-23",
+        "confidence": 0.9,
+        "source": {
+          "text": "Temp: 98.8°F",
+          "start_index": 626,
+          "end_index": 639
+        }
+      },
+      {
+        "measurement": "Oxygen Saturation",
+        "value": "94",
+        "unit": "% RA",
+        "timestamp": "2024-04-23",
+        "confidence": 0.9,
+        "source": {
+          "text": "Sp On: 94% RA",
+          "start_index": 642,
+          "end_index": 656
+        }
+      },
+      {
+        "measurement": "Weight",
+        "value": "73.5",
+        "unit": "kg",
+        "timestamp": "2024-04-23",
+        "confidence": 0.9,
+        "source": {
+          "text": "Weight: 73.5 kg",
+          "start_index": 659,
+          "end_index": 675
+        }
+      },
+      {
+        "measurement": "Height",
+        "value": "162",
+        "unit": "cm",
+        "timestamp": "2024-04-23",
+        "confidence": 0.9,
+        "source": {
+          "text": "Height: 162 cm",
+          "start_index": 678,
+          "end_index": 693
+        }
+      }
+    ],
+    "lab_results": [],
+    "procedures": [
+      {
+        "name": "Sleep study",
+        "procedure_date": null,
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.8,
+        "source": {
+          "text": "Refer for sleep study",
+          "start_index": 835,
+          "end_index": 856
+        }
+      }
+    ],
+    "providers": [
+      {
+        "name": "Dr. Robert Chang",
+        "specialty": "Pulmonology",
+        "role": "Provider",
+        "contact_info": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Provider: Dr. Robert Chang, MD Department: Pulmonology",
+          "start_index": 115,
+          "end_index": 169
+        }
+      },
+      {
+        "name": "Dr. David Kumar",
+        "specialty": "Family Medicine",
+        "role": "Signing Provider",
+        "contact_info": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Dr. David Kumar, MD NPI: 1464824097 Signed electronically 04/23/2024 8:15",
+          "start_index": 920,
+          "end_index": 993
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-10-22T11:59:42.864281",
+    "document_type": "Da Doctor - Family Medicine",
+    "confidence_average": 0.886
+  }
+}
