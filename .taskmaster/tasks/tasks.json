@@ -2912,8 +2912,8 @@
             "dependencies": [
               14
             ],
-            "details": "Create apps/fhir/services/care_plan_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR CarePlan resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.",
-            "status": "pending",
+            "details": "Create apps/fhir/services/care_plan_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR CarePlan resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.\n<info added on 2025-10-30T05:13:41.250Z>\nImplementation complete. Created CarePlanService with support for both FHIR R4 and legacy data formats. Added handling for goals and activities arrays, implemented period dates processing via ClinicalDateParser, and established proper status/intent mapping between internal and FHIR models. All 6 unit tests are passing successfully. The service is now ready to be wired into the FHIRProcessor pipeline.\n</info added on 2025-10-30T05:13:41.250Z>",
+            "status": "done",
             "testStrategy": "Write comprehensive unit tests for the new service, testing both structured and legacy input formats."
           },
           {
@@ -2949,7 +2949,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-30T05:09:28.004Z",
+      "updated": "2025-10-30T05:13:41.578Z",
       "description": "Tasks for master context"
     }
   }
