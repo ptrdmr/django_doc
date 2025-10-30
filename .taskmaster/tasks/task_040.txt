@@ -447,11 +447,49 @@ Implementation completed for dynamic resource type detection in FHIRMetricsServi
    - Current validation shows expected Phase 1 gaps (AllergyIntolerance, CarePlan, Organization)
 </info added on 2025-10-30T03:42:01.966Z>
 
-## 9. Create Encounter Pydantic model [pending]
+## 9. Create Encounter Pydantic model [done]
 ### Dependencies: None
 ### Description: Develop a comprehensive Encounter Pydantic model for AI extraction.
 ### Details:
 In apps/documents/services/ai_extraction.py, create an Encounter model with: 1) All required FHIR Encounter fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.
+<info added on 2025-10-30T03:46:42.712Z>
+Implementation complete and verified:
+
+✅ Created Encounter Pydantic model in apps/documents/services/ai_extraction.py (lines 196-207)
+✅ Added all required FHIR Encounter fields:
+   - encounter_id: Optional[str]
+   - encounter_type: str (REQUIRED)
+   - encounter_date: Optional[str]
+   - encounter_end_date: Optional[str]
+   - location: Optional[str]
+   - reason: Optional[str]
+   - participants: List[str]
+   - status: Optional[str]
+   - confidence: float (0.0-1.0 validated)
+   - source: SourceContext (REQUIRED)
+✅ Added encounters field to StructuredMedicalExtraction (line 238-241)
+✅ Updated confidence_average validator to include encounters in calculation
+
+✅ Created test file: apps/documents/tests/test_encounter_pydantic_model.py
+✅ All 8 tests passed successfully:
+   - test_encounter_model_valid_full_data: Full model with all fields
+   - test_encounter_model_minimal_required_data: Only required fields (encounter_type, confidence, source)
+   - test_encounter_model_missing_required_field: ValidationError for missing encounter_type
+   - test_encounter_model_invalid_confidence: ValidationError for confidence outside 0.0-1.0
+   - test_encounter_serialization: model_dump() produces correct dict
+   - test_encounter_deserialization: Creation from dict works
+   - test_encounter_in_structured_extraction: Integration with StructuredMedicalExtraction
+   - test_confidence_average_includes_encounters: Confidence calculation includes encounters
+
+Key implementation details:
+- Model follows exact pattern of existing models (Procedure, Provider)
+- Required fields: encounter_type, confidence, source
+- Optional fields: encounter_id, encounter_date, encounter_end_date, location, reason, status
+- participants defaults to empty list
+- confidence validated in 0.0-1.0 range
+- Ready for AI extraction in Phase 2 (40.12 will add prompt instructions)
+- EncounterService (40.4) already prepared to handle this model structure
+</info added on 2025-10-30T03:46:42.712Z>
 
 ## 10. Create ServiceRequest Pydantic model [pending]
 ### Dependencies: None
