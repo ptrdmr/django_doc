@@ -453,7 +453,7 @@ ANTHROPIC_API_KEY = config('ANTHROPIC_API_KEY', default=None)
 OPENAI_API_KEY = config('OPENAI_API_KEY', default=None)
 
 # AI Model Configuration  
-AI_MODEL_PRIMARY = config('AI_MODEL_PRIMARY', default='claude-3-5-sonnet-20240620')
+AI_MODEL_PRIMARY = config('AI_MODEL_PRIMARY', default='claude-sonnet-4-5-20250929')
 AI_MODEL_FALLBACK = config('AI_MODEL_FALLBACK', default='gpt-4o-mini')
 
 # Token Limits and Cost Controls

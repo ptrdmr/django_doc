@@ -2868,8 +2868,8 @@
             "title": "Create CarePlan Pydantic model",
             "description": "Develop a comprehensive CarePlan Pydantic model for AI extraction.",
             "dependencies": [],
-            "details": "In apps/documents/services/ai_extraction.py, create a CarePlan model with: 1) All required FHIR CarePlan fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.",
-            "status": "pending",
+            "details": "In apps/documents/services/ai_extraction.py, create a CarePlan model with: 1) All required FHIR CarePlan fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.\n<info added on 2025-10-30T04:15:55.386Z>\nImplementation complete. Created CarePlan Pydantic model in apps/documents/services/ai_extraction.py with 10 fields:\n- plan_id (required)\n- plan_description (required)\n- goals (list)\n- activities (list)\n- period_start (date)\n- period_end (date)\n- status\n- intent\n- confidence\n- source\n\nAdded care_plans field to StructuredMedicalExtraction model to support extraction of multiple care plans. Updated confidence validator to ensure proper validation of confidence scores. All 8 tests are now passing. The model is ready for integration with CarePlanService (subtask 40.18).\n</info added on 2025-10-30T04:15:55.386Z>",
+            "status": "done",
             "testStrategy": "Write unit tests to verify model validation, serialization, and deserialization work correctly."
           },
           {
@@ -2949,7 +2949,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-30T04:10:14.125Z",
+      "updated": "2025-10-30T04:15:55.713Z",
       "description": "Tasks for master context"
     }
   }

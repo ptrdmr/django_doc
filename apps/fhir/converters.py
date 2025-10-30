@@ -272,7 +272,8 @@ class LabReportConverter(BaseFHIRConverter):
         patient_id = self._get_patient_id(patient)
 
         try:
-            test_date = self._normalize_date_for_fhir(data.get("test_date")) or datetime.utcnow()
+            # Task 35.7: Return None if no clinical date available instead of current time
+            test_date = self._normalize_date_for_fhir(data.get("test_date"))
 
             if "ordering_provider" in data and data["ordering_provider"]:
                 provider = self._create_provider_resource(data["ordering_provider"])
@@ -328,7 +329,8 @@ class ClinicalNoteConverter(BaseFHIRConverter):
         patient_id = self._get_patient_id(patient)
 
         try:
-            note_date = self._normalize_date_for_fhir(data.get("note_date")) or datetime.utcnow()
+            # Task 35.7: Return None if no clinical date available instead of current time
+            note_date = self._normalize_date_for_fhir(data.get("note_date"))
 
             if "provider" in data and data["provider"]:
                 provider = self._create_provider_resource(data["provider"])
@@ -418,7 +420,8 @@ class MedicationListConverter(BaseFHIRConverter):
         patient_id = self._get_patient_id(patient)
 
         try:
-            list_date = self._normalize_date_for_fhir(data.get("list_date")) or datetime.utcnow()
+            # Task 35.7: Return None if no clinical date available instead of current time
+            list_date = self._normalize_date_for_fhir(data.get("list_date"))
 
             if "prescribing_provider" in data and data["prescribing_provider"]:
                 provider = self._create_provider_resource(data["prescribing_provider"])
@@ -473,7 +476,8 @@ class DischargeSummaryConverter(BaseFHIRConverter):
         patient_id = self._get_patient_id(patient)
 
         try:
-            discharge_date = self._normalize_date_for_fhir(data.get("discharge_date")) or datetime.utcnow()
+            # Task 35.7: Return None if no clinical date available instead of current time
+            discharge_date = self._normalize_date_for_fhir(data.get("discharge_date"))
             admission_date = self._normalize_date_for_fhir(data.get("admission_date"))
 
             if "attending_physician" in data and data["attending_physician"]:

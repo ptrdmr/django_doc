@@ -18,7 +18,7 @@ This document outlines the current AI prompting strategy in our medical document
 ## AI Configuration
 
 ### Model Selection
-- **Primary Model**: Claude-3.5-Sonnet (production) / Claude-3-Haiku (development)
+- **Primary Model**: Claude Sonnet 4.5 (production) / Claude-3-Haiku (development)
 - **Fallback Model**: GPT-4o-mini
 - **Configuration**: Environment-based with smart defaults
 
@@ -160,7 +160,7 @@ The system employs a fallback sequence:
 #### Anthropic Claude:
 ```python
 {
-    "model": "claude-3-5-sonnet-20240620",
+    "model": "claude-sonnet-4-5-20250929",
     "max_tokens": 4096,
     "temperature": 0.2,
     "system": system_prompt,
@@ -224,7 +224,7 @@ ANTHROPIC_API_KEY=your_claude_api_key
 OPENAI_API_KEY=your_openai_api_key
 
 # Model Selection
-AI_MODEL_PRIMARY=claude-3-5-sonnet-20240620
+AI_MODEL_PRIMARY=claude-sonnet-4-5-20250929
 AI_MODEL_FALLBACK=gpt-4o-mini
 
 # Processing Parameters
