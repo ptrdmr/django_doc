@@ -708,11 +708,14 @@ Added organizations field to StructuredMedicalExtraction model to support multip
 This completes the Pydantic model implementation phase of the project, with all 12 models now implemented. The Organization model is ready for integration with OrganizationService (subtask 40.19).
 </info added on 2025-10-30T04:19:09.197Z>
 
-## 16. Update AI extraction system prompt for Phase 3 models [pending]
+## 16. Update AI extraction system prompt for Phase 3 models [done]
 ### Dependencies: 40.13, 40.14, 40.15
 ### Description: Modify the AI extraction system prompt to instruct the LLM to extract the new Phase 3 models.
 ### Details:
 Update the AI extraction system prompt to: 1) Include instructions for extracting AllergyIntolerance, CarePlan, and Organization data, 2) Provide examples of correct extraction format, 3) Specify required fields and validation rules, 4) Maintain instructions for existing models.
+<info added on 2025-10-30T04:22:11.691Z>
+Updated the AI extraction system prompt with comprehensive instructions for AllergyIntolerance, CarePlan, and Organization resources. Added detailed extraction guidelines including required fields, validation rules, and format examples for each resource type. Implemented trigger phrase detection to improve extraction accuracy. Modified both comprehensive and fallback prompts to support all 12 FHIR resource types. All 5 test cases now pass successfully, confirming the AI system can properly extract and format all supported resource types according to specifications.
+</info added on 2025-10-30T04:22:11.691Z>
 
 ## 17. Implement AllergyIntoleranceService [pending]
 ### Dependencies: 40.13
