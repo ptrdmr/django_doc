@@ -1,0 +1,435 @@
+# Task ID: 39
+# Title: Fix Clinical Date Extraction and Implement Demographics Comparison Pipeline
+# Status: pending
+# Dependencies: 5, 6, 14, 20, 31, 33, 34, 35
+# Priority: high
+# Description: Enhance the system to properly extract clinical dates from documents and implement patient demographics comparison to verify document-patient identity matches.
+# Details:
+Implement the clinical date extraction and demographics comparison pipeline with the following components:
+
+1. Enhance Clinical Date Extraction:
+   - Update the AI extraction prompt in `services/ai_extraction.py` to explicitly request all clinical dates:
+   ```python
+   def extract_medical_data(text):
+       prompt = """
+       Extract ALL clinical dates from the document. For each medical event, medication, condition, or observation, 
+       identify the specific date it occurred. If exact date is unavailable, extract month/year or year.
+       Never default to current date. Return null if date is truly missing.
+       
+       Return a JSON object with the following structure:
+       {
+           "diagnoses": [{"condition": "...", "date": "YYYY-MM-DD", "status": "..."}],
+           "medications": [{"medication": "...", "date": "YYYY-MM-DD", "dosage": "..."}],
+           ...
+       }
+       """
+       # Rest of the function
+   ```
+
+2. Integrate ClinicalDateParser for post-extraction processing:
+   ```python
+   class ClinicalDateParser:
+       def __init__(self):
+           self.date_patterns = [
+               r'\b\d{1,2}/\d{1,2}/\d{2,4}\b',
+               r'\b\d{1,2}-\d{1,2}-\d{2,4}\b',
+               r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b',
+               r'\b\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}\b'
+           ]
+           
+       def extract_dates(self, text):
+           dates = []
+           for pattern in self.date_patterns:
+               matches = re.finditer(pattern, text, re.IGNORECASE)
+               for match in matches:
+                   try:
+                       date_str = match.group(0)
+                       parsed_date = parser.parse(date_str)
+                       dates.append({
+                           'date': parsed_date.strftime('%Y-%m-%d'),
+                           'original_text': date_str,
+                           'context': text[max(0, match.start()-50):min(len(text), match.end()+50)]
+                       })
+                   except:
+                       continue
+           return dates
+   ```
+
+3. Fix FHIR converter fallback logic in `apps/fhir/converters.py`:
+   ```python
+   # Replace line 421 (approximate)
+   # OLD: effective_date = datetime.utcnow()
+   # NEW:
+   effective_date = document.document_date if document and document.document_date else None
+   if not effective_date:
+       # Log this as a missing date rather than defaulting to now
+       logger.warning(f"Missing clinical date for resource {resource_type} in document {document.id if document else 'unknown'}")
+       # Use null instead of current date
+       effective_date = None
+   ```
+
+4. Add DateExtractionMetrics to measure date coverage:
+   ```python
+   class DateExtractionMetrics:
+       def __init__(self, document):
+           self.document = document
+           self.parsed_data = document.parsed_data.all()
+           
+       def calculate_metrics(self):
+           total_resources = 0
+           resources_with_dates = 0
+           resources_with_default_dates = 0
+           
+           for data in self.parsed_data:
+               if data.field_name in ['medication', 'condition', 'observation']:
+                   total_resources += 1
+                   if 'date' in data.field_value and data.field_value['date']:
+                       resources_with_dates += 1
+                   elif 'effectiveDateTime' in data.field_value:
+                       # Check if it's a default date (close to now)
+                       date_str = data.field_value['effectiveDateTime']
+                       try:
+                           date = parser.parse(date_str)
+                           if (datetime.utcnow() - date).days < 1:
+                               resources_with_default_dates += 1
+                           else:
+                               resources_with_dates += 1
+                       except:
+                           pass
+                           
+           return {
+               'total_resources': total_resources,
+               'resources_with_dates': resources_with_dates,
+               'resources_with_default_dates': resources_with_default_dates,
+               'date_coverage_percentage': (resources_with_dates / total_resources * 100) if total_resources > 0 else 0
+           }
+   ```
+
+5. Implement Demographics Extraction:
+   - Update AI extraction prompt to include patient demographics:
+   ```python
+   # Add to existing prompt
+   """
+   Also extract the following patient demographics if present:
+   - Full name (first, middle, last)
+   - Date of birth
+   - Medical Record Number (MRN)
+   - Social Security Number (last 4 digits only)
+   - Address
+   - Phone number
+   
+   Return these in a "patient_demographics" section of the JSON.
+   """
+   ```
+
+6. Wire up PatientDataComparisonService in document processing Celery task:
+   ```python
+   # In tasks.py
+   @app.task
+   def process_document(document_id):
+       document = Document.objects.get(id=document_id)
+       # Existing extraction code...
+       
+       # After extraction is complete
+       if document.patient:
+           # Compare extracted demographics with patient record
+           comparison_service = PatientDataComparisonService(document.patient)
+           match_score = comparison_service.compare_with_document(document)
+           
+           # Store match score with document
+           document.patient_match_score = match_score
+           document.save()
+           
+           # Flag for review if score is below threshold
+           if match_score < 70:
+               document.review_flags.create(
+                   flag_type='PATIENT_MISMATCH',
+                   description=f'Patient match score is {match_score}%, below 70% threshold',
+                   severity='HIGH'
+               )
+   ```
+
+7. Implement PatientDataComparisonService:
+   ```python
+   class PatientDataComparisonService:
+       def __init__(self, patient):
+           self.patient = patient
+           
+       def compare_with_document(self, document):
+           # Get extracted demographics
+           demographics = self._get_extracted_demographics(document)
+           if not demographics:
+               return 0  # No demographics to compare
+               
+           # Calculate match scores for each field
+           scores = []
+           
+           # Name comparison
+           if 'name' in demographics and demographics['name']:
+               name_score = self._compare_names(demographics['name'])
+               scores.append(('name', name_score, 0.4))  # Name has high weight
+               
+           # DOB comparison
+           if 'dob' in demographics and demographics['dob']:
+               dob_score = self._compare_dates(demographics['dob'], self.patient.dob)
+               scores.append(('dob', dob_score, 0.3))  # DOB has high weight
+               
+           # MRN comparison
+           if 'mrn' in demographics and demographics['mrn']:
+               mrn_score = 100 if demographics['mrn'] == self.patient.mrn else 0
+               scores.append(('mrn', mrn_score, 0.2))
+               
+           # Address comparison
+           if 'address' in demographics and demographics['address']:
+               address_score = self._compare_addresses(demographics['address'])
+               scores.append(('address', address_score, 0.05))
+               
+           # Phone comparison
+           if 'phone' in demographics and demographics['phone']:
+               phone_score = self._compare_phones(demographics['phone'])
+               scores.append(('phone', phone_score, 0.05))
+               
+           # Calculate weighted average
+           if not scores:
+               return 0
+               
+           weighted_sum = sum(score * weight for _, score, weight in scores)
+           total_weight = sum(weight for _, _, weight in scores)
+           
+           return round(weighted_sum / total_weight)
+           
+       def _get_extracted_demographics(self, document):
+           # Extract demographics from document parsed data
+           demographics = {}
+           for data in document.parsed_data.all():
+               if data.field_name == 'patient_demographics':
+                   try:
+                       return json.loads(data.field_value)
+                   except:
+                       return data.field_value
+           return demographics
+           
+       def _compare_names(self, name):
+           # Implement fuzzy name matching
+           patient_name = f"{self.patient.first_name} {self.patient.last_name}"
+           return fuzz.token_sort_ratio(name, patient_name)
+           
+       def _compare_dates(self, date1, date2):
+           # Compare dates, return 100 if exact match, 0 if not
+           try:
+               d1 = parser.parse(date1).date() if isinstance(date1, str) else date1
+               d2 = parser.parse(date2).date() if isinstance(date2, str) else date2
+               return 100 if d1 == d2 else 0
+           except:
+               return 0
+               
+       def _compare_addresses(self, address):
+           # Implement fuzzy address matching
+           patient_address = self.patient.address
+           return fuzz.token_set_ratio(address, patient_address)
+           
+       def _compare_phones(self, phone):
+           # Compare phone numbers (strip non-digits)
+           phone1 = re.sub(r'\D', '', phone)
+           phone2 = re.sub(r'\D', '', self.patient.phone)
+           return 100 if phone1 == phone2 else 0
+   ```
+
+8. Create demographics review UI in the document review interface:
+   - Add a new section to the document review template to display patient match information
+   - Highlight any discrepancies between document demographics and patient record
+   - Provide UI controls to update patient record with document demographics if needed
+
+9. Implement auto-fill for missing patient profile fields:
+   ```python
+   def update_patient_from_document(patient, document):
+       demographics = get_extracted_demographics(document)
+       if not demographics:
+           return False
+           
+       updated = False
+       
+       # Check each field and update if empty in patient record
+       if not patient.phone and 'phone' in demographics and demographics['phone']:
+           patient.phone = demographics['phone']
+           updated = True
+           
+       if not patient.address and 'address' in demographics and demographics['address']:
+           patient.address = demographics['address']
+           updated = True
+           
+       # Add other fields as needed
+       
+       if updated:
+           patient.save()
+           
+       return updated
+   ```
+
+# Test Strategy:
+To verify the correct implementation of the clinical date extraction and demographics comparison pipeline:
+
+1. Unit Test the ClinicalDateParser:
+   ```python
+   def test_clinical_date_parser():
+       parser = ClinicalDateParser()
+       
+       # Test various date formats
+       text = "Patient was admitted on 01/15/2023. Follow-up scheduled for March 5, 2023. Previous visit on 12-20-2022."
+       dates = parser.extract_dates(text)
+       
+       assert len(dates) == 3
+       assert "2023-01-15" in [d['date'] for d in dates]
+       assert "2023-03-05" in [d['date'] for d in dates]
+       assert "2022-12-20" in [d['date'] for d in dates]
+       
+       # Test with real document text
+       with open('test_files/sample_clinical_note.txt', 'r') as f:
+           sample_text = f.read()
+       dates = parser.extract_dates(sample_text)
+       assert len(dates) > 0
+   ```
+
+2. Test FHIR Converter Fallback Logic:
+   ```python
+   def test_fhir_converter_date_fallback():
+       # Test with document date
+       document = Document.objects.create(
+           title="Test Doc",
+           document_date=date(2023, 5, 15)
+       )
+       
+       # Mock resource without date
+       resource_data = {"resourceType": "Observation", "value": "Normal"}
+       
+       # Convert to FHIR
+       fhir_resource = convert_to_fhir(resource_data, document)
+       
+       # Verify it used document date instead of now
+       assert fhir_resource.get('effectiveDateTime') == '2023-05-15'
+       
+       # Test with null document date
+       document.document_date = None
+       document.save()
+       
+       fhir_resource = convert_to_fhir(resource_data, document)
+       
+       # Verify it didn't default to now
+       assert 'effectiveDateTime' not in fhir_resource or fhir_resource.get('effectiveDateTime') is None
+   ```
+
+3. Test DateExtractionMetrics:
+   ```python
+   def test_date_extraction_metrics():
+       # Create test document with mixed data
+       document = create_test_document_with_parsed_data()
+       
+       # Calculate metrics
+       metrics = DateExtractionMetrics(document).calculate_metrics()
+       
+       # Verify metrics calculation
+       assert metrics['total_resources'] > 0
+       assert metrics['resources_with_dates'] >= 0
+       assert metrics['resources_with_default_dates'] >= 0
+       assert 0 <= metrics['date_coverage_percentage'] <= 100
+   ```
+
+4. Test PatientDataComparisonService:
+   ```python
+   def test_patient_data_comparison():
+       # Create test patient
+       patient = Patient.objects.create(
+           first_name="John",
+           last_name="Smith",
+           dob=date(1980, 5, 15),
+           mrn="MRN12345",
+           address="123 Main St, Anytown, CA 12345",
+           phone="555-123-4567"
+       )
+       
+       # Create document with matching demographics
+       document = Document.objects.create(title="Test Doc", patient=patient)
+       document.parsed_data.create(
+           field_name="patient_demographics",
+           field_value=json.dumps({
+               "name": "John Smith",
+               "dob": "1980-05-15",
+               "mrn": "MRN12345",
+               "address": "123 Main St, Anytown, CA 12345",
+               "phone": "555-123-4567"
+           })
+       )
+       
+       # Test perfect match
+       comparison = PatientDataComparisonService(patient)
+       score = comparison.compare_with_document(document)
+       assert score == 100
+       
+       # Test partial match
+       document.parsed_data.update(
+           field_value=json.dumps({
+               "name": "Jon Smith",  # Typo in first name
+               "dob": "1980-05-15",
+               "mrn": "MRN12345",
+               "address": "123 Main Street, Anytown, CA 12345",  # Slight difference
+               "phone": "5551234567"  # Format difference
+           })
+       )
+       score = comparison.compare_with_document(document)
+       assert 70 <= score < 100  # Should be high but not perfect
+       
+       # Test low match
+       document.parsed_data.update(
+           field_value=json.dumps({
+               "name": "Jane Smith",  # Different first name
+               "dob": "1981-05-15",  # Wrong year
+               "mrn": "MRN54321",    # Wrong MRN
+               "address": "123 Main St, Anytown, CA 12345",
+               "phone": "555-123-4567"
+           })
+       )
+       score = comparison.compare_with_document(document)
+       assert score < 70  # Should be below threshold
+   ```
+
+5. Integration Test for Document Processing:
+   ```python
+   def test_document_processing_with_demographics():
+       # Create test patient and document
+       patient = create_test_patient()
+       document = create_test_document(patient=patient)
+       
+       # Process document
+       process_document(document.id)
+       
+       # Refresh from DB
+       document.refresh_from_db()
+       
+       # Verify patient match score was calculated
+       assert document.patient_match_score is not None
+       
+       # Check if low score creates review flag
+       if document.patient_match_score < 70:
+           flag = document.review_flags.filter(flag_type='PATIENT_MISMATCH').first()
+           assert flag is not None
+   ```
+
+6. End-to-End Test:
+   - Upload a real clinical document with dates and patient demographics
+   - Verify dates are correctly extracted and assigned to FHIR resources
+   - Verify patient demographics are extracted and compared with patient record
+   - Check match score calculation and review flag creation
+   - Verify the document review UI displays demographics comparison correctly
+
+7. Performance Testing:
+   - Test with large documents to ensure date extraction performance is acceptable
+   - Measure processing time before and after implementation to ensure no significant slowdown
+
+8. Success Criteria Validation:
+   - Run a batch process on 100 test documents to verify:
+     - At least 95% of FHIR resources have actual clinical dates
+     - 100% of documents extract patient demographics
+     - 100% have patient match score calculated
+     - At least 80% score over 90% patient match
+     - All documents with <70% match are flagged for review
+     - Zero resources use current date for historical data
