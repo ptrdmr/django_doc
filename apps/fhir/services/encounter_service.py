@@ -9,6 +9,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
+from apps.core.date_parser import ClinicalDateParser
 
 logger = logging.getLogger(__name__)
 
@@ -23,32 +24,241 @@ class EncounterService:
     
     def __init__(self):
         self.logger = logger
+        self.date_parser = ClinicalDateParser()
         
     def process_encounters(self, extracted_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Process encounter data with complete visit and interaction information.
         
+        Supports dual-format input:
+        1. Structured Pydantic-derived dicts (primary path) - when Encounter model exists
+        2. Legacy encounter/visit/appointment structures (fallback path)
+        
         Args:
-            extracted_data: Dictionary containing extracted medical data with encounter information
+            extracted_data: Dictionary containing either:
+                - 'structured_data' dict with 'encounters' list (future Encounter Pydantic models)
+                - 'encounter', 'visit', or 'appointment' objects (legacy formats)
             
         Returns:
             FHIR Encounter resource or None if no encounter data found
         """
         patient_id = extracted_data.get('patient_id')
         
-        # Handle different encounter data structures
+        if not patient_id:
+            self.logger.warning("No patient_id provided for encounter processing")
+            return None
+        
+        # PRIMARY PATH: Handle structured Pydantic data (when Encounter model is created in Phase 2)
+        if 'structured_data' in extracted_data:
+            structured_data = extracted_data['structured_data']
+            if isinstance(structured_data, dict):
+                # Check if encounters key exists (indicates structured format is intended)
+                if 'encounters' in structured_data:
+                    encounters_list = structured_data['encounters']
+                    if encounters_list and len(encounters_list) > 0:
+                        self.logger.info(f"Processing {len(encounters_list)} encounters via structured path")
+                        # Process first encounter (typically documents have one primary encounter)
+                        encounter_dict = encounters_list[0]
+                        if isinstance(encounter_dict, dict):
+                            encounter_resource = self._create_encounter_from_structured(encounter_dict, patient_id)
+                            if encounter_resource:
+                                self.logger.info(f"Successfully processed encounter via structured path")
+                                return encounter_resource
+                            else:
+                                # Structured data was invalid, don't fall back to legacy
+                                self.logger.warning(f"Invalid structured encounter data, no fallback")
+                                return None
+                    else:
+                        # Encounters list is empty - structured format but no data
+                        self.logger.info(f"No encounters in structured data")
+                        return None
+        
+        # FALLBACK PATH: Handle legacy encounter data structures (only if structured_data not present)
+        self.logger.warning(f"Falling back to legacy encounter processing")
         encounter_data = self._extract_encounter_data(extracted_data)
         
         if encounter_data:
             try:
                 encounter_resource = self._create_encounter(encounter_data, patient_id)
                 if encounter_resource:
-                    self.logger.info(f"Created Encounter for: {encounter_data.get('type', 'Unknown encounter type')}")
+                    self.logger.info(f"Created Encounter for: {encounter_data.get('type', 'Unknown encounter type')} via legacy path")
                     return encounter_resource
             except Exception as e:
                 self.logger.error(f"Failed to create Encounter: {e}")
                 
         return None
+    
+    def _create_encounter_from_structured(self, encounter_dict: Dict[str, Any], patient_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Create a FHIR Encounter resource from structured Pydantic-derived dict.
+        
+        This is the primary path for processing Encounter Pydantic models (once created in Phase 2).
+        
+        Args:
+            encounter_dict: Dictionary from Encounter Pydantic model with fields:
+                - encounter_id: Optional[str]
+                - encounter_type: str (visit type)
+                - encounter_date: Optional[str] (start date)
+                - encounter_end_date: Optional[str] (end date)
+                - location: Optional[str]
+                - reason: Optional[str]
+                - participants: List[str] (provider names)
+                - status: Optional[str]
+                - confidence: float
+                - source: dict with text, start_index, end_index
+            patient_id: Patient UUID for subject reference
+            
+        Returns:
+            FHIR Encounter resource dictionary or None if invalid
+        """
+        encounter_type = encounter_dict.get('encounter_type')
+        if not encounter_type or not isinstance(encounter_type, str):
+            self.logger.warning(f"Invalid or missing encounter_type in structured data: {encounter_dict}")
+            return None
+        
+        # Parse dates using ClinicalDateParser
+        start_date = None
+        end_date = None
+        
+        raw_start = encounter_dict.get('encounter_date')
+        if raw_start:
+            extracted_dates = self.date_parser.extract_dates(raw_start)
+            if extracted_dates:
+                best_date = max(extracted_dates, key=lambda x: x.confidence)
+                start_date = best_date.extracted_date.isoformat()
+                self.logger.debug(f"Parsed encounter start date {start_date}")
+        
+        raw_end = encounter_dict.get('encounter_end_date')
+        if raw_end:
+            extracted_dates = self.date_parser.extract_dates(raw_end)
+            if extracted_dates:
+                best_date = max(extracted_dates, key=lambda x: x.confidence)
+                end_date = best_date.extracted_date.isoformat()
+                self.logger.debug(f"Parsed encounter end date {end_date}")
+        
+        # Map encounter type to FHIR class codes
+        type_lower = encounter_type.lower()
+        type_mapping = {
+            'office visit': ('AMB', 'Ambulatory'),
+            'ambulatory': ('AMB', 'Ambulatory'),
+            'outpatient': ('AMB', 'Ambulatory'),
+            'emergency': ('EMER', 'Emergency'),
+            'er': ('EMER', 'Emergency'),
+            'inpatient': ('IMP', 'Inpatient encounter'),
+            'hospital': ('IMP', 'Inpatient encounter'),
+            'telehealth': ('VR', 'Virtual'),
+            'virtual': ('VR', 'Virtual'),
+            'home': ('HH', 'Home health')
+        }
+        
+        class_code, class_display = ('AMB', 'Ambulatory')  # Default
+        for key, (code, display) in type_mapping.items():
+            if key in type_lower:
+                class_code, class_display = code, display
+                break
+        
+        # Map encounter status
+        enc_status = encounter_dict.get('status', 'finished').lower()
+        status_mapping = {
+            'planned': 'planned',
+            'arrived': 'arrived',
+            'in-progress': 'in-progress',
+            'onleave': 'onleave',
+            'finished': 'finished',
+            'cancelled': 'cancelled'
+        }
+        fhir_status = status_mapping.get(enc_status, 'finished')
+        
+        # Create FHIR Encounter resource
+        encounter = {
+            "resourceType": "Encounter",
+            "id": encounter_dict.get('encounter_id') or str(uuid4()),
+            "status": fhir_status,
+            "class": {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                "code": class_code,
+                "display": class_display
+            },
+            "subject": {
+                "reference": f"Patient/{patient_id}"
+            },
+            "meta": {
+                "source": "Structured Pydantic extraction",
+                "profile": ["http://hl7.org/fhir/StructureDefinition/Encounter"],
+                "versionId": "1",
+                "lastUpdated": datetime.now().isoformat(),
+                "tag": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                    "code": "extraction-source",
+                    "display": "Structured encounter path"
+                }]
+            }
+        }
+        
+        # Add period if dates available
+        if start_date or end_date:
+            encounter["period"] = {}
+            if start_date:
+                encounter["period"]["start"] = start_date
+            if end_date:
+                encounter["period"]["end"] = end_date
+        
+        # Add location
+        location = encounter_dict.get('location')
+        if location:
+            encounter["location"] = [{
+                "location": {
+                    "display": location.strip()
+                }
+            }]
+        
+        # Add reason for encounter
+        reason = encounter_dict.get('reason')
+        if reason:
+            encounter["reasonCode"] = [{
+                "text": reason.strip()
+            }]
+        
+        # Add participants (providers)
+        participants = encounter_dict.get('participants', [])
+        if participants and isinstance(participants, list):
+            encounter["participant"] = []
+            for provider_name in participants:
+                if provider_name and isinstance(provider_name, str):
+                    encounter["participant"].append({
+                        "individual": {
+                            "display": provider_name.strip()
+                        },
+                        "type": [{
+                            "coding": [{
+                                "system": "http://terminology.hl7.org/CodeSystem/v3-ParticipationType",
+                                "code": "ATND",
+                                "display": "attender"
+                            }]
+                        }]
+                    })
+        
+        # Add extraction confidence
+        confidence = encounter_dict.get('confidence')
+        if confidence is not None:
+            encounter["extension"] = [{
+                "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
+                "valueDecimal": confidence
+            }]
+        
+        # Add source context if available
+        source = encounter_dict.get('source')
+        if source and isinstance(source, dict):
+            source_text = source.get('text', '')
+            if source_text:
+                if "note" not in encounter:
+                    encounter["note"] = []
+                encounter["note"].append({
+                    "text": f"Source: {source_text[:200]}"
+                })
+        
+        self.logger.debug(f"Created Encounter from structured data: {encounter_type[:50]}...")
+        return encounter
         
     def _extract_encounter_data(self, extracted_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """

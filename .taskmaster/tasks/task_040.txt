@@ -270,11 +270,46 @@ Key implementation details:
 - Source context and confidence preserved in FHIR metadata
 </info added on 2025-10-30T03:09:16.443Z>
 
-## 4. Update EncounterService for dual-format support [pending]
+## 4. Update EncounterService for dual-format support [done]
 ### Dependencies: None
 ### Description: Modify the EncounterService to accept structured Pydantic input while maintaining backward compatibility with legacy fields.
 ### Details:
 In apps/fhir/services/encounter_service.py, update the service to: 1) Accept Pydantic-derived dict as primary input, 2) Fall back to legacy fields if structured data is missing, 3) Add type hints and documentation, 4) Ensure all FHIR resource fields are properly mapped.
+<info added on 2025-10-30T03:15:55.102Z>
+Implementation complete and verified:
+
+✅ Updated apps/fhir/services/encounter_service.py with dual-format support
+✅ Added _create_encounter_from_structured() method for future Encounter Pydantic model (Phase 2)
+✅ Modified process_encounters() to prioritize structured data over legacy formats
+✅ Maintained 100% backward compatibility with legacy encounter/visit/appointment processing
+✅ Used ClinicalDateParser for encounter_date and encounter_end_date handling
+✅ Added comprehensive logging indicating which path (structured vs legacy) was used
+✅ Smart fallback logic: if 'encounters' key exists in structured_data, don't fall back to legacy
+
+✅ Created test file: apps/fhir/tests/test_encounter_service_dual_format.py
+✅ All 11 tests passed successfully:
+   - test_structured_input_happy_path: Verifies full Encounter Pydantic processing with dates, location, reason, participants
+   - test_structured_input_minimal_data: Validates required fields only (encounter_type)
+   - test_structured_encounter_type_mapping: Tests type mapping (office visit→AMB, emergency→EMER, inpatient→IMP, telehealth→VR, home→HH)
+   - test_structured_status_mapping: Tests status codes (planned, arrived, in-progress, finished, cancelled)
+   - test_legacy_encounter_format_regression: Confirms backward compatibility
+   - test_structured_empty_encounters_list: Edge case - returns None for empty list
+   - test_missing_patient_id: Error handling - returns None
+   - test_invalid_structured_data: Malformed data - returns None without legacy fallback
+   - test_multiple_participants_handling: Verifies participants list properly added to FHIR participant array
+   - test_date_parser_used_for_structured_dates: ClinicalDateParser integration
+   - test_structured_path_priority_over_legacy: Path prioritization verified
+
+Key implementation details:
+- Structured path logs as INFO "Processing N encounters via structured path"
+- Legacy fallback logs as WARNING "Falling back to legacy encounter processing"
+- Encounter type mapping: office visit/outpatient→AMB, emergency/er→EMER, inpatient/hospital→IMP, telehealth/virtual→VR, home→HH
+- Status mapping: planned, arrived, in-progress, finished, cancelled (defaults to finished)
+- Participants list converted to FHIR participant array with proper structure
+- Period includes both start (encounter_date) and end (encounter_end_date) dates
+- Location, reason, and source context preserved in FHIR resource
+- Confidence scores added to extension
+</info added on 2025-10-30T03:15:55.102Z>
 
 ## 5. Implement ProcedureService for existing Pydantic model [pending]
 ### Dependencies: None
