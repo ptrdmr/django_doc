@@ -577,11 +577,47 @@ Key implementation details:
 - DiagnosticReportService already exists and will be updated to handle this model
 </info added on 2025-10-30T03:58:05.444Z>
 
-## 12. Update AI extraction system prompt for Phase 2 models [pending]
+## 12. Update AI extraction system prompt for Phase 2 models [done]
 ### Dependencies: 40.9, 40.10, 40.11
 ### Description: Modify the AI extraction system prompt to instruct the LLM to extract the new Phase 2 models.
 ### Details:
 Update the AI extraction system prompt to: 1) Include instructions for extracting Encounter, ServiceRequest, and DiagnosticReport data, 2) Provide examples of correct extraction format, 3) Specify required fields and validation rules, 4) Maintain instructions for existing models.
+<info added on 2025-10-30T04:02:13.138Z>
+Implementation complete and verified:
+
+✅ Updated AI extraction system prompts in apps/documents/services/ai_extraction.py (lines 425-460)
+✅ Added comprehensive ENCOUNTER EXTRACTION instructions:
+   - encounter_type, encounter_date, encounter_end_date, location, reason, participants, status
+   - Examples: ER visits, office visits, admissions, telehealth
+   - Trigger phrases: "seen in clinic", "admitted to", "ER visit"
+✅ Added comprehensive SERVICE REQUEST EXTRACTION instructions:
+   - request_type, requester, reason, priority, clinical_context, request_date
+   - Examples: referrals, lab orders, imaging orders, consultations
+   - Trigger phrases: "referred to", "order for", "consult with"
+✅ Added comprehensive DIAGNOSTIC REPORT EXTRACTION instructions:
+   - report_type, findings (required), conclusion, recommendations, status, report_date, ordering_provider
+   - Examples: lab reports, radiology, pathology, cardiology
+   - Trigger phrases: "report shows", "results:", "findings:", "impression:"
+✅ Updated both comprehensive prompt and fallback standard prompt
+✅ Added to STRUCTURED OUTPUT PRIORITY list
+
+✅ Created test file: apps/documents/tests/test_ai_prompts_phase2.py
+✅ All 6 tests passed successfully:
+   - test_prompt_includes_encounter_instructions: Verifies Encounter keywords present
+   - test_prompt_includes_service_request_instructions: Verifies ServiceRequest keywords present
+   - test_prompt_includes_diagnostic_report_instructions: Verifies DiagnosticReport keywords present
+   - test_structured_extraction_has_new_fields: Confirms new fields in StructuredMedicalExtraction
+   - test_new_model_classes_exist: Models are importable
+   - test_prompt_keywords_for_all_new_types: All critical keywords present
+
+Key implementation details:
+- Prompts now instruct AI to extract encounters, service requests, and diagnostic reports
+- Detailed field-by-field extraction guidance for each type
+- Medical terminology examples (e.g., "referred to cardiology" = ServiceRequest)
+- Trigger phrases help AI identify resource types
+- Instructions added to both comprehensive and fallback prompts
+- Ready for real-world AI extraction testing
+</info added on 2025-10-30T04:02:13.138Z>
 
 ## 13. Create AllergyIntolerance Pydantic model [pending]
 ### Dependencies: None

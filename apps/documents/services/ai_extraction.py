@@ -417,7 +417,47 @@ STRUCTURED OUTPUT PRIORITY:
 - Vital signs: all measurements with values, units, TIMESTAMPS, and source context
 - Lab results: test names, values, reference ranges, TEST DATES with source context
 - Procedures: surgical and diagnostic procedures with PROCEDURE DATES and source context
-- Providers: all healthcare professionals mentioned with source context"""
+- Providers: all healthcare professionals mentioned with source context
+- Encounters: ALL visit/encounter details with DATES, location, reason, participants
+- Service Requests: ALL orders, referrals, requests with REQUEST DATES and priority
+- Diagnostic Reports: ALL test results, findings, conclusions, REPORT DATES
+
+ENCOUNTER EXTRACTION (NEW - Phase 2):
+Extract ALL encounter/visit information:
+- encounter_type: Type of visit (office visit, emergency, ER visit, telehealth, virtual visit, inpatient, hospital admission, outpatient, etc.)
+- encounter_date: Start date/time of encounter
+- encounter_end_date: End date/time if applicable (discharge date for admissions)
+- location: Facility or clinic name
+- reason: Chief complaint or reason for visit
+- participants: ALL provider names involved (attending, consultants, specialists, nurses)
+- status: If mentioned (planned, arrived, in-progress, finished, cancelled)
+Examples: "Patient seen in ER on 10/20/24", "Office visit with Dr. Smith 09/15/24", "Admitted 08/01 discharged 08/05"
+
+SERVICE REQUEST EXTRACTION (NEW - Phase 2):
+Extract ALL orders, referrals, and requests:
+- request_type: Type (lab test, imaging study, specialist referral, consultation, procedure order)
+- requester: Ordering provider name
+- reason: Clinical indication or reason for request
+- priority: Priority level if mentioned (routine, urgent, stat, asap)
+- clinical_context: Additional context
+- request_date: Date order was placed
+Examples: "Referred to cardiology", "Order chest X-ray stat", "Labs ordered: CBC, CMP", "MRI brain with contrast"
+
+DIAGNOSTIC REPORT EXTRACTION (NEW - Phase 2):
+Extract ALL test results and diagnostic findings:
+- report_type: Type of report (lab, radiology, pathology, cardiology, pulmonary, etc.)
+- findings: Key findings and results (REQUIRED - capture ALL results)
+- conclusion: Diagnostic conclusion or impression
+- recommendations: Recommended follow-up or actions
+- status: Report status if mentioned (preliminary, final, amended, corrected)
+- report_date: Date report was generated
+- ordering_provider: Provider who ordered the test
+Examples: "CT scan shows...", "Lab results: Glucose 105", "Echo report: EF 55%", "Path report: benign tissue"
+
+CRITICAL for NEW extractions:
+- Look for phrases like "referred to", "order for", "consult with" → ServiceRequest
+- Look for "ER visit", "admitted to", "seen in clinic" → Encounter  
+- Look for "report shows", "results:", "findings:", "impression:" → DiagnosticReport"""
             
             logger.info(f"[{extraction_id}] Using comprehensive extraction prompts (90%+ data capture target)")
             
@@ -436,8 +476,8 @@ CRITICAL REQUIREMENTS:
 2. Provide source context for each extracted item (use the exact text snippet)
 3. Assign accurate confidence scores based on clarity
 4. **EXTRACT ALL DATES AGGRESSIVELY** - Look for dates in any format near medical findings (MM/DD/YY, MM/DD/YYYY, spelled out, etc.)
-4. Use proper medical terminology and classifications
-5. Include dates, values, and units exactly as written
+5. Use proper medical terminology and classifications
+6. Include dates, values, and units exactly as written
 
 CONFIDENCE SCORING:
 - 0.9-1.0: Information explicitly and clearly stated
@@ -445,6 +485,17 @@ CONFIDENCE SCORING:
 - 0.5-0.7: Information mentioned but with some ambiguity
 - 0.3-0.5: Information suggested but unclear
 - 0.1-0.3: Information possibly mentioned but very unclear
+
+Extract these resource types:
+- Conditions: diagnoses, symptoms, clinical findings with onset dates
+- Medications: names, dosages, routes, frequencies with start/stop dates
+- Vital Signs: measurements with values, units, timestamps
+- Lab Results: test names, values, reference ranges, test dates
+- Procedures: surgical and diagnostic procedures with procedure dates
+- Providers: healthcare professionals with specialties and roles
+- Encounters (NEW): ALL visits, admissions, encounters with dates, location, reason, participants
+- Service Requests (NEW): ALL orders, referrals, requests with type, requester, reason, priority, request dates
+- Diagnostic Reports (NEW): ALL test results with report type, findings (required), conclusions, recommendations, report dates
 
 Focus on:
 - Medications (highest priority): names, dosages, routes, frequencies
