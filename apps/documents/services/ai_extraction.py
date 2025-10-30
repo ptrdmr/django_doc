@@ -193,6 +193,20 @@ class Provider(BaseModel):
     source: SourceContext = Field(description="Source context in the document")
 
 
+class Encounter(BaseModel):
+    """A clinical encounter or visit."""
+    encounter_id: Optional[str] = Field(default=None, description="Unique identifier for this encounter")
+    encounter_type: str = Field(description="Type: office visit, emergency, telehealth, inpatient, outpatient, etc.")
+    encounter_date: Optional[str] = Field(default=None, description="Start date/time of encounter (ISO format preferred)")
+    encounter_end_date: Optional[str] = Field(default=None, description="End date/time if applicable")
+    location: Optional[str] = Field(default=None, description="Facility or location name")
+    reason: Optional[str] = Field(default=None, description="Chief complaint or reason for visit")
+    participants: List[str] = Field(default_factory=list, description="Provider names involved in encounter")
+    status: Optional[str] = Field(default=None, description="Status: planned, arrived, in-progress, finished, cancelled")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
+    source: SourceContext = Field(description="Source context in the document")
+
+
 class StructuredMedicalExtraction(BaseModel):
     """Complete structured medical data extraction from a clinical document."""
     
@@ -221,6 +235,10 @@ class StructuredMedicalExtraction(BaseModel):
         default_factory=list,
         description="All healthcare providers mentioned"
     )
+    encounters: List[Encounter] = Field(
+        default_factory=list,
+        description="All clinical encounters and visits documented"
+    )
     
     # Metadata
     extraction_timestamp: str = Field(description="When this extraction was performed")
@@ -231,7 +249,7 @@ class StructuredMedicalExtraction(BaseModel):
     def calculate_average_confidence(cls, v, values):
         """Calculate average confidence across all extracted items."""
         all_items = []
-        for field_name in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers']:
+        for field_name in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers', 'encounters']:
             items = values.get(field_name, [])
             all_items.extend(item.confidence for item in items)
         
@@ -287,7 +305,7 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
         )
     
     # Performance Optimization: Check cache for existing extraction results
-    primary_model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620')
+    primary_model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-sonnet-4-5-20250929')
     cache_context = {
         'ai_model': primary_model,
         'context': context or '',
@@ -426,7 +444,7 @@ Return structured data with complete source context for each item."""
                     logger.info(f"[{extraction_id}] Using instructor-patched Claude for Pydantic extraction")
                     
                     extraction = anthropic_client.chat.completions.create(
-                        model=getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620'),
+                        model=getattr(settings, 'AI_MODEL_PRIMARY', 'claude-sonnet-4-5-20250929'),
                         response_model=StructuredMedicalExtraction,
                         messages=[
                             {"role": "system", "content": system_prompt},
@@ -521,7 +539,7 @@ CRITICAL: Every extracted item MUST include a "source" object with the exact tex
                 
                 try:
                     response = anthropic_client.messages.create(
-                        model=getattr(settings, 'AI_MODEL_PRIMARY', 'claude-3-5-sonnet-20240620'),
+                        model=getattr(settings, 'AI_MODEL_PRIMARY', 'claude-sonnet-4-5-20250929'),
                         max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096),
                         temperature=0.1,
                         system=system_prompt,
