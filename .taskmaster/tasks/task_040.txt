@@ -227,11 +227,48 @@ Key implementation details:
 - Confidence scores added to meta tags
 </info added on 2025-10-30T03:05:00.646Z>
 
-## 3. Update ObservationService for dual-format support [pending]
+## 3. Update ObservationService for dual-format support [done]
 ### Dependencies: None
 ### Description: Modify the ObservationService to accept structured Pydantic input while maintaining backward compatibility with legacy fields.
 ### Details:
 In apps/fhir/services/observation_service.py, update the service to: 1) Accept Pydantic-derived dict as primary input, 2) Fall back to legacy fields if structured data is missing, 3) Add type hints and documentation, 4) Ensure all FHIR resource fields are properly mapped.
+<info added on 2025-10-30T03:09:16.443Z>
+Implementation complete and verified:
+
+✅ Updated apps/fhir/services/observation_service.py with dual-format support
+✅ Added _create_observation_from_structured() method to process both VitalSign and LabResult Pydantic models
+✅ Modified process_observations() to prioritize structured data over legacy fields
+✅ Handles both vital_signs and lab_results lists from structured_data
+✅ Maintained 100% backward compatibility with legacy fields processing
+✅ Used ClinicalDateParser for timestamp and test_date handling
+✅ Added comprehensive logging indicating which path (structured vs legacy) was used
+
+✅ Created test file: apps/fhir/tests/test_observation_service_dual_format.py
+✅ All 13 tests passed successfully:
+   - test_structured_vital_sign_happy_path: Verifies VitalSign Pydantic processing with LOINC codes
+   - test_structured_lab_result_happy_path: Verifies LabResult Pydantic processing with reference ranges
+   - test_structured_vital_sign_minimal_data: Validates required fields only
+   - test_structured_lab_result_with_status: Tests lab status mapping (final, preliminary, amended, corrected, cancelled)
+   - test_structured_both_vitals_and_labs: Batch processing of both types in single request
+   - test_legacy_fields_format_regression: Confirms backward compatibility
+   - test_structured_empty_lists: Edge case handling
+   - test_missing_patient_id: Error handling
+   - test_invalid_structured_data: Malformed data handling
+   - test_multiple_vital_signs_structured: Multiple vital signs processing
+   - test_date_parser_used_for_structured_dates: ClinicalDateParser integration
+   - test_structured_path_priority_over_legacy: Path prioritization
+   - test_structured_non_numeric_value: String value handling
+
+Key implementation details:
+- Structured path logs as INFO "Processing N vital signs/lab results via structured path"
+- Legacy fallback logs as WARNING "Falling back to legacy fields processing"
+- VitalSign uses measurement field and timestamp for dates
+- LabResult uses test_name field and test_date for dates
+- Reference ranges preserved for lab results
+- LOINC codes mapped for common vital signs (heart rate, blood pressure, temperature, etc.)
+- Numeric values parsed to valueQuantity, non-numeric to valueString
+- Source context and confidence preserved in FHIR metadata
+</info added on 2025-10-30T03:09:16.443Z>
 
 ## 4. Update EncounterService for dual-format support [pending]
 ### Dependencies: None
