@@ -717,11 +717,14 @@ Update the AI extraction system prompt to: 1) Include instructions for extractin
 Updated the AI extraction system prompt with comprehensive instructions for AllergyIntolerance, CarePlan, and Organization resources. Added detailed extraction guidelines including required fields, validation rules, and format examples for each resource type. Implemented trigger phrase detection to improve extraction accuracy. Modified both comprehensive and fallback prompts to support all 12 FHIR resource types. All 5 test cases now pass successfully, confirming the AI system can properly extract and format all supported resource types according to specifications.
 </info added on 2025-10-30T04:22:11.691Z>
 
-## 17. Implement AllergyIntoleranceService [pending]
+## 17. Implement AllergyIntoleranceService [done]
 ### Dependencies: 40.13
 ### Description: Create a new AllergyIntoleranceService to process the AllergyIntolerance Pydantic model.
 ### Details:
 Create apps/fhir/services/allergy_intolerance_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR AllergyIntolerance resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.
+<info added on 2025-10-30T05:09:27.586Z>
+Implementation complete. Created AllergyIntoleranceService with support for both new Pydantic models and legacy dictionary formats. Added mapping functionality for severity, status, and verification status fields. Implemented onset date handling using ClinicalDateParser. Added detection for "No Known Drug Allergies" (NKDA) cases. All 8 unit tests are passing. The service is now ready to be integrated with the FHIRProcessor in subtask 40.20.
+</info added on 2025-10-30T05:09:27.586Z>
 
 ## 18. Implement CarePlanService [pending]
 ### Dependencies: 40.14
