@@ -46,8 +46,14 @@ class ObservationService:
         """
         Process all observations from extracted data into FHIR Observation resources.
         
+        Supports dual-format input:
+        1. Structured Pydantic-derived dicts (primary path) - VitalSign and LabResult models
+        2. Legacy 'fields' list (fallback path)
+        
         Args:
-            extracted_data: Dictionary containing 'fields' list with vital sign data
+            extracted_data: Dictionary containing either:
+                - 'structured_data' dict with 'vital_signs' and/or 'lab_results' lists
+                - 'fields' list with vital sign data (legacy format)
             
         Returns:
             List of FHIR Observation resources
@@ -58,9 +64,38 @@ class ObservationService:
         if not patient_id:
             self.logger.warning("No patient_id provided for observation processing")
             return observations
-            
-        # Handle fields list format (from structured extraction)
+        
+        # PRIMARY PATH: Handle structured Pydantic data
+        if 'structured_data' in extracted_data:
+            structured_data = extracted_data['structured_data']
+            if isinstance(structured_data, dict):
+                # Process VitalSign models
+                vital_signs = structured_data.get('vital_signs', [])
+                if vital_signs:
+                    self.logger.info(f"Processing {len(vital_signs)} vital signs via structured path")
+                    for vital_dict in vital_signs:
+                        if isinstance(vital_dict, dict):
+                            obs_resource = self._create_observation_from_structured(vital_dict, patient_id, 'vital_sign')
+                            if obs_resource:
+                                observations.append(obs_resource)
+                
+                # Process LabResult models
+                lab_results = structured_data.get('lab_results', [])
+                if lab_results:
+                    self.logger.info(f"Processing {len(lab_results)} lab results via structured path")
+                    for lab_dict in lab_results:
+                        if isinstance(lab_dict, dict):
+                            obs_resource = self._create_observation_from_structured(lab_dict, patient_id, 'lab_result')
+                            if obs_resource:
+                                observations.append(obs_resource)
+                
+                if vital_signs or lab_results:
+                    self.logger.info(f"Successfully processed {len(observations)} observations via structured path")
+                    return observations
+        
+        # FALLBACK PATH: Handle legacy fields list format
         if 'fields' in extracted_data:
+            self.logger.warning(f"Falling back to legacy fields processing for observations")
             self.logger.info(f"Processing {len(extracted_data['fields'])} fields for observations")
             
             for field in extracted_data['fields']:
@@ -73,8 +108,161 @@ class ObservationService:
                             observations.append(observation_resource)
                             self.logger.debug(f"Created observation resource for {label}")
         
-        self.logger.info(f"Successfully processed {len(observations)} observation resources")
+        self.logger.info(f"Successfully processed {len(observations)} observation resources via legacy path")
         return observations
+    
+    def _create_observation_from_structured(self, obs_dict: Dict[str, Any], patient_id: str, obs_type: str) -> Optional[Dict[str, Any]]:
+        """
+        Create a FHIR Observation resource from structured Pydantic-derived dict.
+        
+        This is the primary path for processing VitalSign and LabResult Pydantic models.
+        
+        Args:
+            obs_dict: Dictionary from VitalSign or LabResult Pydantic model
+                For VitalSign: measurement, value, unit, timestamp, confidence, source
+                For LabResult: test_name, value, unit, reference_range, test_date, status, confidence, source
+            patient_id: Patient UUID for subject reference
+            obs_type: Type indicator - 'vital_sign' or 'lab_result'
+            
+        Returns:
+            FHIR Observation resource dictionary or None if invalid
+        """
+        # Extract appropriate fields based on observation type
+        if obs_type == 'vital_sign':
+            display_name = obs_dict.get('measurement')
+            date_field = obs_dict.get('timestamp')
+        elif obs_type == 'lab_result':
+            display_name = obs_dict.get('test_name')
+            date_field = obs_dict.get('test_date')
+        else:
+            self.logger.warning(f"Unknown observation type: {obs_type}")
+            return None
+        
+        if not display_name or not isinstance(display_name, str) or not display_name.strip():
+            self.logger.warning(f"Invalid or empty name in {obs_type}: {obs_dict}")
+            return None
+        
+        # Parse effective date using ClinicalDateParser
+        effective_date = None
+        date_source = "structured"
+        
+        if date_field:
+            extracted_dates = self.date_parser.extract_dates(date_field)
+            if extracted_dates:
+                best_date = max(extracted_dates, key=lambda x: x.confidence)
+                effective_date = best_date.extracted_date.isoformat()
+                self.logger.debug(f"Parsed {obs_type} date {effective_date} with confidence {best_date.confidence}")
+        
+        # Get LOINC code if available
+        loinc_code = None
+        display_lower = display_name.lower()
+        for key, code in self.VITAL_LOINC_MAPPING.items():
+            if key in display_lower:
+                loinc_code = code
+                break
+        
+        # Create FHIR Observation resource
+        observation = {
+            "resourceType": "Observation",
+            "id": str(uuid4()),
+            "status": "final",
+            "code": {
+                "text": display_name.strip()
+            },
+            "subject": {
+                "reference": f"Patient/{patient_id}"
+            },
+            "meta": {
+                "source": "Structured Pydantic extraction",
+                "profile": ["http://hl7.org/fhir/StructureDefinition/Observation"],
+                "tag": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                    "code": "extraction-source",
+                    "display": f"Structured {obs_type} path"
+                }]
+            }
+        }
+        
+        # Add LOINC code if found
+        if loinc_code:
+            observation["code"]["coding"] = [{
+                "system": "http://loinc.org",
+                "code": loinc_code,
+                "display": display_name.strip()
+            }]
+        
+        # Add effective date if available
+        if effective_date:
+            observation["effectiveDateTime"] = effective_date
+            observation["meta"]["tag"].append({
+                "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                "code": "date-source",
+                "display": f"Date source: {date_source}"
+            })
+        
+        # Add value and unit
+        value = obs_dict.get('value')
+        unit = obs_dict.get('unit')
+        
+        if value:
+            # Try to parse as numeric
+            try:
+                numeric_value = float(value.replace(',', '').strip())
+                if unit:
+                    observation["valueQuantity"] = {
+                        "value": numeric_value,
+                        "unit": unit.strip(),
+                        "system": "http://unitsofmeasure.org",
+                        "code": unit.strip()
+                    }
+                else:
+                    observation["valueQuantity"] = {
+                        "value": numeric_value
+                    }
+            except (ValueError, AttributeError):
+                # Not numeric, use string value
+                observation["valueString"] = str(value).strip()
+        
+        # Add reference range for lab results
+        if obs_type == 'lab_result':
+            reference_range = obs_dict.get('reference_range')
+            if reference_range:
+                observation["referenceRange"] = [{
+                    "text": reference_range.strip()
+                }]
+            
+            # Override status for lab results if provided
+            lab_status = obs_dict.get('status')
+            if lab_status:
+                status_mapping = {
+                    'final': 'final',
+                    'preliminary': 'preliminary',
+                    'amended': 'amended',
+                    'corrected': 'corrected',
+                    'cancelled': 'cancelled'
+                }
+                observation["status"] = status_mapping.get(lab_status.lower(), 'final')
+        
+        # Add extraction confidence
+        confidence = obs_dict.get('confidence')
+        if confidence is not None:
+            observation["meta"]["tag"].append({
+                "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                "code": "extraction-confidence",
+                "display": f"Extraction confidence: {confidence}"
+            })
+        
+        # Add source context if available
+        source = obs_dict.get('source')
+        if source and isinstance(source, dict):
+            source_text = source.get('text', '')
+            if source_text:
+                observation["note"] = [{
+                    "text": f"Source: {source_text[:200]}"
+                }]
+        
+        self.logger.debug(f"Created Observation from structured {obs_type}: {display_name[:50]}...")
+        return observation
     
     def _create_observation_resource(self, field: Dict[str, Any], patient_id: str, clinical_date: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
