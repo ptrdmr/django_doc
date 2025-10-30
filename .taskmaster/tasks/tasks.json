@@ -2901,8 +2901,8 @@
             "dependencies": [
               13
             ],
-            "details": "Create apps/fhir/services/allergy_intolerance_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR AllergyIntolerance resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.",
-            "status": "pending",
+            "details": "Create apps/fhir/services/allergy_intolerance_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR AllergyIntolerance resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.\n<info added on 2025-10-30T05:09:27.586Z>\nImplementation complete. Created AllergyIntoleranceService with support for both new Pydantic models and legacy dictionary formats. Added mapping functionality for severity, status, and verification status fields. Implemented onset date handling using ClinicalDateParser. Added detection for \"No Known Drug Allergies\" (NKDA) cases. All 8 unit tests are passing. The service is now ready to be integrated with the FHIRProcessor in subtask 40.20.\n</info added on 2025-10-30T05:09:27.586Z>",
+            "status": "done",
             "testStrategy": "Write comprehensive unit tests for the new service, testing both structured and legacy input formats."
           },
           {
@@ -2949,7 +2949,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-30T04:22:12.165Z",
+      "updated": "2025-10-30T05:09:28.004Z",
       "description": "Tasks for master context"
     }
   }
