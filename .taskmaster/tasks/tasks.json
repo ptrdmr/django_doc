@@ -2877,8 +2877,8 @@
             "title": "Create Organization Pydantic model",
             "description": "Develop a comprehensive Organization Pydantic model for AI extraction.",
             "dependencies": [],
-            "details": "In apps/documents/services/ai_extraction.py, create an Organization model with: 1) All required FHIR Organization fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.",
-            "status": "pending",
+            "details": "In apps/documents/services/ai_extraction.py, create an Organization model with: 1) All required FHIR Organization fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.\n<info added on 2025-10-30T04:19:09.197Z>\nImplementation complete. Created Organization Pydantic model with 11 fields:\n- name (required)\n- organization_id\n- identifier\n- type\n- address\n- city\n- state\n- postal_code\n- phone\n- confidence\n- source\n\nAdded organizations field to StructuredMedicalExtraction model to support multiple organizations in extraction results. Updated confidence validator to ensure proper validation of confidence scores. All 8 tests are now passing.\n\nThis completes the Pydantic model implementation phase of the project, with all 12 models now implemented. The Organization model is ready for integration with OrganizationService (subtask 40.19).\n</info added on 2025-10-30T04:19:09.197Z>",
+            "status": "done",
             "testStrategy": "Write unit tests to verify model validation, serialization, and deserialization work correctly."
           },
           {
@@ -2949,7 +2949,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-30T04:15:55.713Z",
+      "updated": "2025-10-30T04:19:09.494Z",
       "description": "Tasks for master context"
     }
   }

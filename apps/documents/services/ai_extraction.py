@@ -261,6 +261,21 @@ class CarePlan(BaseModel):
     source: SourceContext = Field(description="Source context in the document")
 
 
+class Organization(BaseModel):
+    """A healthcare organization or facility."""
+    organization_id: Optional[str] = Field(default=None, description="Unique identifier")
+    name: str = Field(description="Organization or facility name")
+    identifier: Optional[str] = Field(default=None, description="NPI, tax ID, or other identifier")
+    organization_type: Optional[str] = Field(default=None, description="Type: hospital, clinic, lab, pharmacy, payer, etc.")
+    address: Optional[str] = Field(default=None, description="Physical address")
+    city: Optional[str] = Field(default=None, description="City")
+    state: Optional[str] = Field(default=None, description="State or province")
+    postal_code: Optional[str] = Field(default=None, description="ZIP or postal code")
+    phone: Optional[str] = Field(default=None, description="Contact phone number")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
+    source: SourceContext = Field(description="Source context in the document")
+
+
 class StructuredMedicalExtraction(BaseModel):
     """Complete structured medical data extraction from a clinical document."""
     
@@ -309,6 +324,10 @@ class StructuredMedicalExtraction(BaseModel):
         default_factory=list,
         description="All documented care plans and treatment plans"
     )
+    organizations: List[Organization] = Field(
+        default_factory=list,
+        description="All healthcare organizations and facilities mentioned"
+    )
     
     # Metadata
     extraction_timestamp: str = Field(description="When this extraction was performed")
@@ -319,7 +338,7 @@ class StructuredMedicalExtraction(BaseModel):
     def calculate_average_confidence(cls, v, values):
         """Calculate average confidence across all extracted items."""
         all_items = []
-        for field_name in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers', 'encounters', 'service_requests', 'diagnostic_reports', 'allergies', 'care_plans']:
+        for field_name in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers', 'encounters', 'service_requests', 'diagnostic_reports', 'allergies', 'care_plans', 'organizations']:
             items = values.get(field_name, [])
             all_items.extend(item.confidence for item in items)
         
