@@ -2783,8 +2783,8 @@
             "title": "Implement PractitionerService for existing Pydantic model",
             "description": "Create a new PractitionerService to process the existing Practitioner Pydantic model.",
             "dependencies": [],
-            "details": "Create apps/fhir/services/practitioner_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR Practitioner resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.",
-            "status": "pending",
+            "details": "Create apps/fhir/services/practitioner_service.py with: 1) Methods to convert Pydantic-derived dict to FHIR Practitioner resource, 2) Support for legacy fields as fallback, 3) Integration with ClinicalDateParser for date handling, 4) Proper error handling and validation.\n<info added on 2025-10-30T03:24:45.298Z>\nImplementation complete and verified:\n\n✅ Created new apps/fhir/services/practitioner_service.py following established service patterns\n✅ Implemented process_practitioners() main entry point with dual-format support\n✅ Added _create_practitioner_from_structured() method to process Provider Pydantic models\n✅ Added _create_practitioner_from_field() for legacy fallback compatibility\n✅ Implemented sophisticated name parsing for various formats (Dr. First Last, Last, First, etc.)\n✅ Added comprehensive logging indicating which path (structured vs legacy) was used\n\n✅ Created test file: apps/fhir/tests/test_practitioner_service_dual_format.py\n✅ All 10 tests passed successfully:\n   - test_structured_input_happy_path: Verifies full Provider Pydantic processing with specialty, role, contact\n   - test_structured_input_minimal_data: Validates required fields only (name)\n   - test_name_parsing_various_formats: Tests 5 name formats (Dr. John Doe, Smith/Jane, triple names, credentials, single name)\n   - test_contact_info_email_detection: Email vs phone number detection\n   - test_legacy_fields_format_regression: Confirms backward compatibility\n   - test_structured_empty_providers_list: Edge case handling\n   - test_missing_patient_id: Error handling\n   - test_invalid_structured_data: Malformed data handling (missing name)\n   - test_multiple_practitioners_structured: Batch processing (3 practitioners)\n   - test_structured_path_priority_over_legacy: Path prioritization\n\nKey implementation details:\n- File created: apps/fhir/services/practitioner_service.py (~280 lines)\n- Structured path logs as INFO \"Processing N practitioners via structured path\"\n- Legacy fallback logs as WARNING \"Falling back to legacy fields processing for practitioners\"\n- Name parsing handles: \"Dr. First Last\", \"Last, First\", \"First Middle Last\", \"Name, MD\" formats\n- Specialty added to qualification array with FHIR coding\n- Role added as extension (practitioner-role)\n- Contact info intelligently detected: email (@) vs phone (digits)\n- Source context and confidence preserved in FHIR metadata\n- Name parsed into family and given components for proper FHIR structure\n</info added on 2025-10-30T03:24:45.298Z>",
+            "status": "done",
             "testStrategy": "Write comprehensive unit tests for the new service, testing both structured and legacy input formats."
           },
           {
@@ -2949,7 +2949,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-30T03:20:11.479Z",
+      "updated": "2025-10-30T03:24:45.570Z",
       "description": "Tasks for master context"
     }
   }
