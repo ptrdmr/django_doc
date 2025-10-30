@@ -15,6 +15,8 @@ from .service_request_service import ServiceRequestService
 from .encounter_service import EncounterService
 from .condition_service import ConditionService
 from .observation_service import ObservationService
+from .procedure_service import ProcedureService
+from .practitioner_service import PractitionerService
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +38,15 @@ class FHIRProcessor:
         self.encounter_service = EncounterService()
         self.condition_service = ConditionService()
         self.observation_service = ObservationService()
+        self.procedure_service = ProcedureService()
+        self.practitioner_service = PractitionerService()
         
-        # TODO: Initialize additional services when implemented
+        # TODO: Initialize additional services when implemented (Phase 3)
         # self.care_plan_service = CarePlanService()
         # self.organization_service = OrganizationService()
-        # self.practitioner_service = PractitionerService()
-        # self.procedure_service = ProcedureService()
         # self.allergy_service = AllergyService()
         
-        logger.info("FHIRProcessor initialized with all available resource services")
+        logger.info("FHIRProcessor initialized with 8 resource services (Phase 1 complete)")
     
     def process_extracted_data(self, extracted_data: Dict[str, Any], 
                              patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -118,11 +120,23 @@ class FHIRProcessor:
                 processing_stats['processed_categories'] += 1
                 logger.info(f"Processed {len(observations)} observation resources")
             
-            # TODO: Process additional resource types when services are implemented
+            # Process procedures (NEW in Phase 1)
+            procedures = self._process_procedures(extracted_data)
+            if procedures:
+                fhir_resources.extend(procedures)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(procedures)} procedure resources")
+            
+            # Process practitioners (NEW in Phase 1)
+            practitioners = self._process_practitioners(extracted_data)
+            if practitioners:
+                fhir_resources.extend(practitioners)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(practitioners)} practitioner resources")
+            
+            # TODO: Process additional resource types when services are implemented (Phase 3)
             # care_plans = self._process_care_plans(extracted_data)
             # organizations = self._process_organizations(extracted_data)
-            # practitioners = self._process_practitioners(extracted_data)
-            # procedures = self._process_procedures(extracted_data)
             # allergies = self._process_allergies(extracted_data)
             
             processing_stats['total_resources'] = len(fhir_resources)
@@ -190,7 +204,23 @@ class FHIRProcessor:
             logger.error(f"Error processing observations: {e}")
             return []
     
-    # TODO: Implement additional processing methods when services are available
+    def _process_procedures(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Process procedure data using ProcedureService."""
+        try:
+            return self.procedure_service.process_procedures(extracted_data)
+        except Exception as e:
+            logger.error(f"Error processing procedures: {e}")
+            return []
+    
+    def _process_practitioners(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Process practitioner data using PractitionerService."""
+        try:
+            return self.practitioner_service.process_practitioners(extracted_data)
+        except Exception as e:
+            logger.error(f"Error processing practitioners: {e}")
+            return []
+    
+    # TODO: Implement additional processing methods when services are available (Phase 3)
     # def _process_care_plans(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     #     """Process care plan data using CarePlanService."""
     #     try:
@@ -205,22 +235,6 @@ class FHIRProcessor:
     #         return self.organization_service.process_organizations(extracted_data)
     #     except Exception as e:
     #         logger.error(f"Error processing organizations: {e}")
-    #         return []
-    
-    # def _process_practitioners(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    #     """Process practitioner data using PractitionerService."""
-    #     try:
-    #         return self.practitioner_service.process_practitioners(extracted_data)
-    #     except Exception as e:
-    #         logger.error(f"Error processing practitioners: {e}")
-    #         return []
-    
-    # def _process_procedures(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    #     """Process procedure data using ProcedureService."""
-    #     try:
-    #         return self.procedure_service.process_procedures(extracted_data)
-    #     except Exception as e:
-    #         logger.error(f"Error processing procedures: {e}")
     #         return []
     
     # def _process_allergies(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -290,18 +304,20 @@ class FHIRProcessor:
             List of supported FHIR resource type names
         """
         supported_types = [
+            'Condition',
             'MedicationStatement',
+            'Observation',
             'DiagnosticReport', 
             'ServiceRequest',
-            'Encounter'
+            'Encounter',
+            'Procedure',
+            'Practitioner'
         ]
         
-        # TODO: Add additional types when services are implemented
+        # TODO: Add additional types when services are implemented (Phase 3)
         # supported_types.extend([
         #     'CarePlan',
         #     'Organization', 
-        #     'Practitioner',
-        #     'Procedure',
         #     'AllergyIntolerance'
         # ])
         
@@ -323,10 +339,14 @@ class FHIRProcessor:
         
         # Check required services
         required_services = [
+            ('condition_service', 'ConditionService'),
             ('medication_service', 'MedicationService'),
+            ('observation_service', 'ObservationService'),
             ('diagnostic_report_service', 'DiagnosticReportService'),
             ('service_request_service', 'ServiceRequestService'),
-            ('encounter_service', 'EncounterService')
+            ('encounter_service', 'EncounterService'),
+            ('procedure_service', 'ProcedureService'),
+            ('practitioner_service', 'PractitionerService')
         ]
         
         for attr_name, service_name in required_services:
