@@ -207,6 +207,19 @@ class Encounter(BaseModel):
     source: SourceContext = Field(description="Source context in the document")
 
 
+class ServiceRequest(BaseModel):
+    """A service request, order, or referral."""
+    request_id: Optional[str] = Field(default=None, description="Unique identifier")
+    request_type: str = Field(description="Type: lab test, imaging study, referral, consultation, procedure order")
+    requester: Optional[str] = Field(default=None, description="Ordering provider name")
+    reason: Optional[str] = Field(default=None, description="Clinical indication or reason for request")
+    priority: Optional[str] = Field(default=None, description="Priority: routine, urgent, stat, asap")
+    clinical_context: Optional[str] = Field(default=None, description="Additional clinical context")
+    request_date: Optional[str] = Field(default=None, description="Date order was placed")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
+    source: SourceContext = Field(description="Source context in the document")
+
+
 class StructuredMedicalExtraction(BaseModel):
     """Complete structured medical data extraction from a clinical document."""
     
@@ -239,6 +252,10 @@ class StructuredMedicalExtraction(BaseModel):
         default_factory=list,
         description="All clinical encounters and visits documented"
     )
+    service_requests: List[ServiceRequest] = Field(
+        default_factory=list,
+        description="All service requests, orders, and referrals"
+    )
     
     # Metadata
     extraction_timestamp: str = Field(description="When this extraction was performed")
@@ -249,7 +266,7 @@ class StructuredMedicalExtraction(BaseModel):
     def calculate_average_confidence(cls, v, values):
         """Calculate average confidence across all extracted items."""
         all_items = []
-        for field_name in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers', 'encounters']:
+        for field_name in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers', 'encounters', 'service_requests']:
             items = values.get(field_name, [])
             all_items.extend(item.confidence for item in items)
         

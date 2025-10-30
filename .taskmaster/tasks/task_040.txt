@@ -491,11 +491,47 @@ Key implementation details:
 - EncounterService (40.4) already prepared to handle this model structure
 </info added on 2025-10-30T03:46:42.712Z>
 
-## 10. Create ServiceRequest Pydantic model [pending]
+## 10. Create ServiceRequest Pydantic model [done]
 ### Dependencies: None
 ### Description: Develop a comprehensive ServiceRequest Pydantic model for AI extraction.
 ### Details:
 In apps/documents/services/ai_extraction.py, create a ServiceRequest model with: 1) All required FHIR ServiceRequest fields, 2) Appropriate field types and validators, 3) Clear field descriptions for AI extraction, 4) Example values where helpful.
+<info added on 2025-10-30T03:51:10.554Z>
+Implementation complete and verified:
+
+✅ Created ServiceRequest Pydantic model in apps/documents/services/ai_extraction.py (lines 210-220)
+✅ Added all required FHIR ServiceRequest fields:
+   - request_id: Optional[str]
+   - request_type: str (REQUIRED)
+   - requester: Optional[str] (ordering provider)
+   - reason: Optional[str] (clinical indication)
+   - priority: Optional[str] (routine, urgent, stat, asap)
+   - clinical_context: Optional[str]
+   - request_date: Optional[str]
+   - confidence: float (0.0-1.0 validated)
+   - source: SourceContext (REQUIRED)
+✅ Added service_requests field to StructuredMedicalExtraction (lines 255-258)
+✅ Updated confidence_average validator to include service_requests in calculation
+
+✅ Created test file: apps/documents/tests/test_service_request_pydantic_model.py
+✅ All 8 tests passed successfully:
+   - test_service_request_model_valid_full_data: Full model with all fields
+   - test_service_request_model_minimal_required_data: Only required fields
+   - test_service_request_model_missing_required_field: ValidationError for missing request_type
+   - test_service_request_model_invalid_confidence: ValidationError for confidence outside 0.0-1.0
+   - test_service_request_serialization: model_dump() produces correct dict
+   - test_service_request_deserialization: Creation from dict works
+   - test_service_request_in_structured_extraction: Integration with StructuredMedicalExtraction
+   - test_confidence_average_includes_service_requests: Confidence calculation includes service requests
+
+Key implementation details:
+- Model follows exact pattern of Encounter and Provider models
+- Required fields: request_type, confidence, source
+- Optional fields: request_id, requester, reason, priority, clinical_context, request_date
+- confidence validated in 0.0-1.0 range
+- Ready for AI extraction in Phase 2 (40.12 will add prompt instructions)
+- ServiceRequestService already exists and will be updated to handle this model
+</info added on 2025-10-30T03:51:10.554Z>
 
 ## 11. Create DiagnosticReport Pydantic model [pending]
 ### Dependencies: None
