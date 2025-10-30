@@ -2810,8 +2810,8 @@
             "dependencies": [
               7
             ],
-            "details": "Modify the FHIRMetricsService to: 1) Dynamically detect all resource types being processed, 2) Update metrics collection to track all resource types, 3) Ensure metrics are properly categorized and labeled.",
-            "status": "pending",
+            "details": "Modify the FHIRMetricsService to: 1) Dynamically detect all resource types being processed, 2) Update metrics collection to track all resource types, 3) Ensure metrics are properly categorized and labeled.\n<info added on 2025-10-30T03:42:01.966Z>\nImplementation completed for dynamic resource type detection in FHIRMetricsService:\n\n1. Updated apps/fhir/services/metrics_service.py with:\n   - Optional fhir_processor parameter in __init__()\n   - Dynamic resource type detection using FHIRProcessor.get_supported_resource_types()\n   - _get_default_resource_types() method for backward compatibility\n   - validate_against_processor() method to verify alignment between metrics and processor\n\n2. Created comprehensive test suite in apps/fhir/tests/test_metrics_service_dynamic.py:\n   - All 7 tests passing, covering initialization scenarios, validation, and error handling\n   - Verified dynamic detection works correctly with processor (8 types)\n   - Confirmed backward compatibility when no processor provided (11 types)\n   - Validated detection of misalignments between metrics and processor\n\n3. Implementation details:\n   - Service dynamically adapts to processor's supported resource types\n   - Maintains backward compatibility for existing code\n   - Implements proper logging (INFO for initialization, WARNING for mismatches, ERROR for validation failures)\n   - Current validation shows expected Phase 1 gaps (AllergyIntolerance, CarePlan, Organization)\n</info added on 2025-10-30T03:42:01.966Z>",
+            "status": "done",
             "testStrategy": "Create unit tests that verify metrics are correctly collected for all resource types, including the newly added ones."
           },
           {
@@ -2949,7 +2949,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-10-30T03:31:27.281Z",
+      "updated": "2025-10-30T03:42:02.311Z",
       "description": "Tasks for master context"
     }
   }
