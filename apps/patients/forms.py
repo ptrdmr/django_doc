@@ -29,7 +29,7 @@ class PatientForm(forms.ModelForm):
     
     class Meta:
         model = Patient
-        fields = ['mrn', 'first_name', 'last_name', 'date_of_birth', 'gender', 'ssn', 'address', 'phone', 'email']
+        fields = ['mrn', 'first_name', 'last_name', 'date_of_birth', 'gender', 'living_setting', 'ssn', 'address', 'phone', 'email']
         widgets = {
             'mrn': forms.TextInput(attrs={
                 'class': 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm',
@@ -44,6 +44,9 @@ class PatientForm(forms.ModelForm):
                 'placeholder': 'Last Name'
             }),
             'gender': forms.Select(attrs={
+                'class': 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm'
+            }),
+            'living_setting': forms.Select(attrs={
                 'class': 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm'
             }),
             'ssn': forms.TextInput(attrs={

@@ -1,0 +1,1311 @@
+{
+  "document_id": 70,
+  "timestamp": "2025-11-13T00:03:30.276321",
+  "stage": "structured_fhir_conversion",
+  "patient_id": "696c29f1-2089-427d-a4c9-f22b4c1ab3d6",
+  "resource_count": 50,
+  "fhir_resources": [
+    {
+      "resourceType": "Condition",
+      "id": "2af80d3c-00b2-4294-b5d3-7b3d3a0c75f4",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.242545+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "111949011",
+            "display": "AA (aortic aneurysm)"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "a54ca760-1ecc-4c23-929e-539ef4fb7c37",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.242750+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "146919019",
+            "display": "Heart murmur"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "4c76471c-a8ca-4451-9723-443f76234d61",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.242866+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "485846015",
+            "display": "Hematuria"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "f66405f6-acbf-48bc-8746-263d2ae99503",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.242981+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "1215744012",
+            "display": "Hypertension"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "24605f87-674c-4e94-b26f-51331b159884",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.243087+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "1774579013",
+            "display": "Prostate cancer"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "a15819a8-1001-4f6f-adb7-942a8be68451",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.243192+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "Gross Hematuria",
+            "display": "Gross Hematuria"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "1fc3b846-c341-4682-8db4-8c1c72f7ef08",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.249253+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "History of Prostate Gland Neoplasm Malignant",
+            "display": "History of Prostate Gland Neoplasm Malignant"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "1a31bf0b-644f-4458-b175-e9d0d9949143",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.249486+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "Malignant neoplasm of prostate - Gleason 3+3 in 1/12 cores at the right apex",
+            "display": "Malignant neoplasm of prostate - Gleason 3+3 in 1/12 cores at the right apex"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "be54fc29-0583-4c6c-8b8a-e7dbd886ce24",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.249602+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "Clot retention of urine with gross hematuria",
+            "display": "Clot retention of urine with gross hematuria"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      }
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "19ffd4be-98ae-4106-86ab-5e532abfc2f7",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "administered",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "chlorhexidine topical (Peridex)"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "0.018 Gm 15 mL via Swish and Spit"
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "6eefac68-d883-4512-9824-b3ef192466fa",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.256447+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "fentaNYL"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2025-11-13 05:03:30.256447+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "25 mcg PRN via IV Push",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "dfdf27fa-5418-4763-9452-6e0834853454",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "administered",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "propofol"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "150 mg 15 mL via IV Push"
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "3a2c5b61-cb0f-4232-aa6e-8747f23ba317",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "administered",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "lidocaine"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "50 mg 2.5 mL via IV Push"
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "9cf1203c-d106-4fa4-b11e-8fd21c7e4dec",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "administered",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "ondansetron"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "4 mg 2 mL via IV Push"
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "c78ddf3e-0e3c-4560-b019-52c8fa732b7c",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "administered",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "dexAMETHasone"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "4 mg 1 mL via IV Push"
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "d6bf7a12-6beb-4c6f-ba0e-ad2ba5f3b56f",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "administered",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "cefTRIAXone (Rocephin)"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "1 Gm via IV Piggyback, Arm, Right"
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "4b79e772-c9f7-4afa-895d-82b4a7ab4ee1",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "administered",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "morphine"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "4 mg 1 mL via IV Push"
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "cf5d4b12-b881-44a7-a2aa-f9f884593de7",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "administered",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Lactated Ringers Injection intravenous solution"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "900 mL via IV Cont Infusion"
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "c895a242-c222-4aaf-9624-fb4b6232c4c6",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.264937+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "HYDROmorphone"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2025-11-13 05:03:30.264937+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "0.5 mg PRN via IV Push",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "7fb12465-193b-4901-b37a-87c2e34bfe6c",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.265115+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "phenazopyridine (Pyridium)"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2025-11-13 05:03:30.265115+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "100 mg as needed via Oral",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "a9b49e86-eeb2-4105-a70f-a747d93c6159",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.265327+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "meperidine (Demerol HCI)"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2025-11-13 05:03:30.265327+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "12.5 mg PRN via IV Push",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "ae37e52a-4591-4655-98d4-d707c8bdab87",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Sodium Chloride 0.9% Intravenous solution"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "1,000 mL 100 mL/hr via IV",
+          "timing": {
+            "repeat": {
+              "frequency": 100,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "c1881b1f-670a-4a6a-a449-171a375090d4",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.265734+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "AmLODIPine Besylate"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2025-11-13 05:03:30.265734+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "10 MG daily via Oral",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "2929154e-8991-4971-9224-f321d46c234c",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.265899+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Losartan Potassium"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2025-11-13 05:03:30.265899+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "100 MG daily via Oral",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "0f5ce80e-0ca6-480e-9f5d-34acb217ab91",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.266060+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Tamsulosin HCI"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2025-11-13 05:03:30.266060+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "0.4 MG twice a day via Oral",
+          "timing": {
+            "repeat": {
+              "frequency": 2,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "e1d371bb-7101-41e6-a7ee-ac76b1599cae",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.266223+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Finasteride"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2025-11-13 05:03:30.266223+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "5 MG daily via Oral",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "Observation",
+      "id": "37dc8611-937e-4a9f-8c2e-08ec8a66a160",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-NUMERIC-RATING-PAIN-SCALE",
+            "display": "Numeric Rating Pain Scale"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "valueString": "3"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "e469cf09-beb7-4367-a07e-a14234cac866",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-PASERO-OPIOID-INDUCED-SEDATION-SCALE",
+            "display": "Pasero Opioid Induced Sedation Scale"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "valueString": "1"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "1680b5ad-9375-4e04-b02a-1efa3ec0276d",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-NUMERIC-RATING-PAIN-SCALE",
+            "display": "Numeric Rating Pain Scale"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "valueString": "6"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "e004c44d-da0b-47ed-b788-4669b8434e14",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-NUMERIC-RATING-PAIN-SCALE",
+            "display": "Numeric Rating Pain Scale"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "valueString": "10"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "96c480a3-2c82-4715-819c-70b9172662d0",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-PASERO-OPIOID-INDUCED-SEDATION-SCALE",
+            "display": "Pasero Opioid Induced Sedation Scale"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "valueString": "1"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "1fd10dd5-e097-4df8-8f47-6783181a0576",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-NUMERIC-RATING-PAIN-SCALE",
+            "display": "Numeric Rating Pain Scale"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "valueString": "8"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "85de903b-98d0-4ca4-bb26-ec6ed1deafb3",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-95839",
+            "display": "Glucose POC"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "valueString": "108"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "6c95ccee-a588-40e0-88d8-4b1f0723fa84",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2023-12-28 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-95839",
+            "display": "Glucose POC"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "effectiveDateTime": "2023-12-28 00:00:00+00:00",
+      "valueString": "100"
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "d7379f7e-9d1d-4e7b-ba98-223884731ba1",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.269794+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-22936",
+            "display": "Cystoscopy with clot evacuation and fulguration of bleeding"
+          }
+        ],
+        "text": "Cystoscopy with clot evacuation and fulguration of bleeding"
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "occurrenceDateTime": "2023-12-28 00:00:00",
+      "performer": [
+        {
+          "actor": {
+            "display": "Vincent Chehval, DO"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "Large amount of blood clot within the bladder, which was all irrigated out. Bleeding was noted from the anterior and right bladder neck, and fulguration was performed."
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "29f4cb36-e8a8-41ba-9eb2-defde4df475a",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.270122+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-25686",
+            "display": "External radiation therapy with brachy therapy"
+          }
+        ],
+        "text": "External radiation therapy with brachy therapy"
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "outcome": {
+        "text": "Treatment for prostate cancer"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "ca8afbf2-ddac-4310-8140-6bf151da2104",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.270389+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-27030",
+            "display": "Cystoscopy with bladder resection"
+          }
+        ],
+        "text": "Cystoscopy with bladder resection"
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "occurrenceDateTime": "2023-12-28 00:00:00",
+      "performer": [
+        {
+          "actor": {
+            "display": "Vincent A Chehval, DO"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "excellent hemostasis was ensured, procedure completed successfully with no complications"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "18ea6af8-b339-48b3-b157-7a1650c99b91",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.270550+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-67599",
+            "display": "Catheter insertion"
+          }
+        ],
+        "text": "Catheter insertion"
+      },
+      "subject": {
+        "reference": "Patient/696c29f1-2089-427d-a4c9-f22b4c1ab3d6"
+      },
+      "occurrenceDateTime": "2023-12-28 00:00:00",
+      "performer": [
+        {
+          "actor": {
+            "display": "Vincent A Chehval, DO"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "24-French 3-way catheter inserted successfully with excellent drainage"
+      }
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "3d3db9ce-2f02-45ed-b54b-05743ea8cced",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.270717+00:00"
+      },
+      "name": [
+        {
+          "family": "DO,VINCENT ANDREW",
+          "given": [
+            "CHEHVAL"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "536043ac-d81b-41e0-a8af-7f8261c7d113",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.270795+00:00"
+      },
+      "name": [
+        {
+          "family": "MD,RANDAL RAY",
+          "given": [
+            "SCHLOSSER"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "46a52d4c-1608-442b-9b7f-67fe05a9d7dc",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.270858+00:00"
+      },
+      "name": [
+        {
+          "family": "Leon RN,Girlyn L",
+          "given": [
+            "De"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "4d86b432-0616-48af-a6ab-2d5998c43107",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.270917+00:00"
+      },
+      "name": [
+        {
+          "family": "RN,Gina",
+          "given": [
+            "Ith"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "23a8c841-f420-4e9a-a541-2a0484cbb867",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.270974+00:00"
+      },
+      "name": [
+        {
+          "family": "RN,Adrienne",
+          "given": [
+            "Nelson"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "0d519192-28dc-4c0c-a507-4d0aa2bfdce0",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.271034+00:00"
+      },
+      "name": [
+        {
+          "family": "MD,RANDAL RAY",
+          "given": [
+            "SCHLOSSER"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "9e6868d4-f724-4476-a657-762c964723e2",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.271091+00:00"
+      },
+      "name": [
+        {
+          "family": "RN,Adrienne",
+          "given": [
+            "Nelson"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "fc078c89-5891-4f5d-a7fc-7225f4295248",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.271150+00:00"
+      },
+      "name": [
+        {
+          "family": "Leon RN,Girlyn L",
+          "given": [
+            "De"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "425171e5-3a37-4942-85c8-f980efda8abc",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.271207+00:00"
+      },
+      "name": [
+        {
+          "family": "DO,VINCENT ANDREW",
+          "given": [
+            "CHEHVAL"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "2ca79232-e116-46c2-98c3-ed3678667ff9",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.271263+00:00"
+      },
+      "name": [
+        {
+          "family": "Chehval, DO",
+          "given": [
+            "Vincent"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "3006f9de-24b1-4c21-8fb0-041afd79e43e",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.271322+00:00"
+      },
+      "name": [
+        {
+          "family": "RN, Gina",
+          "given": [
+            "Ith"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "fc475467-5104-4cc2-9129-e4a488fca2a5",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-13 05:03:30.271377+00:00"
+      },
+      "name": [
+        {
+          "family": "Andrew Chehval, DO",
+          "given": [
+            "Vincent"
+          ]
+        }
+      ]
+    }
+  ],
+  "resource_types": {
+    "Condition": 9,
+    "MedicationStatement": 17,
+    "Observation": 8,
+    "Procedure": 4,
+    "Practitioner": 12
+  }
+}

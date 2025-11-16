@@ -18,6 +18,7 @@ urlpatterns = [
     # FHIR functionality
     path('<uuid:pk>/export-fhir/', views.PatientFHIRExportView.as_view(), name='export-fhir'),
     path('<uuid:pk>/fhir-json/', views.PatientFHIRJSONView.as_view(), name='fhir-json'),
+    path('<uuid:pk>/set-primary-diagnosis/', views.SetPrimaryDiagnosisView.as_view(), name='set-primary-diagnosis'),
     
     # Patient history
     path('<uuid:pk>/history/', views.PatientHistoryDetailView.as_view(), name='history'),
