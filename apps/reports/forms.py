@@ -63,61 +63,30 @@ class BaseReportParametersForm(forms.Form):
         return cleaned_data
 
 
-class PatientReportParametersForm(BaseReportParametersForm):
-    """Form for patient summary report parameters."""
+class PatientReportParametersForm(forms.Form):
+    """Form for patient summary report parameters - simplified for dashboard report."""
     
     patient = forms.ModelChoiceField(
         queryset=Patient.objects.all(),
         required=True,
         widget=forms.Select(attrs={
-            'class': 'form-select rounded-md border-gray-300',
+            'class': 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm',
         }),
-        help_text="Select the patient for the report"
+        help_text="Select the patient for the comprehensive dashboard report"
     )
     
-    include_demographics = forms.BooleanField(
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={
-            'class': 'form-checkbox text-blue-600 rounded',
+    format = forms.ChoiceField(
+        choices=[
+            ('pdf', 'PDF Document'),
+            ('csv', 'CSV Spreadsheet'),
+            ('json', 'JSON Data'),
+        ],
+        initial='pdf',
+        required=True,
+        widget=forms.RadioSelect(attrs={
+            'class': 'text-blue-600 focus:ring-blue-500',
         }),
-        help_text="Include patient demographic information"
-    )
-    
-    include_conditions = forms.BooleanField(
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={
-            'class': 'form-checkbox text-blue-600 rounded',
-        }),
-        help_text="Include conditions and diagnoses"
-    )
-    
-    include_medications = forms.BooleanField(
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={
-            'class': 'form-checkbox text-blue-600 rounded',
-        }),
-        help_text="Include medication list"
-    )
-    
-    include_observations = forms.BooleanField(
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={
-            'class': 'form-checkbox text-blue-600 rounded',
-        }),
-        help_text="Include lab results and observations"
-    )
-    
-    include_procedures = forms.BooleanField(
-        required=False,
-        initial=True,
-        widget=forms.CheckboxInput(attrs={
-            'class': 'form-checkbox text-blue-600 rounded',
-        }),
-        help_text="Include procedures and interventions"
+        help_text="Choose the output format for your report"
     )
     
     def __init__(self, *args, **kwargs):
@@ -129,6 +98,9 @@ class PatientReportParametersForm(BaseReportParametersForm):
             self.fields['patient'].queryset = Patient.objects.filter(
                 organization=user.organization
             ).order_by('last_name_search', 'first_name_search')
+        else:
+            # No organization filtering - just order all patients
+            self.fields['patient'].queryset = Patient.objects.all().order_by('last_name_search', 'first_name_search')
 
 
 class ProviderReportParametersForm(BaseReportParametersForm):

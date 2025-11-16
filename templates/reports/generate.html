@@ -1,71 +1,242 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Generate {{ report_type_display }}{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <!-- Back button -->
-    <div class="mb-6">
-        <a href="{% url 'reports:dashboard' %}" class="text-blue-600 hover:text-blue-800">
-            ← Back to Reports
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center space-x-3 mb-4">
+            <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">{{ report_type_display }}</h1>
+                <p class="text-gray-600">Comprehensive patient dashboard report with 7 clinical sections</p>
+            </div>
+        </div>
+        
+        <a href="{% url 'reports:dashboard' %}" class="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 font-medium">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            Back to Reports
         </a>
     </div>
 
-    <!-- Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-gray-900">Generate {{ report_type_display }}</h1>
-        <p class="mt-2 text-gray-600">Configure parameters for your report</p>
+    <!-- Report Info Card -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div class="flex">
+            <svg class="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-blue-800">Dashboard Report Sections</h3>
+                <div class="mt-2 text-sm text-blue-700">
+                    <p class="mb-2">This report includes all available clinical data organized into 7 sections:</p>
+                    <ol class="list-decimal list-inside space-y-1 ml-2">
+                        <li>Demographics & Context (primary diagnosis, comorbidities, living setting)</li>
+                        <li>Full Diagnosis List with onset dates</li>
+                        <li>Weight Tracking chart</li>
+                        <li>Hospitalizations with date ranges</li>
+                        <li>Laboratory Results</li>
+                        <li>Current Medications</li>
+                        <li>Procedures</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Form -->
-    <form method="post" class="bg-white shadow rounded-lg p-6">
-        {% csrf_token %}
-        
-        {% if form.errors %}
-        <div class="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            <p class="font-bold">Please correct the errors below:</p>
-            <ul class="mt-2 list-disc list-inside">
-                {% if form.non_field_errors %}
-                    {% for error in form.non_field_errors %}
-                    <li>{{ error }}</li>
-                    {% endfor %}
-                {% endif %}
-                {% for field in form %}
-                    {% for error in field.errors %}
-                    <li>{{ field.label }}: {{ error }}</li>
-                    {% endfor %}
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-
-        <div class="space-y-6">
-            {% for field in form %}
-            <div>
-                <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
-                    {{ field.label }}
-                    {% if field.field.required %}<span class="text-red-600">*</span>{% endif %}
-                </label>
-                {{ field }}
-                {% if field.help_text %}
-                <p class="mt-1 text-sm text-gray-500">{{ field.help_text }}</p>
-                {% endif %}
-                {% if field.errors %}
-                <p class="mt-1 text-sm text-red-600">{{ field.errors.0 }}</p>
-                {% endif %}
+    <div class="bg-white shadow-sm rounded-lg border border-gray-200 p-6">
+        <form method="post">
+            {% csrf_token %}
+            
+            {% if form.errors %}
+            <div class="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+                <div class="flex">
+                    <svg class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                    </svg>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-red-800">Please correct the following errors:</h3>
+                        <ul class="mt-2 text-sm text-red-700 list-disc list-inside">
+                            {% if form.non_field_errors %}
+                                {% for error in form.non_field_errors %}
+                                <li>{{ error }}</li>
+                                {% endfor %}
+                            {% endif %}
+                            {% for field in form %}
+                                {% for error in field.errors %}
+                                <li>{{ field.label }}: {{ error }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
             </div>
-            {% endfor %}
-        </div>
+            {% endif %}
 
-        <div class="mt-8 flex items-center justify-end space-x-4">
-            <a href="{% url 'reports:dashboard' %}" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
-                Cancel
-            </a>
-            <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                Generate Report
-            </button>
+            <div class="space-y-6">
+                <!-- Patient Selection -->
+                <div>
+                    <label for="{{ form.patient.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                        Select Patient <span class="text-red-600">*</span>
+                    </label>
+                    {{ form.patient }}
+                    {% if form.patient.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.patient.errors.0 }}</p>
+                    {% else %}
+                    <p class="mt-1 text-sm text-gray-500">{{ form.patient.help_text }}</p>
+                    {% endif %}
+                </div>
+
+                <!-- Format Selection -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-3">
+                        Report Format <span class="text-red-600">*</span>
+                    </label>
+                    <div class="space-y-3">
+                        {% for choice_value, choice_label in form.format.field.choices %}
+                        <label class="relative flex items-start p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors {% if form.format.value == choice_value %}border-blue-500 bg-blue-50{% else %}border-gray-300{% endif %}">
+                            <div class="flex items-center h-5">
+                                <input type="radio" 
+                                       name="{{ form.format.name }}" 
+                                       value="{{ choice_value }}"
+                                       {% if form.format.value == choice_value or choice_value == 'pdf' and not form.format.value %}checked{% endif %}
+                                       class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
+                            </div>
+                            <div class="ml-3 flex-1">
+                                <span class="block text-sm font-medium text-gray-900">
+                                    {{ choice_label }}
+                                </span>
+                                <span class="block text-xs text-gray-500 mt-1">
+                                    {% if choice_value == 'pdf' %}
+                                        Professional formatted document with charts (recommended)
+                                    {% elif choice_value == 'csv' %}
+                                        Tabular data for spreadsheet analysis
+                                    {% elif choice_value == 'json' %}
+                                        Structured data for system integration
+                                    {% endif %}
+                                </span>
+                            </div>
+                            {% if form.format.value == choice_value or choice_value == 'pdf' and not form.format.value %}
+                            <div class="flex-shrink-0">
+                                <svg class="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            {% endif %}
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% if form.format.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.format.errors.0 }}</p>
+                    {% else %}
+                    <p class="mt-2 text-sm text-gray-500">{{ form.format.help_text }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Report Preview Info -->
+            <div class="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div class="flex">
+                    <svg class="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    <div class="ml-3">
+                        <h4 class="text-sm font-medium text-gray-900">What's Included</h4>
+                        <p class="mt-1 text-sm text-gray-600">
+                            The dashboard report displays <strong>all historical clinical data</strong> for the selected patient,
+                            including demographics, diagnoses, weight trends, hospitalizations, labs, medications, and procedures.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="mt-8 flex items-center justify-between">
+                <a href="{% url 'reports:dashboard' %}" 
+                   class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                    Cancel
+                </a>
+                
+                <button type="submit" 
+                        id="generateBtn"
+                        class="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Generate Report
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- HIPAA Notice -->
+    <div class="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+        <div class="flex">
+            <svg class="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            </svg>
+            <div class="ml-3">
+                <h3 class="text-sm font-medium text-amber-800">HIPAA Protected Information</h3>
+                <p class="mt-1 text-sm text-amber-700">
+                    This report contains Protected Health Information (PHI). Handle according to HIPAA regulations. 
+                    Download and store securely.
+                </p>
+            </div>
         </div>
-    </form>
+    </div>
 </div>
-{% endblock %}
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const generateBtn = document.getElementById('generateBtn');
+    const patientSelect = document.querySelector('select[name="patient"]');
+    
+    // Auto-focus patient dropdown
+    if (patientSelect) {
+        patientSelect.focus();
+    }
+    
+    // Form submission with loading state
+    form.addEventListener('submit', function(e) {
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = `
+            <svg class="w-4 h-4 mr-2 animate-spin inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Generating Report...
+        `;
+    });
+    
+    // Format radio button visual feedback
+    const formatRadios = document.querySelectorAll('input[name="format"]');
+    formatRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            // Remove selected state from all labels
+            document.querySelectorAll('label[for^="id_format"]').forEach(label => {
+                label.classList.remove('border-blue-500', 'bg-blue-50');
+                label.classList.add('border-gray-300');
+            });
+            
+            // Add selected state to chosen option
+            const parentLabel = this.closest('label');
+            if (parentLabel) {
+                parentLabel.classList.remove('border-gray-300');
+                parentLabel.classList.add('border-blue-500', 'bg-blue-50');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
