@@ -675,9 +675,10 @@ Return structured data with complete source context for each item."""
                 logger.info(f"[{extraction_id}] Instructor approach failed: {instructor_error}, falling back to manual JSON parsing")
                 
                 # Fallback: Manual JSON parsing approach (original implementation)
-                # Create a detailed schema prompt for Claude
+                # Create a detailed schema prompt for Claude with ALL resource types
                 schema_prompt = f"""
-Return valid JSON that exactly matches this schema structure:
+Return valid JSON that exactly matches this schema structure.
+CRITICAL: Use EXACT field names as shown - do not abbreviate or rename fields!
 
 {{
   "conditions": [
@@ -703,16 +704,143 @@ Return valid JSON that exactly matches this schema structure:
       "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
     }}
   ],
-  "vital_signs": [],
-  "lab_results": [],
-  "procedures": [],
-  "providers": [],
+  "vital_signs": [
+    {{
+      "measurement": "vital sign type",
+      "value": "measurement value",
+      "unit": "unit",
+      "timestamp": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "lab_results": [
+    {{
+      "test_name": "lab test name",
+      "value": "test value",
+      "unit": "unit",
+      "reference_range": null,
+      "status": "final",
+      "test_date": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "procedures": [
+    {{
+      "name": "procedure name",
+      "procedure_date": null,
+      "provider": null,
+      "outcome": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "providers": [
+    {{
+      "name": "provider name",
+      "specialty": null,
+      "role": null,
+      "contact_info": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "encounters": [
+    {{
+      "encounter_id": null,
+      "encounter_type": "office visit",
+      "encounter_date": null,
+      "encounter_end_date": null,
+      "location": null,
+      "reason": null,
+      "participants": [],
+      "status": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "service_requests": [
+    {{
+      "request_id": null,
+      "request_type": "lab test",
+      "requester": null,
+      "reason": null,
+      "priority": null,
+      "clinical_context": null,
+      "request_date": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "diagnostic_reports": [
+    {{
+      "report_id": null,
+      "report_type": "lab",
+      "findings": "key findings",
+      "conclusion": null,
+      "recommendations": null,
+      "status": null,
+      "report_date": null,
+      "ordering_provider": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "allergies": [
+    {{
+      "allergy_id": null,
+      "allergen": "substance name",
+      "reaction": null,
+      "severity": null,
+      "onset_date": null,
+      "status": null,
+      "verification_status": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "care_plans": [
+    {{
+      "plan_id": null,
+      "plan_description": "care plan overview",
+      "goals": [],
+      "activities": [],
+      "period_start": null,
+      "period_end": null,
+      "status": null,
+      "intent": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "organizations": [
+    {{
+      "organization_id": null,
+      "name": "organization name",
+      "identifier": null,
+      "organization_type": null,
+      "address": null,
+      "city": null,
+      "state": null,
+      "postal_code": null,
+      "phone": null,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
   "extraction_timestamp": "",
   "document_type": "",
   "confidence_average": null
 }}
 
-CRITICAL: Every extracted item MUST include a "source" object with the exact text snippet."""
+CRITICAL FIELD NAME REQUIREMENTS:
+- encounters: Use "encounter_type" NOT "type"
+- service_requests: Use "request_type" NOT "service" or "type"
+- diagnostic_reports: Use "report_type" NOT "type"
+- vital_signs: Use "measurement" NOT "type"
+- Every extracted item MUST include a "source" object with exact text snippet
+- Use exact field names as shown above - do not abbreviate or substitute"""
                 
                 # Reset start time for manual approach
                 start_time = time.time()
