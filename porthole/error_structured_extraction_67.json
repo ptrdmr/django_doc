@@ -1,0 +1,10 @@
+{
+  "document_id": 67,
+  "timestamp": "2025-10-30T02:19:20.676440",
+  "stage": "error_structured_extraction",
+  "error_message": "Unexpected error during structured analysis: Claude response failed Pydantic validation: 6 validation errors for StructuredMedicalExtraction\nencounters.0.encounter_type\n  Field required [type=missing, input_value={'type': 'Emergency Depar... 298, 'end_index': 698}}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nservice_requests.0.request_type\n  Field required [type=missing, input_value={'service': 'STAT Cardiol...234, 'end_index': 5367}}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nservice_requests.1.request_type\n  Field required [type=missing, input_value={'service': 'Serial Tropo...371, 'end_index': 5441}}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nservice_requests.2.request_type\n  Field required [type=missing, input_value={'service': 'Cardiac Cath...445, 'end_index': 5612}}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nservice_requests.3.request_type\n  Field required [type=missing, input_value={'service': 'Echocardiogr...616, 'end_index': 5686}}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nservice_requests.4.request_type\n  Field required [type=missing, input_value={'service': 'Referral to ...690, 'end_index': 5810}}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing",
+  "error_data": {
+    "context": "Da Doctor - Family Medicine",
+    "text_length": 7686
+  }
+}

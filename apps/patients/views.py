@@ -480,6 +480,75 @@ class PatientUpdateView(LoginRequiredMixin, UpdateView):
 # FHIR Export Views
 # ============================================================================
 
+@method_decorator([provider_required, has_permission('patients.change_patient')], name='dispatch')
+class SetPrimaryDiagnosisView(LoginRequiredMixin, View):
+    """
+    AJAX endpoint to set primary diagnosis for a patient.
+    """
+    
+    def post(self, request, pk):
+        """
+        Set primary diagnosis for patient.
+        
+        Args:
+            request: HTTP request with condition_id in POST data
+            pk: Patient UUID
+            
+        Returns:
+            JsonResponse: Success or error message
+        """
+        try:
+            patient = get_object_or_404(Patient, pk=pk)
+            condition_id = request.POST.get('condition_id')
+            
+            if not condition_id:
+                return JsonResponse({
+                    'success': False, 
+                    'error': 'No condition ID provided'
+                }, status=400)
+            
+            # Validate that condition exists in patient's FHIR data
+            condition_found = False
+            for entry in patient.encrypted_fhir_bundle.get('entry', []):
+                resource = entry.get('resource', {})
+                if (resource.get('resourceType') == 'Condition' and 
+                    resource.get('id') == condition_id):
+                    condition_found = True
+                    break
+            
+            if not condition_found:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Condition not found in patient records'
+                }, status=404)
+            
+            # Update primary condition
+            patient.primary_condition_id = condition_id
+            patient.save()
+            
+            # Create audit record
+            PatientHistory.objects.create(
+                patient=patient,
+                action='updated',
+                changed_by=request.user,
+                notes=f'Primary diagnosis set to condition {condition_id} by {request.user.get_full_name()}'
+            )
+            
+            logger.info(f"Primary diagnosis set for patient {patient.mrn} by user {request.user.id}")
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Primary diagnosis updated successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Error setting primary diagnosis for patient {pk}: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': 'An error occurred while updating the primary diagnosis'
+            }, status=500)
+
+
 @method_decorator([requires_phi_access, has_permission('patients.export_patient_data')], name='dispatch')
 class PatientFHIRExportView(LoginRequiredMixin, View):
     """

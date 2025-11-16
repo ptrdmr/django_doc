@@ -1,0 +1,862 @@
+{
+  "document_id": 66,
+  "timestamp": "2025-10-30T01:40:59.023128",
+  "stage": "structured_fhir_conversion",
+  "patient_id": "4e180955-f212-41b1-9d7b-986a9d673b02",
+  "resource_count": 36,
+  "fhir_resources": [
+    {
+      "resourceType": "Condition",
+      "id": "bbaf5b56-88ab-49d3-906c-aeefe6d0a5c9",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:58.996347+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "Type 2 Diabetes Mellitus",
+            "display": "Type 2 Diabetes Mellitus"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "799f0c8e-9b22-4c11-942c-07f899ffed85",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:58.997040+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "Hypertension",
+            "display": "Hypertension"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "0a159004-40a5-4063-b8ca-6261a302e165",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:58.997238+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "Hyperlipidemia",
+            "display": "Hyperlipidemia"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "74c3772a-c2e9-4643-8016-1db4dd1dbd80",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:58.997422+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "Coronary Artery Disease",
+            "display": "Coronary Artery Disease"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      }
+    },
+    {
+      "resourceType": "Condition",
+      "id": "1f5f5bbb-64e4-4158-814a-a33d4cc7f559",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:58.997550+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "Acute coronary syndrome",
+            "display": "Acute coronary syndrome"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "onsetDateTime": "2024-10-28 00:00:00"
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "19618fb4-4608-4c37-924f-fcdf577c59fb",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:58.997805+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Lisinopril"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "effectiveDateTime": "2025-10-30 05:40:58.997805+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "10mg once daily via PO",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "8e44d2bd-7e77-4bbc-ad20-f8bd5947cf41",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.011114+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Metformin"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "effectiveDateTime": "2025-10-30 05:40:59.011114+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "500mg twice daily with meals via PO",
+          "timing": {
+            "repeat": {
+              "frequency": 2,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "c47e9058-8385-48f8-ba9d-7d935168ebaf",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.011462+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Atorvastatin"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "effectiveDateTime": "2025-10-30 05:40:59.011462+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "20mg once daily at bedtime via PO",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "7a6f576c-c6c5-4791-b30e-0ea7a13c0465",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.011721+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Aspirin"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "effectiveDateTime": "2025-10-30 05:40:59.011721+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "81mg once daily via PO",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "Observation",
+      "id": "ecbbd03c-9ede-4300-be78-c290ed18028b",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-BLOOD-PRESSURE",
+            "display": "Blood Pressure"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "145/92"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "5902d4b7-82fb-48a4-9811-d37e83b1dbb2",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-HEART-RATE",
+            "display": "Heart Rate"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "98"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "9968e128-a9a0-4f71-a700-4cac4d6ed5e1",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-TEMPERATURE",
+            "display": "Temperature"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "98.6"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "33409791-eed8-4932-b6f6-4a34eda03500",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-RESPIRATORY-RATE",
+            "display": "Respiratory Rate"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "22"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "d4070dc0-fcc8-45bd-b957-4233588cedb7",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-OXYGEN-SATURATION",
+            "display": "Oxygen Saturation"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "94%"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "f2d93648-6358-4df5-831b-04ea49fe5cb7",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-WEIGHT",
+            "display": "Weight"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "185"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "c0b789fb-988d-4dd0-889f-573bc88a966d",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-HEIGHT",
+            "display": "Height"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "70"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "02a87c88-59bd-405e-881f-2a97c393fd7e",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-21899",
+            "display": "TROPONIN"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "0.8"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "786d3b38-a84d-4948-829c-98ccad048d6f",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-31385",
+            "display": "WBC"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "8.5"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "3ae55372-6cdb-46a7-a3c4-7fd170c3e717",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-05355",
+            "display": "Hemoglobin"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "14.2"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "14bc3348-24b6-41aa-a8a0-c2fd94a7bfef",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-66185",
+            "display": "Platelets"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "245"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "afdaa114-cdc8-44f2-ab19-370028cd5b7c",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-42179",
+            "display": "Glucose"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "145"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "2468db6e-6468-4ef3-813b-55d333c8c7dd",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-16035",
+            "display": "Creatinine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "1.1"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "ef7ecb06-66de-4528-9232-777b7428011b",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-13549",
+            "display": "Sodium"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "139"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "e242cd03-f37c-4aab-b136-0edf06058f8d",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-61757",
+            "display": "Potassium"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "4.2"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "5619dd25-cb29-4335-888f-55ae05a7eecf",
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-57729",
+            "display": "HbA1c"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "valueString": "7.2%"
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "4009d847-d766-4496-afd9-f8ab2abefd35",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.016628+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-31180",
+            "display": "EKG 12-lead"
+          }
+        ],
+        "text": "EKG 12-lead"
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "performer": [
+        {
+          "actor": {
+            "display": "Tech Martinez"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "ST elevation in leads II, III, aVF"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "1520826a-a08d-4177-b275-d37beb28a08e",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.017060+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-63166",
+            "display": "IV catheter placement"
+          }
+        ],
+        "text": "IV catheter placement"
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "performer": [
+        {
+          "actor": {
+            "display": "Nurse Williams"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "Left antecubital fossa, 18 gauge"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "9a97e8c6-ffdf-4a75-9894-f74effbf899c",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.017295+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-15207",
+            "display": "Blood draw for cardiac enzymes"
+          }
+        ],
+        "text": "Blood draw for cardiac enzymes"
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "performer": [
+        {
+          "actor": {
+            "display": "Lab Tech Johnson"
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "1d122253-026a-4b63-9cb5-9d528f613557",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.017483+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-27962",
+            "display": "Cardiac catheterization"
+          }
+        ],
+        "text": "Cardiac catheterization"
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "performer": [
+        {
+          "actor": {
+            "display": "Dr. Sarah Johnson"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "scheduled"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "dd9dd6d4-b7b2-41f7-8b9b-bcd2687dda58",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.017660+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-47517",
+            "display": "Chest X-ray"
+          }
+        ],
+        "text": "Chest X-ray"
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "performer": [
+        {
+          "actor": {
+            "display": "Dr. Patricia Lee"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "Mild cardiomegaly. No acute infiltrates, effusions, or pneumothorax. Lung fields clear bilaterally"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "95989877-8bf3-4bf2-9b33-fe5dd559ed33",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.017827+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-83556",
+            "display": "Echocardiogram"
+          }
+        ],
+        "text": "Echocardiogram"
+      },
+      "subject": {
+        "reference": "Patient/4e180955-f212-41b1-9d7b-986a9d673b02"
+      },
+      "performer": [
+        {
+          "actor": {
+            "display": "Dr. Robert Williams"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "LV ejection fraction 45%, mild LV hypertrophy, trace mitral regurgitation"
+      }
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "8ee8f340-8835-4b08-b65f-20b4a3b07406",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.017991+00:00"
+      },
+      "name": [
+        {
+          "family": "Sarah Johnson",
+          "given": [
+            "Dr."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "1038fb4b-20d1-4e59-b3a7-b966680eaf00",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.018196+00:00"
+      },
+      "name": [
+        {
+          "family": "Michael Chen",
+          "given": [
+            "Dr."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "e30253c9-f623-446d-9111-bb1c092fc25c",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.018314+00:00"
+      },
+      "name": [
+        {
+          "family": "Emily Anderson",
+          "given": [
+            "Dr."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "9f0bbd46-a619-4c9c-9d6a-e44941de97ad",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.018425+00:00"
+      },
+      "name": [
+        {
+          "family": "Robert Williams",
+          "given": [
+            "Dr."
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "6d319682-8980-4307-8499-b5fbb99d5992",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-10-30 05:40:59.018500+00:00"
+      },
+      "name": [
+        {
+          "family": "Patricia Lee",
+          "given": [
+            "Dr."
+          ]
+        }
+      ]
+    }
+  ],
+  "resource_types": {
+    "Condition": 5,
+    "MedicationStatement": 4,
+    "Observation": 16,
+    "Procedure": 6,
+    "Practitioner": 5
+  }
+}

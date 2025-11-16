@@ -295,6 +295,62 @@ class PDFGenerator:
         
         return output_path
     
+    def generate_weight_chart_image(self, weight_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Generate weight chart as base64-encoded PNG for PDF inclusion.
+        
+        Args:
+            weight_data: Dict with dates, weights, unit, and has_data keys
+            
+        Returns:
+            str: Base64 encoded PNG image data URI, or None if no data
+        """
+        if not weight_data.get('has_data'):
+            return None
+        
+        try:
+            import matplotlib
+            matplotlib.use('Agg')  # Use non-GUI backend
+            import matplotlib.pyplot as plt
+            import io
+            import base64
+            
+            dates = weight_data['dates']
+            weights = weight_data['weights']
+            unit = weight_data['unit']
+            
+            # Create figure
+            fig, ax = plt.subplots(figsize=(6, 3))
+            ax.plot(dates, weights, marker='o', color='#4a90e2', linewidth=2, markersize=6)
+            ax.set_xlabel('Date', fontsize=10)
+            ax.set_ylabel(f"Weight ({unit})", fontsize=10)
+            ax.set_title('Weight Trend', fontsize=12, fontweight='bold', pad=10)
+            ax.grid(True, alpha=0.3, linestyle='--')
+            
+            # Format x-axis labels
+            plt.xticks(rotation=45, ha='right', fontsize=9)
+            plt.yticks(fontsize=9)
+            plt.tight_layout()
+            
+            # Convert to base64
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=100, bbox_inches='tight', facecolor='white')
+            buf.seek(0)
+            image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+            plt.close(fig)
+            
+            return f"data:image/png;base64,{image_base64}"
+            
+        except ImportError:
+            # matplotlib not installed, return None
+            return None
+        except Exception as e:
+            # Log error but don't break report generation
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error generating weight chart: {e}")
+            return None
+    
     def _get_pdf_styles(self) -> str:
         """
         Get CSS styles for medical PDF reports.
