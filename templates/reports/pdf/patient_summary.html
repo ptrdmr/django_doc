@@ -307,10 +307,10 @@
                 </tr>
             </thead>
             <tbody>
-                {% for date, weight in data.clinical_summary.weight_timeline.dates|zip:data.clinical_summary.weight_timeline.weights %}
+                {% for point in data.clinical_summary.weight_timeline.data_points %}
                 <tr>
-                    <td>{{ date|date:"m/d/Y" }}</td>
-                    <td>{{ weight }}</td>
+                    <td>{{ point.date|date:"m/d/Y" }}</td>
+                    <td>{{ point.weight }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
