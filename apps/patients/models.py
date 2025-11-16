@@ -916,64 +916,59 @@ class Patient(MedicalRecord):
         except Exception as e:
             summary["errors"].append(f"Observation extraction error: {str(e)}")
 
-    def get_primary_diagnosis(self):
+    def get_primary_diagnosis_from_conditions(self, conditions_list):
         """
-        Get primary diagnosis from FHIR data.
+        Get primary diagnosis from a pre-extracted conditions list.
         
+        Args:
+            conditions_list: List of condition dicts from report
+            
         Returns:
             dict: Primary condition data or None
         """
         if self.primary_condition_id:
             # Find condition with matching resource ID
-            for entry in self.encrypted_fhir_bundle.get('entry', []):
-                resource = entry.get('resource', {})
-                if (resource.get('resourceType') == 'Condition' and 
-                    resource.get('id') == self.primary_condition_id):
-                    return self._extract_condition_for_report(resource)
+            for condition in conditions_list:
+                if condition.get('id') == self.primary_condition_id:
+                    return condition
         
-        # Fallback: first active condition sorted by onset date
-        try:
-            conditions = self.get_comprehensive_report()['clinical_summary']['conditions']
-            active_conditions = [c for c in conditions if c.get('status') == 'active']
-            return active_conditions[0] if active_conditions else None
-        except:
-            return None
+        # Fallback: first active condition
+        active_conditions = [c for c in conditions_list if c.get('status') == 'active']
+        return active_conditions[0] if active_conditions else None
     
-    def get_comorbidities(self):
+    def get_comorbidities_from_conditions(self, conditions_list):
         """
         Get all active conditions except primary diagnosis.
         
+        Args:
+            conditions_list: List of condition dicts from report
+            
         Returns:
             list: Comorbidity condition data
         """
-        try:
-            all_conditions = self.get_comprehensive_report()['clinical_summary']['conditions']
-            active_conditions = [c for c in all_conditions if c.get('status') == 'active']
-            
-            if self.primary_condition_id:
-                return [c for c in active_conditions if c.get('id') != self.primary_condition_id]
-            
-            # If no primary set, exclude first one
-            return active_conditions[1:] if len(active_conditions) > 1 else []
-        except:
-            return []
+        active_conditions = [c for c in conditions_list if c.get('status') == 'active']
+        
+        if self.primary_condition_id:
+            return [c for c in active_conditions if c.get('id') != self.primary_condition_id]
+        
+        # If no primary set, exclude first one
+        return active_conditions[1:] if len(active_conditions) > 1 else []
     
-    def get_weight_timeline(self, limit=12):
+    def get_weight_timeline_from_observations(self, observations_list, limit=12):
         """
-        Get weight observations over time.
+        Get weight observations over time from a pre-extracted observations list.
         
         Args:
+            observations_list: List of observation dicts from report
             limit: Maximum number of data points (default 12)
             
         Returns:
             dict: {dates: [...], weights: [...], unit: 'lbs', has_data: bool}
         """
         try:
-            observations = self.get_comprehensive_report()['clinical_summary']['observations']
-            
             # Filter for weight observations
             weight_obs = [
-                obs for obs in observations 
+                obs for obs in observations_list 
                 if 'weight' in obs.get('display_name', '').lower()
                 and obs.get('value') is not None
                 and obs.get('effective_date')
@@ -1122,10 +1117,13 @@ class Patient(MedicalRecord):
             # Sort clinical data by date (most recent first)
             self._sort_clinical_data_by_date(report)
             
-            # Add derived fields for new dashboard report
-            primary_diagnosis = self.get_primary_diagnosis()
+            # Add derived fields for new dashboard report (using already-extracted data to avoid recursion)
+            conditions = report['clinical_summary']['conditions']
+            observations = report['clinical_summary']['observations']
+            
+            primary_diagnosis = self.get_primary_diagnosis_from_conditions(conditions)
             report['patient_info']['primary_diagnosis'] = primary_diagnosis
-            report['patient_info']['comorbidities'] = self.get_comorbidities()
+            report['patient_info']['comorbidities'] = self.get_comorbidities_from_conditions(conditions)
             
             # Calculate initial diagnosis date from primary diagnosis
             if primary_diagnosis:
@@ -1134,7 +1132,7 @@ class Patient(MedicalRecord):
                 report['patient_info']['initial_diagnosis_date'] = None
             
             # Add weight timeline to clinical summary
-            report['clinical_summary']['weight_timeline'] = self.get_weight_timeline()
+            report['clinical_summary']['weight_timeline'] = self.get_weight_timeline_from_observations(observations)
             
             # Create audit record for report generation
             self._create_fhir_audit_record(
