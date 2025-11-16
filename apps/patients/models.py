@@ -963,7 +963,7 @@ class Patient(MedicalRecord):
             limit: Maximum number of data points (default 12)
             
         Returns:
-            dict: {dates: [...], weights: [...], unit: 'lbs', has_data: bool}
+            dict: {dates: [...], weights: [...], data_points: [{date, weight}, ...], unit: 'lbs', has_data: bool}
         """
         try:
             # Filter for weight observations
@@ -988,9 +988,16 @@ class Patient(MedicalRecord):
             weights = [float(obs['value']) for obs in weight_obs]
             unit = weight_obs[0]['unit'] if weight_obs else 'lbs'
             
+            # Create paired data points for easy template iteration
+            data_points = [
+                {'date': date, 'weight': weight} 
+                for date, weight in zip(dates, weights)
+            ]
+            
             return {
                 'dates': dates,
                 'weights': weights,
+                'data_points': data_points,
                 'unit': unit,
                 'has_data': len(weights) > 0
             }
@@ -998,6 +1005,7 @@ class Patient(MedicalRecord):
             return {
                 'dates': [],
                 'weights': [],
+                'data_points': [],
                 'unit': 'lbs',
                 'has_data': False
             }
