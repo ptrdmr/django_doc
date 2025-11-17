@@ -1382,14 +1382,20 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             resource_type = item.get('resource_type')
             resource_index = item.get('resource_index')
             
-            # Group medications by resource_index
-            if resource_type == 'medication' and resource_index is not None:
+            # Group multi-property resources (medications, conditions with onset dates)
+            if resource_type in ['medication', 'condition'] and resource_index is not None:
                 if resource_index not in medication_groups:
+                    # Determine base field name
+                    if resource_type == 'condition':
+                        base_name = f'Condition {resource_index + 1}'
+                    else:
+                        base_name = f'Medication {resource_index + 1}'
+                    
                     medication_groups[resource_index] = {
                         'is_grouped': True,
-                        'resource_type': 'medication',
+                        'resource_type': resource_type,
                         'resource_index': resource_index,
-                        'field_name': f'Medication {resource_index + 1}',
+                        'field_name': base_name,
                         'category': item.get('category'),
                         'properties': [],
                         'clinical_date': None,  # Will be set from main medication field
@@ -1402,17 +1408,24 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                         'parsed_data_id': item.get('parsed_data_id')
                     }
                 
-                # If this is the main medication field (not dosage/frequency), capture its date
+                # If this is the main field (not a sub-property), capture its date
                 field_name = item.get('field_name', '')
-                if 'Dosage' not in field_name and 'Frequency' not in field_name and 'Route' not in field_name:
-                    # This is the main medication field - use its clinical_date
+                is_sub_property = any(prop in field_name for prop in ['Dosage', 'Frequency', 'Route', 'Onset Date', 'Reference Range'])
+                
+                if not is_sub_property:
+                    # This is the main field - use its clinical_date
                     medication_groups[resource_index]['clinical_date'] = item.get('clinical_date')
                     medication_groups[resource_index]['date_source'] = item.get('date_source')
                     medication_groups[resource_index]['date_status'] = item.get('date_status')
                 
+                # Extract property name (everything after "Medication N " or "Condition N ")
+                # e.g., "Medication 3 Dosage" → "Dosage", "Condition 7 Onset Date" → "Onset Date"
+                parts = field_name.split(maxsplit=2)  # Split into ["Medication", "3", "Dosage"]
+                property_name = parts[2] if len(parts) > 2 else field_name
+                
                 # Add this property to the group
                 medication_groups[resource_index]['properties'].append({
-                    'name': item.get('field_name').split()[-1],  # Extract "Dosage", "Frequency", etc.
+                    'name': property_name,
                     'value': item.get('field_value'),
                     'field_id': item.get('id'),
                     'field_path': item.get('field_path')
