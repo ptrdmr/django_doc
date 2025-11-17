@@ -112,12 +112,32 @@ class ConditionService:
         raw_onset = condition_dict.get('onset_date')
         
         if raw_onset:
-            # Use ClinicalDateParser for consistent date handling
-            extracted_dates = self.date_parser.extract_dates(raw_onset)
-            if extracted_dates:
-                best_date = max(extracted_dates, key=lambda x: x.confidence)
-                onset_date = best_date.extracted_date.isoformat()
-                self.logger.debug(f"Parsed structured onset date {onset_date} with confidence {best_date.confidence}")
+            import re
+            
+            # Handle partial dates that date parser can't process
+            # Year-only format (e.g., "2018")
+            if re.match(r'^\d{4}$', str(raw_onset)):
+                onset_date = f"{raw_onset}-01-01"  # Default to January 1st
+                date_source = "partial_year"
+                self.logger.debug(f"Converted year-only date '{raw_onset}' to {onset_date}")
+            
+            # Year-month format (e.g., "2018-02" or "2018/02")
+            elif re.match(r'^\d{4}[-/]\d{1,2}$', str(raw_onset)):
+                # Normalize separator to dash and pad month
+                parts = re.split(r'[-/]', str(raw_onset))
+                year, month = parts[0], parts[1].zfill(2)
+                onset_date = f"{year}-{month}-01"  # Default to 1st of month
+                date_source = "partial_year_month"
+                self.logger.debug(f"Converted year-month date '{raw_onset}' to {onset_date}")
+            
+            else:
+                # Use ClinicalDateParser for complete dates
+                extracted_dates = self.date_parser.extract_dates(str(raw_onset))
+                if extracted_dates:
+                    best_date = max(extracted_dates, key=lambda x: x.confidence)
+                    onset_date = best_date.extracted_date.isoformat()
+                    date_source = "full_date_parsed"
+                    self.logger.debug(f"Parsed structured onset date {onset_date} with confidence {best_date.confidence}")
         
         # Map condition status to FHIR clinical status
         condition_status = condition_dict.get('status', 'active').lower()
