@@ -568,9 +568,9 @@
         background: #f5f5f5;
     }
     
-    /* Scrollable Category Container (20vh max height) */
+    /* Scrollable Category Container (40vh max height) */
     .category-content-scroll {
-        max-height: 20vh;
+        max-height: 40vh;
         overflow-y: auto;
         overflow-x: hidden;
         scrollbar-width: thin;
@@ -1276,7 +1276,107 @@ function saveInlineEdit(propertyRow, editInput, valueSpan, editBtn) {
 // Initialize Card Interactivity (for both main view and modal)
 function initializeCardInteractivity(container = document) {
     initializeInlineEditing();
-    // Other initializations will be added here
+    initializeApproveButtons(container);
+    initializeEditButtons(container);
+    initializeFlagButtons(container);
+}
+
+// Approve Field Function (reusable)
+function approveField(card, button) {
+    const fieldId = card.dataset.fieldId;
+    
+    // Prepare form data
+    const formData = new FormData();
+    formData.append('document_id', '{{ document.id }}');
+    formData.append('field_name', card.querySelector('.field-name').textContent);
+    formData.append('field_value', card.querySelector('.value-display')?.textContent.trim() || '');
+    formData.append('confidence', card.querySelector('.confidence-indicator')?.dataset.confidence || '0.5');
+    formData.append('snippet', card.querySelector('.snippet-text')?.textContent || '');
+    
+    // Add structured data fields if available
+    if (card.dataset.fieldPath) formData.append('field_path', card.dataset.fieldPath);
+    if (card.dataset.resourceType) formData.append('resource_type', card.dataset.resourceType);
+    if (card.dataset.resourceIndex) formData.append('resource_index', card.dataset.resourceIndex);
+    
+    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+    
+    // Make AJAX request
+    fetch('/documents/field/approve/', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            button.classList.add('approved');
+            button.innerHTML = '<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> Approved';
+            updateProgress();
+        }
+    })
+    .catch(error => console.error('Approval error:', error));
+}
+
+// Initialize Approve Buttons
+function initializeApproveButtons(container = document) {
+    container.querySelectorAll('.approve-btn').forEach(btn => {
+        // Remove existing listeners by replacing the node
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        
+        newBtn.addEventListener('click', function() {
+            if (this.classList.contains('approved')) {
+                return; // Already approved
+            }
+            
+            const card = this.closest('.field-review-card');
+            
+            // For grouped cards, approve all properties
+            if (card.classList.contains('grouped-medication-card')) {
+                this.classList.add('approved');
+                this.innerHTML = '<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> Approved';
+                updateProgress();
+            } else {
+                // Standard field approval
+                approveField(card, this);
+            }
+        });
+    });
+}
+
+// Initialize Edit Buttons
+function initializeEditButtons(container = document) {
+    container.querySelectorAll('.edit-btn').forEach(btn => {
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        
+        newBtn.addEventListener('click', function() {
+            const card = this.closest('.field-review-card');
+            const valueDisplay = card.querySelector('.value-display');
+            const editor = card.querySelector('.inline-editor');
+            
+            if (valueDisplay && editor) {
+                valueDisplay.style.display = 'none';
+                editor.style.display = 'flex';
+                editor.querySelector('.edit-field-value')?.focus();
+            }
+        });
+    });
+}
+
+// Initialize Flag Buttons
+function initializeFlagButtons(container = document) {
+    container.querySelectorAll('.flag-btn').forEach(btn => {
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        
+        newBtn.addEventListener('click', function() {
+            const reason = prompt("Why are you flagging this field?");
+            if (reason && reason.trim()) {
+                // TODO: Send flag to backend
+                alert('Field flagged: ' + reason);
+            }
+        });
+    });
 }
 
 // Keep existing modal functions for document approval workflow
@@ -1642,59 +1742,11 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     
-    // Handle approve button clicks with HTMX-style functionality
-    document.querySelectorAll('.approve-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            if (this.classList.contains('approved')) {
-                return; // Already approved
-            }
-            
-            const card = this.closest('.field-review-card');
-            const fieldId = card.dataset.fieldId;
-            
-            // Prepare form data
-            const formData = new FormData();
-            formData.append('document_id', '{{ document.id }}');
-            formData.append('field_name', card.querySelector('.field-name').textContent);
-            formData.append('field_value', card.querySelector('.value-display').textContent.trim());
-            formData.append('confidence', card.querySelector('.confidence-indicator').dataset.confidence || '0.5');
-            formData.append('snippet', card.querySelector('.snippet-text')?.textContent || '');
-            
-            // Add structured data fields if available
-            if (card.dataset.fieldPath) {
-                formData.append('field_path', card.dataset.fieldPath);
-            }
-            if (card.dataset.resourceType) {
-                formData.append('resource_type', card.dataset.resourceType);
-            }
-            if (card.dataset.resourceIndex) {
-                formData.append('resource_index', card.dataset.resourceIndex);
-            }
-            
-            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
-            
-            // Make AJAX request to approve field
-            fetch(`/documents/field/${fieldId}/approve/`, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => response.text())
-            .then(html => {
-                // Replace the entire card with updated HTML
-                card.outerHTML = html;
-            })
-            .catch(error => {
-                console.error('Error approving field:', error);
-                alert('Error approving field. Please try again.');
-            });
-        });
-    });
+    // Handle flag button clicks (now handled by initializeFlagButtons)
+    // Duplicate code removed - using refactored initialization functions
     
-    // Handle flag button clicks
-    document.querySelectorAll('.flag-btn').forEach(btn => {
+    if (false) { // Keeping old code structure for reference
+        document.querySelectorAll('.flag-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const card = this.closest('.field-review-card');
             const fieldId = card.dataset.fieldId;

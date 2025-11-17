@@ -1392,15 +1392,23 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                         'field_name': f'Medication {resource_index + 1}',
                         'category': item.get('category'),
                         'properties': [],
-                        'clinical_date': item.get('clinical_date'),
-                        'date_source': item.get('date_source'),
-                        'date_status': item.get('date_status'),
+                        'clinical_date': None,  # Will be set from main medication field
+                        'date_source': None,
+                        'date_status': None,
                         'snippet': item.get('snippet'),
                         'confidence': item.get('confidence', 0.8),
                         'approved': item.get('approved', False),
                         'id': item.get('id'),  # Use first property's ID as group ID
                         'parsed_data_id': item.get('parsed_data_id')
                     }
+                
+                # If this is the main medication field (not dosage/frequency), capture its date
+                field_name = item.get('field_name', '')
+                if 'Dosage' not in field_name and 'Frequency' not in field_name and 'Route' not in field_name:
+                    # This is the main medication field - use its clinical_date
+                    medication_groups[resource_index]['clinical_date'] = item.get('clinical_date')
+                    medication_groups[resource_index]['date_source'] = item.get('date_source')
+                    medication_groups[resource_index]['date_status'] = item.get('date_status')
                 
                 # Add this property to the group
                 medication_groups[resource_index]['properties'].append({
