@@ -274,7 +274,7 @@
                     </div>
                     <div class="field">
                         <strong>ICD-10:</strong>
-                        {% if data.patient_info.primary_diagnosis.codes.0.code %}
+                        {% if data.patient_info.primary_diagnosis and data.patient_info.primary_diagnosis.codes.0.code %}
                             {{ data.patient_info.primary_diagnosis.codes.0.code }}
                         {% else %}
                             N/A
@@ -283,7 +283,7 @@
                     <div class="field">
                         <strong>Date of Initial Diagnosis:</strong>
                         {% if data.patient_info.initial_diagnosis_date %}
-                            {{ data.patient_info.initial_diagnosis_date|date:"m/d/Y" }}{% if data.patient_info.primary_diagnosis.onset_date_precision != 'day' %}*{% endif %}
+                            {{ data.patient_info.initial_diagnosis_date|date:"m/d/Y" }}{% if data.patient_info.primary_diagnosis and data.patient_info.primary_diagnosis.onset_date_precision != 'day' %}*{% endif %}
                         {% else %}
                             N/A
                         {% endif %}
