@@ -822,7 +822,13 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     
                     categorized_data[field_data['category']].append(field_data)
                 
-                context['categorized_data'] = dict(categorized_data)
+                # Group multi-property resources (like medications) by resource_index
+                grouped_categorized_data = {}
+                for category, items in categorized_data.items():
+                    grouped_items = self._group_multi_property_items(items)
+                    grouped_categorized_data[category] = grouped_items
+                
+                context['categorized_data'] = grouped_categorized_data
                 context['review_progress'] = round((approved_fields / total_fields * 100) if total_fields > 0 else 0)
                 context['review_stats'] = {
                     'total_fields': total_fields,
@@ -1358,6 +1364,60 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
         # Default category
         else:
             return 'Other'
+    
+    def _group_multi_property_items(self, items):
+        """
+        Group multi-property items (like medications) by resource_index.
+        
+        Args:
+            items: List of field dictionaries
+            
+        Returns:
+            List of items where multi-property resources are grouped into single objects
+        """
+        grouped = []
+        medication_groups = {}
+        
+        for item in items:
+            resource_type = item.get('resource_type')
+            resource_index = item.get('resource_index')
+            
+            # Group medications by resource_index
+            if resource_type == 'medication' and resource_index is not None:
+                if resource_index not in medication_groups:
+                    medication_groups[resource_index] = {
+                        'is_grouped': True,
+                        'resource_type': 'medication',
+                        'resource_index': resource_index,
+                        'field_name': f'Medication {resource_index + 1}',
+                        'category': item.get('category'),
+                        'properties': [],
+                        'clinical_date': item.get('clinical_date'),
+                        'date_source': item.get('date_source'),
+                        'date_status': item.get('date_status'),
+                        'snippet': item.get('snippet'),
+                        'confidence': item.get('confidence', 0.8),
+                        'approved': item.get('approved', False),
+                        'id': item.get('id'),  # Use first property's ID as group ID
+                        'parsed_data_id': item.get('parsed_data_id')
+                    }
+                
+                # Add this property to the group
+                medication_groups[resource_index]['properties'].append({
+                    'name': item.get('field_name').split()[-1],  # Extract "Dosage", "Frequency", etc.
+                    'value': item.get('field_value'),
+                    'field_id': item.get('id'),
+                    'field_path': item.get('field_path')
+                })
+            else:
+                # Not a medication or doesn't have resource_index - add as-is
+                grouped.append(item)
+        
+        # Add grouped medications to results
+        for med_group in sorted(medication_groups.values(), key=lambda x: x['resource_index']):
+            grouped.append(med_group)
+        
+        return grouped
     
     def _identify_missing_fields(self, categorized_data):
         """

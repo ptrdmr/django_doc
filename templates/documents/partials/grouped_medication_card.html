@@ -1,0 +1,121 @@
+{% load review_filters %}
+{# Consolidated card for medications with multiple properties #}
+<div class="field-review-card grouped-medication-card" data-group-id="{{ item.id }}" 
+     data-resource-type="{{ item.resource_type }}"
+     data-resource-index="{{ item.resource_index }}">
+    
+    <div class="field-header grouped-header">
+        <span class="field-name">{{ item.field_name }}</span>
+        <div class="flex items-center gap-2">
+            {% if item.edited %}
+                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">EDITED</span>
+            {% endif %}
+            {% if item.flagged %}
+                <span class="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full font-medium">FLAGGED</span>
+            {% endif %}
+            <span class="confidence-indicator confidence-{{ item.confidence|confidence_level }}" 
+                  data-confidence="{{ item.confidence }}">
+                {{ item.confidence|confidence_level|title }} Confidence
+            </span>
+        </div>
+    </div>
+    
+    <div class="field-content">
+        {# Display all properties with inline edit buttons #}
+        <div class="medication-properties">
+            {% for prop in item.properties %}
+            <div class="property-row" data-property-name="{{ prop.name }}">
+                <div class="property-label">{{ prop.name }}:</div>
+                <div class="property-value-container">
+                    <span class="property-value">{{ prop.value }}</span>
+                    <button class="inline-edit-btn" 
+                            data-field-id="{{ prop.field_id }}"
+                            data-property-name="{{ prop.name }}"
+                            title="Edit {{ prop.name }}">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                        </svg>
+                    </button>
+                    <input type="text" 
+                           class="property-edit-input" 
+                           value="{{ prop.value }}"
+                           style="display:none;">
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        {% if item.snippet %}
+        <div class="source-snippet">
+            <h4>Source Context:</h4>
+            <div class="snippet-text">{{ item.snippet }}</div>
+        </div>
+        {% endif %}
+        
+        {# Shared Clinical Date for all properties #}
+        <div class="clinical-date-section bg-blue-50 border border-blue-200 rounded p-3 mt-3">
+            <h4 class="text-blue-900 font-semibold text-sm flex items-center gap-2 mb-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                Clinical Date
+            </h4>
+            
+            {% if item.clinical_date %}
+                <div class="clinical-date-display">
+                    <div class="flex items-center justify-between">
+                        <span class="text-blue-900 font-medium">{{ item.clinical_date|date:"Y-m-d" }}</span>
+                        <div class="flex gap-2">
+                            <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full font-medium">
+                                {{ item.date_source|upper }}
+                            </span>
+                            {% if item.date_status == 'verified' %}
+                            <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium">VERIFIED</span>
+                            {% else %}
+                            <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-medium">PENDING</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <p class="text-sm text-blue-700 mb-2">No clinical date found. Enter the date when this medication was administered:</p>
+            {% endif %}
+            
+            <div class="clinical-date-editor mt-2" {% if item.clinical_date %}style="display:none;"{% endif %}>
+                <div class="flex gap-2">
+                    <input type="date" 
+                           class="clinical-date-input flex-1 px-3 py-2 border border-blue-300 rounded-md text-sm"
+                           data-parsed-data-id="{{ item.parsed_data_id }}"
+                           value="{{ item.clinical_date|date:'Y-m-d' }}">
+                    <button class="save-clinical-date-btn bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="field-actions">
+        <button class="approve-btn {% if item.approved %}approved{% endif %}" 
+                data-group-id="{{ item.id }}">
+            {% if item.approved %}
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                </svg>
+                Approved
+            {% else %}
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Approve All
+            {% endif %}
+        </button>
+        <button class="flag-btn" data-group-id="{{ item.id }}">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2zm9-13.5V9"></path>
+            </svg>
+            Flag
+        </button>
+    </div>
+</div>
+

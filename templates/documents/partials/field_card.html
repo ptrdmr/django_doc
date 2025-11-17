@@ -57,22 +57,17 @@
                         <div class="flex items-center gap-2">
                             <span class="text-blue-900 font-medium">{{ item.clinical_date|date:"Y-m-d" }}</span>
                             
-                            {# Date source badge #}
-                            {% if item.date_source == 'manual' %}
-                                <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium border border-green-300">
-                                    <svg class="w-3 h-3 inline -mt-0.5" style="width: 12px; height: 12px; display: inline-block;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                                    </svg>
-                                    MANUAL
-                                </span>
-                            {% else %}
-                                <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full font-medium border border-purple-300">
-                                    <svg class="w-3 h-3 inline -mt-0.5" style="width: 12px; height: 12px; display: inline-block;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                                    </svg>
-                                    EXTRACTED
-                                </span>
-                            {% endif %}
+                            {# Date source badge - only show if date exists #}
+                            <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full font-medium border border-purple-300">
+                                <svg class="w-3 h-3 inline -mt-0.5" style="width: 12px; height: 12px; display: inline-block;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    {% if item.date_source == 'manual' %}
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                    {% else %}
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                                    {% endif %}
+                                </svg>
+                                {{ item.date_source|upper }}
+                            </span>
                             
                             {# Date verification status badge #}
                             {% if item.date_status == 'verified' %}
