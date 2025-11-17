@@ -45,6 +45,11 @@ class Command(BaseCommand):
             action='store_true',
             help='Show detailed progress during deletion'
         )
+        parser.add_argument(
+            '--yes',
+            action='store_true',
+            help='Skip interactive confirmation prompt (use with caution)'
+        )
 
     def handle(self, *args, **options):
         """Execute database scrubbing."""
@@ -108,11 +113,15 @@ class Command(BaseCommand):
         self.stdout.write(self.style.ERROR(f"\n⚠️  WARNING: About to delete {total_records} records!"))
         self.stdout.write("This action cannot be undone.\n")
         
-        confirm_text = input("Type 'DELETE ALL MEDICAL DATA' to confirm: ")
-        
-        if confirm_text != "DELETE ALL MEDICAL DATA":
-            self.stdout.write(self.style.ERROR("Confirmation text did not match. Aborting."))
-            return
+        # Skip interactive prompt if --yes flag is used
+        if not options['yes']:
+            confirm_text = input("Type 'DELETE ALL MEDICAL DATA' to confirm: ")
+            
+            if confirm_text != "DELETE ALL MEDICAL DATA":
+                self.stdout.write(self.style.ERROR("Confirmation text did not match. Aborting."))
+                return
+        else:
+            self.stdout.write(self.style.WARNING("--yes flag used, skipping interactive confirmation"))
         
         # Perform deletion
         self.stdout.write(self.style.WARNING("\nStarting database scrub..."))
