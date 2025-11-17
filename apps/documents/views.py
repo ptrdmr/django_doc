@@ -899,7 +899,7 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'field_name': f'Condition {i+1}',
                     'field_value': condition.name,
                     'confidence': condition.confidence,
-                    'category': 'Medical History',
+                    'category': 'Conditions',
                     'snippet': condition.source.text if condition.source else '',
                     'resource_type': 'condition',
                     'resource_index': i,
@@ -909,13 +909,13 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'date_status': 'verified' if date_metadata.get('verified') else 'pending',
                 })
                 
-                # Add secondary condition info if available
+                # Add onset date as sub-property if available
                 if condition.onset_date:
                     field_list.append({
                         'field_name': f'Condition {i+1} Onset Date',
                         'field_value': condition.onset_date,
-                        'confidence': condition.confidence * 0.8,  # Slightly lower confidence for derived data
-                        'category': 'Medical History',
+                        'confidence': condition.confidence * 0.8,
+                        'category': 'Conditions',
                         'snippet': condition.source.text if condition.source else '',
                         'resource_type': 'condition',
                         'resource_index': i,
@@ -1030,7 +1030,7 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'field_name': f'Procedure {i+1}',
                     'field_value': procedure.name,
                     'confidence': procedure.confidence,
-                    'category': 'Medical History',
+                    'category': 'Procedures',
                     'snippet': procedure.source.text if procedure.source else '',
                     'resource_type': 'procedure',
                     'resource_index': i,
@@ -1040,12 +1040,13 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     'date_status': 'verified' if date_metadata.get('verified') else 'pending',
                 })
                 
+                # Add procedure date as sub-property if available
                 if procedure.procedure_date:
                     field_list.append({
                         'field_name': f'Procedure {i+1} Date',
                         'field_value': procedure.procedure_date,
                         'confidence': procedure.confidence * 0.9,
-                        'category': 'Medical History',
+                        'category': 'Procedures',
                         'snippet': procedure.source.text if procedure.source else '',
                         'resource_type': 'procedure',
                         'resource_index': i,
@@ -1341,8 +1342,16 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
         if any(term in field_lower for term in ['name', 'age', 'birth', 'dob', 'gender', 'sex', 'address', 'phone', 'mrn']):
             return 'Demographics'
         
-        # Medical History
-        elif any(term in field_lower for term in ['diagnosis', 'condition', 'history', 'medical', 'procedure', 'surgery']):
+        # Conditions (diagnoses)
+        elif any(term in field_lower for term in ['diagnosis', 'condition']):
+            return 'Conditions'
+        
+        # Procedures
+        elif any(term in field_lower for term in ['procedure', 'surgery', 'operation']):
+            return 'Procedures'
+        
+        # Medical History (catch-all for other medical terms)
+        elif any(term in field_lower for term in ['history', 'medical']):
             return 'Medical History'
         
         # Medications
@@ -1382,12 +1391,18 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             resource_type = item.get('resource_type')
             resource_index = item.get('resource_index')
             
-            # Group multi-property resources (medications, conditions with onset dates)
-            if resource_type in ['medication', 'condition'] and resource_index is not None:
+            # Group multi-property resources (medications, conditions, procedures, labs)
+            if resource_type in ['medication', 'condition', 'procedure', 'lab_result', 'vital_sign'] and resource_index is not None:
                 if resource_index not in medication_groups:
-                    # Determine base field name
+                    # Determine base field name based on resource type
                     if resource_type == 'condition':
                         base_name = f'Condition {resource_index + 1}'
+                    elif resource_type == 'procedure':
+                        base_name = f'Procedure {resource_index + 1}'
+                    elif resource_type == 'lab_result':
+                        base_name = f'Lab {resource_index + 1}'
+                    elif resource_type == 'vital_sign':
+                        base_name = f'Vital Sign {resource_index + 1}'
                     else:
                         base_name = f'Medication {resource_index + 1}'
                     
@@ -1410,7 +1425,9 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 
                 # If this is the main field (not a sub-property), capture its date
                 field_name = item.get('field_name', '')
-                is_sub_property = any(prop in field_name for prop in ['Dosage', 'Frequency', 'Route', 'Onset Date', 'Reference Range'])
+                # List of all known sub-properties across all resource types
+                sub_properties = ['Dosage', 'Frequency', 'Route', 'Onset Date', 'Date', 'Reference Range', 'Outcome', 'Provider']
+                is_sub_property = any(prop in field_name for prop in sub_properties)
                 
                 if not is_sub_property:
                     # This is the main field - use its clinical_date
@@ -1418,10 +1435,16 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                     medication_groups[resource_index]['date_source'] = item.get('date_source')
                     medication_groups[resource_index]['date_status'] = item.get('date_status')
                 
-                # Extract property name (everything after "Medication N " or "Condition N ")
-                # e.g., "Medication 3 Dosage" → "Dosage", "Condition 7 Onset Date" → "Onset Date"
-                parts = field_name.split(maxsplit=2)  # Split into ["Medication", "3", "Dosage"]
-                property_name = parts[2] if len(parts) > 2 else field_name
+                # Extract property name (everything after "Resource Type N ")
+                # e.g., "Medication 3 Dosage" → "Dosage", "Procedure 2 Date" → "Date"
+                # Handle multi-word resource types like "Vital Sign 5" → ["Vital", "Sign", "5", ...]
+                parts = field_name.split()
+                # Find where the number is, property name comes after
+                property_name = field_name
+                for idx, part in enumerate(parts):
+                    if part.isdigit() and idx + 1 < len(parts):
+                        property_name = ' '.join(parts[idx + 1:])
+                        break
                 
                 # Add this property to the group
                 medication_groups[resource_index]['properties'].append({
