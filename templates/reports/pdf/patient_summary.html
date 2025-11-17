@@ -260,9 +260,9 @@
         
         {% if data.patient_info.comorbidities %}
         <div class="comorbidities-list">
-            <strong>Comorbidities (ICD-10):</strong>
+            <strong>Comorbidities:</strong>
             {% for condition in data.patient_info.comorbidities %}
-                {{ condition.codes.0.code|default:"Unknown" }}{% if not forloop.last %}, {% endif %}
+                {{ condition.display_name }}{% if not forloop.last %}; {% endif %}
             {% endfor %}
         </div>
         {% endif %}
