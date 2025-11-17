@@ -376,14 +376,12 @@
                 {% if data.clinical_summary.observations %}
                 <div class="table-container">
                     {% for obs in data.clinical_summary.observations %}
-                        {% if obs.category and 'laboratory' in obs.category|lower or 'lab' in obs.display_name|lower %}
-                        <div class="table-row">
-                            <strong>{{ obs.display_name }}</strong> | 
-                            Measurement: {{ obs.value|default:"—" }}{% if obs.unit %} {{ obs.unit }}{% endif %} | 
-                            Date: {{ obs.effective_date|date:"m/d/Y"|default:"Not recorded" }}
-                            {% if obs.interpretation %} | {{ obs.interpretation|join:", " }}{% endif %}
-                        </div>
-                        {% endif %}
+                    <div class="table-row">
+                        <strong>{{ obs.display_name }}</strong> | 
+                        Measurement: {{ obs.value|default:"—" }}{% if obs.unit %} {{ obs.unit }}{% endif %} | 
+                        Date: {{ obs.effective_date|date:"m/d/Y"|default:"Not recorded" }}
+                        {% if obs.interpretation %} | {{ obs.interpretation|join:", " }}{% endif %}
+                    </div>
                     {% endfor %}
                 </div>
                 {% else %}
