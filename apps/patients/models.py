@@ -1435,13 +1435,23 @@ class Patient(MedicalRecord):
                                 dosage_info['dose'] = f"{dose_qty.get('value', '')} {dose_qty.get('unit', '')}"
                     medication_data['dosage'].append(dosage_info)
             
-            # Extract effective period
+            # Extract effective period or effectiveDateTime
             if 'effectivePeriod' in medication:
                 period = medication['effectivePeriod']
                 medication_data['effective_period'] = {
                     'start': period.get('start', '')[:10] if period.get('start') else None,
                     'end': period.get('end', '')[:10] if period.get('end') else None
                 }
+            elif 'effectiveDateTime' in medication:
+                # Handle single effectiveDateTime (convert to period format for consistency)
+                effective_date = medication['effectiveDateTime']
+                if effective_date:
+                    # Extract just the date part (YYYY-MM-DD)
+                    date_only = effective_date[:10] if len(effective_date) >= 10 else effective_date
+                    medication_data['effective_period'] = {
+                        'start': date_only,
+                        'end': None
+                    }
             
             # Extract category
             if 'category' in medication and 'coding' in medication['category']:
