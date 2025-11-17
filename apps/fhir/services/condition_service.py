@@ -126,11 +126,23 @@ class ConditionService:
                 # Normalize separator to dash and pad month
                 parts = re.split(r'[-/]', str(raw_onset))
                 year, month = parts[0], parts[1].zfill(2)
-                onset_date = f"{year}-{month}-01"  # Default to 1st of month
-                date_source = "partial_year_month"
-                self.logger.debug(f"Converted year-month date '{raw_onset}' to {onset_date}")
+                
+                # Validate month range
+                try:
+                    month_int = int(month)
+                    if 1 <= month_int <= 12:
+                        onset_date = f"{year}-{month}-01"  # Default to 1st of month
+                        date_source = "partial_year_month"
+                        self.logger.debug(f"Converted year-month date '{raw_onset}' to {onset_date}")
+                    else:
+                        self.logger.warning(f"Invalid month {month} in partial date: {raw_onset}. Month must be 1-12.")
+                        # Don't set onset_date - will remain None
+                except ValueError:
+                    self.logger.warning(f"Non-numeric month component in partial date: {raw_onset}.")
+                    # Don't set onset_date - will remain None
             
-            else:
+            # If partial date handling didn't set onset_date, try full date parser
+            if not onset_date:
                 # Use ClinicalDateParser for complete dates
                 extracted_dates = self.date_parser.extract_dates(str(raw_onset))
                 if extracted_dates:
