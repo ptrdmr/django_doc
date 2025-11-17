@@ -61,7 +61,7 @@
                 Clinical Date
             </h4>
             
-            {% if item.clinical_date %}
+            {% if item.clinical_date and item.clinical_date != '' and item.clinical_date != 'None' %}
                 <div class="clinical-date-display">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
