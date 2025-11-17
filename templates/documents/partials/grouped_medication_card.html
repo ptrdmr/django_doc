@@ -64,21 +64,23 @@
             {% if item.clinical_date %}
                 <div class="clinical-date-display">
                     <div class="flex items-center justify-between">
-                        <span class="text-blue-900 font-medium">{{ item.clinical_date|date:"Y-m-d" }}</span>
-                        <div class="flex gap-2">
-                            <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full font-medium">
-                                {{ item.date_source|upper }}
+                        <div class="flex items-center gap-2">
+                            <span class="text-blue-900 font-medium">{{ item.clinical_date|date:"Y-m-d" }}</span>
+                            
+                            {# Only show badges if date exists #}
+                            <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full font-medium border border-purple-300">
+                                {{ item.date_source|upper|default:"EXTRACTED" }}
                             </span>
                             {% if item.date_status == 'verified' %}
-                            <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium">VERIFIED</span>
+                            <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium border border-green-300">VERIFIED</span>
                             {% else %}
-                            <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-medium">PENDING</span>
+                            <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-medium border border-yellow-300">PENDING</span>
                             {% endif %}
                         </div>
                     </div>
                 </div>
             {% else %}
-                <p class="text-sm text-blue-700 mb-2">No clinical date found. Enter the date when this medication was administered:</p>
+                <p class="text-sm text-blue-700 mb-2">No clinical date found. Enter when this event occurred:</p>
             {% endif %}
             
             <div class="clinical-date-editor mt-2" {% if item.clinical_date %}style="display:none;"{% endif %}>
