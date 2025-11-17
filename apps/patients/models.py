@@ -1201,6 +1201,7 @@ class Patient(MedicalRecord):
                 'codes': [],
                 'display_name': 'Unknown Condition',
                 'onset_date': None,
+                'onset_date_precision': 'day',  # Default to day precision
                 'recorded_date': None,
                 'severity': None,
                 'notes': []
@@ -1230,6 +1231,17 @@ class Patient(MedicalRecord):
             # Extract dates
             if 'onsetDateTime' in condition:
                 condition_data['onset_date'] = condition['onsetDateTime'][:10]  # YYYY-MM-DD format
+                
+                # Extract date precision from meta tags
+                if 'meta' in condition and 'tag' in condition['meta']:
+                    for tag in condition['meta']['tag']:
+                        if tag.get('code') == 'date-precision':
+                            precision_display = tag.get('display', '')
+                            if 'year' in precision_display.lower():
+                                condition_data['onset_date_precision'] = 'year'
+                            elif 'month' in precision_display.lower():
+                                condition_data['onset_date_precision'] = 'month'
+                            break
             elif 'onsetPeriod' in condition and 'start' in condition['onsetPeriod']:
                 condition_data['onset_date'] = condition['onsetPeriod']['start'][:10]
             

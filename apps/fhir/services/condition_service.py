@@ -203,6 +203,19 @@ class ConditionService:
                 "code": "date-source",
                 "display": f"Date source: {date_source}"
             })
+            
+            # Add date precision metadata for tracking
+            precision = "day"  # Default
+            if date_source == "partial_year":
+                precision = "year"
+            elif date_source == "partial_year_month":
+                precision = "month"
+            
+            condition["meta"]["tag"].append({
+                "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                "code": "date-precision",
+                "display": f"Date precision: {precision}"
+            })
         
         # Add extraction confidence
         confidence = condition_dict.get('confidence')

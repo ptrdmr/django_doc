@@ -250,7 +250,7 @@
             <div class="field">
                 <strong>Date of Initial Diagnosis:</strong>
                 {% if data.patient_info.initial_diagnosis_date %}
-                    {{ data.patient_info.initial_diagnosis_date|date:"m/d/Y" }}
+                    {{ data.patient_info.initial_diagnosis_date|date:"m/d/Y" }}{% if data.patient_info.primary_diagnosis.onset_date_precision != 'day' %}*{% endif %}
                 {% else %}
                     N/A
                 {% endif %}
@@ -281,11 +281,12 @@
             <div class="table-row">
                 <strong>{{ condition.display_name }}</strong> | 
                 ICD-10: {{ condition.codes.0.code|default:"Not coded" }} | 
-                Onset: {{ condition.onset_date|date:"m/d/Y"|default:"Not recorded" }}
+                Onset: {% if condition.onset_date %}{{ condition.onset_date|date:"m/d/Y" }}{% if condition.onset_date_precision != 'day' %}*{% endif %}{% else %}Not recorded{% endif %}
                 {% if condition.severity %} | Severity: {{ condition.severity }}{% endif %}
             </div>
             {% endfor %}
         </div>
+        <div class="note">*Asterisk indicates approximate date (exact day unknown)</div>
         {% else %}
         <div class="empty-state">No diagnoses recorded</div>
         {% endif %}
