@@ -552,8 +552,9 @@ class MedicationStatementResource(FHIRMedicationStatement):
         if not medication_id:
             medication_id = str(uuid4())
             
-        if not effective_date:
-            effective_date = datetime.utcnow()
+        # Don't default to current time - leave None if no date extracted
+        # if not effective_date:
+        #     effective_date = datetime.utcnow()  # ❌ OLD: This overwrites missing dates!
             
         # Create medication coding
         medication_concept = CodeableConcept(
@@ -607,21 +608,28 @@ class MedicationStatementResource(FHIRMedicationStatement):
                 }
             dosage_list.append(dosage_entry)
         
-        # Create meta
+        # Create meta (use effective_date if available, otherwise current time for lastUpdated)
+        last_updated = effective_date if effective_date else datetime.utcnow()
         meta = Meta(
             versionId="1",
-            lastUpdated=effective_date.isoformat() + "Z"
+            lastUpdated=last_updated.isoformat() + "Z"
         )
         
-        return cls(
-            id=medication_id,
-            meta=meta,
-            status=status,
-            medication=medication_ref,
-            subject=subject,
-            effectiveDateTime=effective_date.isoformat() + "Z",
-            dosage=dosage_list if dosage_list else None
-        )
+        # Build resource kwargs - only include effectiveDateTime if we have a clinical date
+        resource_kwargs = {
+            "id": medication_id,
+            "meta": meta,
+            "status": status,
+            "medication": medication_ref,
+            "subject": subject,
+            "dosage": dosage_list if dosage_list else None
+        }
+        
+        # Only add effectiveDateTime if we have an actual clinical date
+        if effective_date:
+            resource_kwargs["effectiveDateTime"] = effective_date.isoformat() + "Z"
+        
+        return cls(**resource_kwargs)
     
     def get_medication_name(self) -> Optional[str]:
         """
