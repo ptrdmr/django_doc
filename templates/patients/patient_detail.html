@@ -124,28 +124,68 @@
                     <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
-                    FHIR Summary
+                    Clinical Summary
                 </h2>
                 <div class="space-y-3">
                     {% if fhir_summary %}
-                        {% for resource_type, resource_info in fhir_summary.items %}
+                        {# Custom Groups for Labs and Vitals #}
                         <div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded transition-colors">
                             <div class="flex items-center space-x-3">
                                 <div class="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
-                                    <span class="text-green-700 font-bold text-[10px]">{{ resource_type|first }}</span>
+                                    <span class="text-green-700 font-bold text-[10px]">L</span>
                                 </div>
-                                <span class="text-sm font-medium text-gray-700">{{ resource_type }}</span>
+                                <span class="text-sm font-medium text-gray-700">Labs</span>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <span class="text-xs bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full">
-                                    {{ resource_info.count }}
+                                    {{ fhir_summary.LabResult.count|default:"0" }}
                                 </span>
-                                <button type="button" onclick="viewFHIRResource('{{ resource_type }}')" 
+                                <button type="button" onclick="viewFHIRResource('LabResult')" 
                                         class="text-xs text-blue-600 hover:text-blue-800 font-medium">
                                     View
                                 </button>
                             </div>
                         </div>
+
+                        <div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded transition-colors">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                                    <span class="text-green-700 font-bold text-[10px]">V</span>
+                                </div>
+                                <span class="text-sm font-medium text-gray-700">Vitals</span>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <span class="text-xs bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full">
+                                    {{ fhir_summary.VitalSign.count|default:"0" }}
+                                </span>
+                                <button type="button" onclick="viewFHIRResource('VitalSign')" 
+                                        class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                                    View
+                                </button>
+                            </div>
+                        </div>
+
+                        {% for resource_type, resource_info in fhir_summary.items %}
+                            {# Skip raw Observation since we split it, and skip our custom keys #}
+                            {% if resource_type != 'Observation' and resource_type != 'LabResult' and resource_type != 'VitalSign' %}
+                            <div class="flex items-center justify-between p-2 hover:bg-gray-50 rounded transition-colors">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                                        <span class="text-green-700 font-bold text-[10px]">{{ resource_type|first }}</span>
+                                    </div>
+                                    <span class="text-sm font-medium text-gray-700">{{ resource_type }}</span>
+                                </div>
+                                <div class="flex items-center space-x-3">
+                                    <span class="text-xs bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full">
+                                        {{ resource_info.count }}
+                                    </span>
+                                    <button type="button" onclick="viewFHIRResource('{{ resource_type }}')" 
+                                            class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                                        View
+                                    </button>
+                                </div>
+                            </div>
+                            {% endif %}
                         {% endfor %}
                     {% else %}
                         <p class="text-sm text-gray-500 text-center py-4">No FHIR data extracted.</p>
@@ -181,7 +221,7 @@
                             <div class="ml-3 flex-1">
                                 <div class="flex justify-between">
                                     <p class="text-sm font-medium text-gray-900">
-                                        {{ entry.resource.code.text|default:"Unknown Condition" }}
+                                        {{ entry.resource.code.text|default:entry.resource.code.coding.0.display|default:entry.resource.code.coding.0.code|default:"Unknown Condition" }}
                                     </p>
                                     {% if patient.primary_condition_id == entry.resource.id %}
                                     <span class="inline-flex items-center px-2 py-0.5 text-xs font-bold rounded bg-green-100 text-green-800">
@@ -303,29 +343,257 @@
 const fhirData = {{ patient.encrypted_fhir_bundle|safe }};
 const patientId = '{{ patient.id }}';
 
+// Helper to extract display text from CodeableConcept
+function getCodeDisplay(codeableConcept) {
+    if (!codeableConcept) return 'N/A';
+    if (codeableConcept.text) return codeableConcept.text;
+    if (codeableConcept.coding && codeableConcept.coding.length > 0) {
+        return codeableConcept.coding[0].display || codeableConcept.coding[0].code;
+    }
+    return 'Unknown';
+}
+
+// Helper to format dates
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'short', day: 'numeric'
+    });
+}
+
+// Resource-specific renderers
+const renderers = {
+    AllergyIntolerance: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium text-gray-900">${getCodeDisplay(r.code)}</h4>
+                    <div class="mt-1 flex flex-wrap gap-2">
+                        ${r.reaction?.map(rx => `<span class="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded">${rx.manifestation?.[0]?.text || 'Reaction'}</span>`).join('') || ''}
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Criticality: <span class="font-medium">${r.criticality || r.category?.[0] || 'Unknown'}</span>
+                    </p>
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">${formatDate(r.recordedDate || r.onsetDateTime)}</span>
+            </div>
+        </div>`,
+
+    CarePlan: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium text-gray-900">${r.title || r.category?.[0]?.text || 'Care Plan'}</h4>
+                    <p class="text-xs text-gray-500 mt-1">Status: ${r.status}</p>
+                    <p class="text-xs text-gray-600 mt-1 max-w-md truncate">${r.description || ''}</p>
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">
+                    ${r.period?.start ? `${formatDate(r.period.start)} - ${formatDate(r.period.end)}` : 'No date'}
+                </span>
+            </div>
+        </div>`,
+
+    Condition: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium text-gray-900">${getCodeDisplay(r.code)}</h4>
+                    <p class="text-xs text-gray-500 mt-1">Clinical Status: ${r.clinicalStatus?.coding?.[0]?.code || 'Unknown'}</p>
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">${formatDate(r.onsetDateTime || r.recordedDate)}</span>
+            </div>
+        </div>`,
+        
+    DiagnosticReport: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium text-gray-900">${getCodeDisplay(r.code)}</h4>
+                    <p class="text-xs text-gray-500 mt-1">Status: ${r.status}</p>
+                    ${r.conclusion ? `<p class="text-xs text-gray-600 mt-1 italic">"${r.conclusion.substring(0, 60)}${r.conclusion.length > 60 ? '...' : ''}"</p>` : ''}
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">${formatDate(r.effectiveDateTime || r.issued)}</span>
+            </div>
+        </div>`,
+
+    Encounter: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium text-gray-900">${r.type?.[0]?.text || r.class?.display || 'Encounter'}</h4>
+                    <p class="text-xs text-gray-500 mt-1">Reason: ${getCodeDisplay(r.reasonCode?.[0])}</p>
+                    ${r.location?.[0]?.location?.display ? `<p class="text-xs text-blue-600 mt-1">📍 ${r.location[0].location.display}</p>` : ''}
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">${formatDate(r.period?.start)}</span>
+            </div>
+        </div>`,
+
+    MedicationStatement: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium text-gray-900">${getCodeDisplay(r.medicationCodeableConcept)}</h4>
+                    <p class="text-xs text-gray-500 mt-1">Status: ${r.status}</p>
+                    ${r.dosage?.[0]?.text ? `<p class="text-xs text-gray-600 mt-1">Dosage: ${r.dosage[0].text}</p>` : ''}
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">${formatDate(r.effectiveDateTime)}</span>
+            </div>
+        </div>`,
+
+    Observation: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium text-gray-900">${getCodeDisplay(r.code)}</h4>
+                    <div class="mt-1">
+                        ${r.valueQuantity ? 
+                            `<span class="text-sm font-semibold text-blue-600">${r.valueQuantity.value} ${r.valueQuantity.unit}</span>` : 
+                            `<span class="text-sm text-gray-700">${r.valueString || 'No value'}</span>`
+                        }
+                    </div>
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">${formatDate(r.effectiveDateTime)}</span>
+            </div>
+        </div>`,
+    
+    Organization: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex items-center">
+                <div class="h-8 w-8 rounded bg-gray-100 flex items-center justify-center mr-3">
+                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                </div>
+                <div>
+                    <h4 class="font-medium text-gray-900">${r.name}</h4>
+                    <p class="text-xs text-gray-500">${r.type?.[0]?.text || 'Healthcare Provider'}</p>
+                </div>
+            </div>
+        </div>`,
+        
+    Procedure: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium text-gray-900">${getCodeDisplay(r.code)}</h4>
+                    <p class="text-xs text-gray-500 mt-1">Status: ${r.status}</p>
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">${formatDate(r.performedDateTime)}</span>
+            </div>
+        </div>`,
+
+    Practitioner: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex items-center">
+                <div class="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                    <span class="text-xs font-bold text-blue-600">Dr</span>
+                </div>
+                <div>
+                    <h4 class="font-medium text-gray-900">
+                        ${r.name?.[0]?.text || `${r.name?.[0]?.given?.join(' ') || ''} ${r.name?.[0]?.family || ''}`}
+                    </h4>
+                    ${r.identifier?.[0]?.value ? `<p class="text-xs text-gray-500">ID: ${r.identifier[0].value}</p>` : ''}
+                </div>
+            </div>
+        </div>`,
+
+    ServiceRequest: (r) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h4 class="font-medium text-gray-900">${getCodeDisplay(r.code)}</h4>
+                    <p class="text-xs text-gray-500 mt-1">Priority: <span class="font-medium ${r.priority === 'urgent' ? 'text-red-600' : ''}">${r.priority}</span></p>
+                    ${r.requester?.display ? `<p class="text-xs text-gray-500">Requested by: ${r.requester.display}</p>` : ''}
+                </div>
+                <span class="text-xs text-gray-400 whitespace-nowrap">${formatDate(r.authoredOn)}</span>
+            </div>
+        </div>`
+};
+
+// Generic fallback renderer
+const genericRenderer = (r) => `
+    <div class="p-3 bg-white border rounded-lg shadow-sm mb-3">
+        <div class="flex justify-between items-start">
+            <div class="overflow-hidden">
+                <h4 class="font-medium text-gray-900 truncate">${r.resourceType}</h4>
+                <p class="text-xs text-gray-500 mt-1">ID: ${r.id}</p>
+            </div>
+        </div>
+        <details class="mt-2">
+            <summary class="text-xs text-blue-600 cursor-pointer hover:underline">View Raw JSON</summary>
+            <pre class="text-xs bg-gray-50 p-2 rounded mt-1 overflow-x-auto">${JSON.stringify(r, null, 2)}</pre>
+        </details>
+    </div>`;
+
 function viewFHIRResource(resourceType) {
     const modal = document.getElementById('fhirModal');
     const modalTitle = document.getElementById('modalTitle');
     const modalContent = document.getElementById('modalContent');
     
-    modalTitle.textContent = `${resourceType} Data`;
+    // Custom titles for split types
+    const displayTitles = {
+        'LabResult': 'Laboratory Results',
+        'VitalSign': 'Vital Signs'
+    };
+    
+    modalTitle.textContent = displayTitles[resourceType] || `${resourceType} Data`;
     
     const resources = [];
     if (fhirData && fhirData.entry) {
         for (const entry of fhirData.entry) {
-            if (entry.resource && entry.resource.resourceType === resourceType) {
-                resources.push(entry.resource);
+            const res = entry.resource;
+            if (!res) continue;
+
+            // Handle the split logic
+            if (resourceType === 'LabResult') {
+                // It's a lab if it's an Observation AND NOT a vital sign
+                if (res.resourceType === 'Observation' && !isVitalSign(res)) {
+                    resources.push(res);
+                }
+            } else if (resourceType === 'VitalSign') {
+                // It's a vital if it's an Observation AND IS a vital sign
+                if (res.resourceType === 'Observation' && isVitalSign(res)) {
+                    resources.push(res);
+                }
+            } else if (res.resourceType === resourceType) {
+                // Standard behavior for other types
+                resources.push(res);
             }
         }
     }
     
     if (resources.length > 0) {
-        modalContent.innerHTML = `<pre class="text-xs text-gray-800 whitespace-pre-wrap font-mono">${JSON.stringify(resources, null, 2)}</pre>`;
+        // Use 'Observation' renderer for both Labs and Vitals
+        const rendererType = (resourceType === 'LabResult' || resourceType === 'VitalSign') 
+            ? 'Observation' 
+            : resourceType;
+            
+        const renderer = renderers[rendererType] || genericRenderer;
+        modalContent.innerHTML = resources.map(renderer).join('');
     } else {
         modalContent.innerHTML = '<div class="text-center py-8 text-gray-500">No resources found for this type.</div>';
     }
     
     modal.classList.remove('hidden');
+}
+
+// Helper to detect vital signs
+function isVitalSign(observation) {
+    const code = getCodeDisplay(observation.code).toLowerCase();
+    // Common vital sign keywords and LOINC codes
+    const vitalKeywords = [
+        'blood pressure', 'systolic', 'diastolic', 
+        'heart rate', 'pulse', 
+        'temperature', 
+        'respiratory', 'breathing rate',
+        'oxygen saturation', 'o2 sat',
+        'height', 'weight', 'bmi', 'body mass'
+    ];
+    
+    // Check text display
+    if (vitalKeywords.some(k => code.includes(k))) return true;
+    
+    // Check LOINC codes from service if available in coding
+    // (Ideally we'd match the service's list, but this is a good frontend approximation)
+    return false; 
 }
 
 function closeFHIRModal() {
