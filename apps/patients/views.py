@@ -245,6 +245,10 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             
             # Count resources by type from the FHIR Bundle entries
             summary = {}
+            # Initialize specific counters for Labs and Vitals
+            lab_count = 0
+            vital_count = 0
+            
             for entry in fhir_bundle.get('entry', []):
                 resource = entry.get('resource', {})
                 resource_type = resource.get('resourceType')
@@ -257,12 +261,45 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
                         }
                     summary[resource_type]['count'] += 1
                     summary[resource_type]['resources'].append(resource)
-            
+                    
+                    # Check if it's a Lab or Vital (for separate counts)
+                    if resource_type == 'Observation':
+                        is_vital = False
+                        code_text = ""
+                        
+                        # Try to determine from code
+                        if 'code' in resource:
+                            code_obj = resource['code']
+                            if 'text' in code_obj:
+                                code_text = code_obj['text'].lower()
+                            elif 'coding' in code_obj and code_obj['coding']:
+                                code_text = (code_obj['coding'][0].get('display') or '').lower()
+                        
+                        # Vital keywords
+                        vital_keywords = [
+                            'blood pressure', 'systolic', 'diastolic', 
+                            'heart rate', 'pulse', 
+                            'temperature', 
+                            'respiratory', 'breathing rate',
+                            'oxygen saturation', 'o2 sat',
+                            'height', 'weight', 'bmi', 'body mass'
+                        ]
+                        
+                        if any(k in code_text for k in vital_keywords):
+                            vital_count += 1
+                        else:
+                            # If it's an Observation but not a Vital, count as Lab
+                            lab_count += 1
+
             # Add last updated info for each resource type
             for resource_type, data in summary.items():
                 data['last_updated'] = self.get_latest_resource_date(data['resources'])
                 # Remove resources list from summary to keep it clean
                 del data['resources']
+            
+            # Add the separate counts to the summary dictionary
+            summary['LabResult'] = {'count': lab_count}
+            summary['VitalSign'] = {'count': vital_count}
             
             return summary
         except (TypeError, KeyError) as fhir_error:
