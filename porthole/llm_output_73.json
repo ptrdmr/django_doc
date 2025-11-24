@@ -1,0 +1,504 @@
+{
+  "document_id": 73,
+  "timestamp": "2025-11-19T22:21:21.980798",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Other bursitis of hip, left hip",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": "2017-01-05",
+        "icd_code": "ICD-726.5 (ICD10-M70.72)",
+        "source": {
+          "text": "Added new problem of Other bursitis of hip, left hip (ICD-726.5) (ICD10-M70.72)",
+          "start_index": 0,
+          "end_index": 85
+        }
+      },
+      {
+        "name": "Osteochondroma, femur",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": "2017-02-06",
+        "icd_code": "ICD-213.7 (ICD10-D16.20)",
+        "source": {
+          "text": "Osteochondroma, femur (ICD-213.7) (ICD10-D16.20)",
+          "start_index": 0,
+          "end_index": 49
+        }
+      },
+      {
+        "name": "Symptomatic osteochondroma of the left proximal femur",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Patient has recently been diagnosed with a symptomtic osteochondroma of the left proximal femur",
+          "start_index": 0,
+          "end_index": 95
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Ibuprofen",
+        "dosage": null,
+        "route": null,
+        "frequency": "as needed",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Continue to take Ibuprofen as needed for pain",
+          "start_index": 0,
+          "end_index": 45
+        }
+      },
+      {
+        "name": "Ibuprofen",
+        "dosage": null,
+        "route": null,
+        "frequency": "during the day",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Take an Ibuprofen prescription during the day",
+          "start_index": 0,
+          "end_index": 45
+        }
+      },
+      {
+        "name": "Tramadol",
+        "dosage": null,
+        "route": null,
+        "frequency": "at night as needed for pain",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Tramadol at night as needed for pain",
+          "start_index": 0,
+          "end_index": 37
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Height",
+        "value": "65",
+        "unit": "inches",
+        "timestamp": "2017-01-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "Height: 65 inches",
+          "start_index": 0,
+          "end_index": 17
+        }
+      },
+      {
+        "measurement": "Weight",
+        "value": "252",
+        "unit": "pounds",
+        "timestamp": "2017-01-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "Weight: 252 pounds",
+          "start_index": 0,
+          "end_index": 18
+        }
+      },
+      {
+        "measurement": "BMI",
+        "value": "41.93",
+        "unit": null,
+        "timestamp": "2017-01-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "BMI: 41.93",
+          "start_index": 0,
+          "end_index": 10
+        }
+      },
+      {
+        "measurement": "Weight",
+        "value": "252",
+        "unit": "pounds",
+        "timestamp": "2017-02-06",
+        "confidence": 0.95,
+        "source": {
+          "text": "Weight: 252 pounds",
+          "start_index": 0,
+          "end_index": 18
+        }
+      },
+      {
+        "measurement": "BMI",
+        "value": "41.93",
+        "unit": null,
+        "timestamp": "2017-02-06",
+        "confidence": 0.95,
+        "source": {
+          "text": "BMI: 41.93",
+          "start_index": 0,
+          "end_index": 10
+        }
+      },
+      {
+        "measurement": "Weight",
+        "value": "252",
+        "unit": "pounds",
+        "timestamp": "2017-03-21",
+        "confidence": 0.95,
+        "source": {
+          "text": "Weight: 252 pounds",
+          "start_index": 0,
+          "end_index": 18
+        }
+      },
+      {
+        "measurement": "BMI",
+        "value": "41.93",
+        "unit": null,
+        "timestamp": "2017-03-21",
+        "confidence": 0.95,
+        "source": {
+          "text": "BMI: 41.93",
+          "start_index": 0,
+          "end_index": 10
+        }
+      }
+    ],
+    "lab_results": [],
+    "procedures": [
+      {
+        "name": "Multiplanar MRI of the left hip without and with intravenous gadolinium",
+        "procedure_date": "2016-11-28",
+        "provider": "ALKHAIRY, MD, TAHIR",
+        "outcome": "Small effusion present inferior to the left hip joint with increased signal intensity within the left obturator internus muscle likely due to underlying muscular tear",
+        "confidence": 0.95,
+        "source": {
+          "text": "Multiplanar MRI of the left hip is performed without and with the use of 20 cc of intravenous gadolinium",
+          "start_index": 0,
+          "end_index": 105
+        }
+      },
+      {
+        "name": "X-ray left hip",
+        "procedure_date": "2016-10-26",
+        "provider": "Stovall, MD, Nicole",
+        "outcome": "Bony excrescence extending from the lesser trochanter of the left hip identified",
+        "confidence": 0.95,
+        "source": {
+          "text": "Study: X-ray left hip. Indication: Pain. Technique: 2 views of the left hip plus a frontal view of the pelvis were obtained",
+          "start_index": 0,
+          "end_index": 122
+        }
+      },
+      {
+        "name": "Diagnostic cortisone injection",
+        "procedure_date": null,
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.8,
+        "source": {
+          "text": "Our office will be in contact with you regarding diagnostic cortisone injection",
+          "start_index": 0,
+          "end_index": 79
+        }
+      }
+    ],
+    "providers": [
+      {
+        "name": "TEJADA, NATALIE",
+        "specialty": null,
+        "role": "Referring Physician",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Ref. Physician: TEJADA, NATALIE",
+          "start_index": 0,
+          "end_index": 31
+        }
+      },
+      {
+        "name": "ALKHAIRY, MD, TAHIR",
+        "specialty": null,
+        "role": "Radiologist",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "E-Signed By: ALKHAIRY, MD, TAHIR",
+          "start_index": 0,
+          "end_index": 32
+        }
+      },
+      {
+        "name": "Stovall, MD, Nicole",
+        "specialty": null,
+        "role": "Radiologist",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "E-Signed By: Stovall, MD, Nicole",
+          "start_index": 0,
+          "end_index": 32
+        }
+      },
+      {
+        "name": "Gundeep Singh, MD",
+        "specialty": "Cardiology",
+        "role": "Provider",
+        "contact_info": "Tel:480/444/7464 Fax:480/355/1798",
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: Gundeep Singh, MD PHOENICIAN CARDIOLOGY",
+          "start_index": 0,
+          "end_index": 50
+        }
+      },
+      {
+        "name": "Clara R Hunt PA-C",
+        "specialty": "Orthopedics",
+        "role": "Provider",
+        "contact_info": "602/631/3161",
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: Clara R Hunt PA-C",
+          "start_index": 0,
+          "end_index": 27
+        }
+      }
+    ],
+    "encounters": [
+      {
+        "encounter_id": null,
+        "encounter_type": "office visit",
+        "encounter_date": "2017-01-05",
+        "encounter_end_date": null,
+        "location": "ARIZONA ORTHOPAEDIC ASSOC AT GATEWAY",
+        "reason": "hip pain",
+        "participants": [],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Clinic Visit Date: 01/05/2017 Reason for your visit hip pain",
+          "start_index": 0,
+          "end_index": 61
+        }
+      },
+      {
+        "encounter_id": null,
+        "encounter_type": "office visit",
+        "encounter_date": "2017-02-06",
+        "encounter_end_date": null,
+        "location": "ARIZONA ORTHOPAEDIC ASSOC AT GATEWAY",
+        "reason": "left HIP-GT",
+        "participants": [],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Clinic Visit Date: 02/06/2017 Reason for your visit: left HIP-GT",
+          "start_index": 0,
+          "end_index": 65
+        }
+      },
+      {
+        "encounter_id": null,
+        "encounter_type": "appointment",
+        "encounter_date": "2017-02-15",
+        "encounter_end_date": null,
+        "location": "PHOENICIAN CARDIOLOGY",
+        "reason": "ECHO",
+        "participants": [
+          "Gundeep Singh, MD"
+        ],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Appointment: Wednesday, February 15, 2017 at 10:45 AM Provider: Gundeep Singh, MD Reason: ECHO",
+          "start_index": 0,
+          "end_index": 100
+        }
+      },
+      {
+        "encounter_id": null,
+        "encounter_type": "office visit",
+        "encounter_date": "2017-03-21",
+        "encounter_end_date": null,
+        "location": "ARIZONA ORTHOPAEDIC ASSOC AT GATEWAY",
+        "reason": "left hip pain",
+        "participants": [
+          "Clara R Hunt PA-C"
+        ],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Clinic Visit Date: 03/21/2017 Reason for your visit: left hip pain",
+          "start_index": 0,
+          "end_index": 67
+        }
+      }
+    ],
+    "service_requests": [
+      {
+        "request_id": null,
+        "request_type": "specialist referral",
+        "requester": "Clara R Hunt PA-C",
+        "reason": "symptomatic osteochondroma of the left proximal femur",
+        "priority": null,
+        "clinical_context": "patient may benefit from surgical excision",
+        "request_date": "2017-03-21",
+        "confidence": 0.9,
+        "source": {
+          "text": "You are being referred to another physician",
+          "start_index": 0,
+          "end_index": 43
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "imaging study",
+        "requester": "Stovall, MD, Nicole",
+        "reason": "rule out soft tissue mass",
+        "priority": null,
+        "clinical_context": "bony excrescence extending from the lesser trochanter",
+        "request_date": "2016-10-26",
+        "confidence": 0.85,
+        "source": {
+          "text": "could be further evaluated by CT or MRI to rule out soft tissue mass",
+          "start_index": 0,
+          "end_index": 69
+        }
+      }
+    ],
+    "diagnostic_reports": [
+      {
+        "report_id": null,
+        "report_type": "MRI",
+        "findings": "Small effusion present inferior to the left hip joint with increased signal intensity within the left obturator internus muscle which is likely due to underlying muscular tear. No bone marrow edema, no acute fracture, no dislocation, no subluxation, acetabulum normal, no evidence for trochanteric bursitis",
+        "conclusion": "Small effusion present inferior to the left hip joint with increased signal intensity within the left obturator internus muscle likely due to underlying muscular tear. No other acute changes are seen.",
+        "recommendations": null,
+        "status": "final",
+        "report_date": "2016-11-28",
+        "ordering_provider": "TEJADA, NATALIE",
+        "confidence": 0.95,
+        "source": {
+          "text": "Impression: Small effusion present inferior to the left hip joint with increased signal intensity within the left obturator internus muscle likely due to underlying muscular tear. No other acute changes are seen.",
+          "start_index": 0,
+          "end_index": 200
+        }
+      },
+      {
+        "report_id": null,
+        "report_type": "X-ray",
+        "findings": "The bone density is within normal limits. There is no evidence of subluxation or dislocation. The joint spaces appear normal. There is no evidence of osteophyte formation or bony erosions. There is a bony excrescence extending from the lesser trochanter of the left hip identified. There is a tiny adjacent bony densities demonstrated. The soft tissues are within normal limits.",
+        "conclusion": "Bony excrescence extending from the lesser trochanter of the left hip which could be further evaluated by CT or MRI to rule out soft tissue mass",
+        "recommendations": "further evaluated by CT or MRI to rule out soft tissue mass",
+        "status": "final",
+        "report_date": "2016-10-26",
+        "ordering_provider": "TEJADA, NATALIE",
+        "confidence": 0.95,
+        "source": {
+          "text": "Impression: Bony excrescence extending from the lesser trochanter of the left hip which could be further evaluated by CT or MRI to rule out soft tissue mass",
+          "start_index": 0,
+          "end_index": 155
+        }
+      }
+    ],
+    "allergies": [],
+    "care_plans": [
+      {
+        "plan_id": null,
+        "plan_description": "Follow-up care for left hip pain and osteochondroma",
+        "goals": [
+          "pain management",
+          "specialist evaluation"
+        ],
+        "activities": [
+          "diagnostic cortisone injection",
+          "follow-up appointment in 3 weeks",
+          "continue Ibuprofen as needed",
+          "referral to specialist",
+          "follow-up appointment in 6 weeks",
+          "resume normal physical activities as tolerated",
+          "Ibuprofen prescription during the day",
+          "Tramadol at night as needed for pain"
+        ],
+        "period_start": "2017-01-05",
+        "period_end": null,
+        "status": "active",
+        "intent": "plan",
+        "confidence": 0.9,
+        "source": {
+          "text": "Based on this visit, your provider recommended the following",
+          "start_index": 0,
+          "end_index": 60
+        }
+      }
+    ],
+    "organizations": [
+      {
+        "organization_id": null,
+        "name": "ARIZONA ORTHOPAEDIC ASSOC AT GATEWAY",
+        "identifier": null,
+        "organization_type": "clinic",
+        "address": "690 N Cofco Center Ct Ste 290",
+        "city": "Phoenix",
+        "state": "AZ",
+        "postal_code": "85008",
+        "phone": "(602) 631-3161",
+        "confidence": 0.95,
+        "source": {
+          "text": "ARIZONA ORTHOPAEDIC ASSOC AT GATEWAY 690 N Cofco Center Ct Ste 290 Phoenix, AZ 85008 (602) 631-3161",
+          "start_index": 0,
+          "end_index": 102
+        }
+      },
+      {
+        "organization_id": null,
+        "name": "PHOENICIAN CARDIOLOGY",
+        "identifier": null,
+        "organization_type": "clinic",
+        "address": "1343 N ALMA SCHOOL RD STz 295",
+        "city": "CHANDLER",
+        "state": "AZ",
+        "postal_code": "85224",
+        "phone": "480/444/7464",
+        "confidence": 0.95,
+        "source": {
+          "text": "PHOENICIAN CARDIOLOGY 1343 N ALMA SCHOOL RD STz 295 CHANDLER, AZ-85224 Tel:480/444/7464",
+          "start_index": 0,
+          "end_index": 89
+        }
+      },
+      {
+        "organization_id": null,
+        "name": "INSIGHT IMAGING BILTMORE",
+        "identifier": null,
+        "organization_type": "imaging center",
+        "address": null,
+        "city": null,
+        "state": null,
+        "postal_code": null,
+        "phone": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "INSIGHT IMAGING BILTMORE",
+          "start_index": 0,
+          "end_index": 24
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-11-19T22:21:21.974290",
+    "document_type": null,
+    "confidence_average": 0.933
+  }
+}

@@ -24,9 +24,9 @@ import random
 from apps.core.utils import (
     log_user_activity, 
     get_model_count, 
-    ActivityTypes,
-    safe_model_operation
+    ActivityTypes
 )
+from apps.core.models import AuditLog
 
 # Import our RBAC components
 from .models import Role, UserProfile, ProviderInvitation
@@ -62,9 +62,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         
         # Add user info for personalization
         context['user_name'] = self.request.user.get_full_name() or self.request.user.username
-        
-        # Log dashboard access for HIPAA compliance
-        self._log_dashboard_access()
         
         return context
     
@@ -105,83 +102,39 @@ class DashboardView(LoginRequiredMixin, TemplateView):
     def _get_recent_activities(self, limit=20):
         """
         Get recent user activities for the activity feed.
-        Limited to 20 entries for performance and UX.
+        Uses the real AuditLog model.
         
         Args:
             limit (int): Maximum number of activities to return (default: 20)
             
         Returns:
-            QuerySet or list: Recent activities or placeholder data
+            QuerySet: Recent AuditLog entries
         """
-        def get_activities(Activity):
-            """Operation to get activities from the model"""
-            return Activity.objects.filter(
-                user=self.request.user
-            ).select_related('user')[:limit]
-        
-        activities = safe_model_operation(
-            'core', 
-            'Activity', 
-            get_activities,
-            default_return=self._get_placeholder_activities()
-        )
-        
-        logger.debug(f"Loaded {len(activities)} activities")
-        return activities
-    
-    def _get_placeholder_activities(self, limit=20):
-        """
-        Get placeholder activities for when the Activity model is not available.
-        Generate enough activities to test scrolling functionality.
-        
-        Args:
-            limit (int): Maximum number of activities to generate
+        try:
+            # Filter for high-value user activities only
+            relevant_types = [
+                ActivityTypes.DOCUMENT_UPLOAD,
+                ActivityTypes.DOCUMENT_PROCESS,
+                ActivityTypes.PATIENT_CREATE,
+                ActivityTypes.PATIENT_UPDATE,
+                ActivityTypes.PROVIDER_CREATE,
+                ActivityTypes.PROVIDER_UPDATE,
+                ActivityTypes.REPORT_GENERATE,
+                ActivityTypes.PROFILE_UPDATE,
+                ActivityTypes.ADMIN,
+            ]
             
-        Returns:
-            list: List of placeholder activity dictionaries
-        """
-        activity_types = [
-            'Dashboard viewed',
-            'Profile updated', 
-            'Document uploaded',
-            'Patient record accessed',
-            'Provider information viewed',
-            'Report generated',
-            'Security settings changed',
-            'Password updated',
-            'Activity log reviewed',
-            'System backup completed',
-            'Data export performed',
-            'FHIR validation completed',
-            'Medical record processed',
-            'Audit trail reviewed',
-            'Compliance check performed'
-        ]
-        
-        activities = []
-        for i in range(limit):
-            # Create activities with varying timestamps
-            hours_ago = i * 2 + random.randint(0, 4)
-            timestamp = timezone.now() - timedelta(hours=hours_ago)
+            # Fetch recent logs for the current user
+            activities = AuditLog.objects.filter(
+                user=self.request.user,
+                event_type__in=relevant_types
+            ).select_related('user').order_by('-timestamp')[:limit]
             
-            activities.append({
-                'description': random.choice(activity_types),
-                'timestamp': timestamp,
-                'user': self.request.user,
-            })
-        
-        return activities
-    
-    def _log_dashboard_access(self):
-        """
-        Log dashboard access for HIPAA compliance and activity tracking.
-        """
-        log_user_activity(
-            user=self.request.user,
-            activity_type=ActivityTypes.LOGIN,  # Using closest match
-            description="Viewed dashboard",
-            request=self.request
-        )
+            logger.debug(f"Loaded {len(activities)} activities from AuditLog")
+            return activities
+        except Exception as e:
+            logger.error(f"Error fetching AuditLogs: {e}")
+            return []
 
 
 class ProfileView(LoginRequiredMixin, TemplateView):
