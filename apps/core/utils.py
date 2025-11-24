@@ -30,6 +30,10 @@ def log_user_activity(user, activity_type, description, request=None,
     try:
         from apps.core.models import AuditLog
         
+        # Convert related_object_id to string if it's a UUID or other object
+        if related_object_id is not None:
+            related_object_id = str(related_object_id)
+
         # Map activity_type to AuditLog event_type if needed, or pass through
         # AuditLog.log_event handles most details
         return AuditLog.log_event(

@@ -480,7 +480,10 @@ class PatientCreateView(LoginRequiredMixin, CreateView):
             
         except IntegrityError as integrity_error:
             logger.error(f"Database integrity error creating patient: {integrity_error}")
-            messages.error(self.request, "A patient with this MRN already exists.")
+            if "mrn" in str(integrity_error).lower():
+                messages.error(self.request, "A patient with this MRN already exists.")
+            else:
+                messages.error(self.request, f"Database error: {integrity_error}")
             return self.form_invalid(form)
             
         except (DatabaseError, OperationalError) as create_error:
@@ -548,7 +551,10 @@ class PatientUpdateView(LoginRequiredMixin, UpdateView):
             
         except IntegrityError as integrity_error:
             logger.error(f"Database integrity error updating patient: {integrity_error}")
-            messages.error(self.request, "A patient with this MRN already exists.")
+            if "mrn" in str(integrity_error).lower():
+                messages.error(self.request, "A patient with this MRN already exists.")
+            else:
+                messages.error(self.request, f"Database error: {integrity_error}")
             return self.form_invalid(form)
             
         except (DatabaseError, OperationalError) as update_error:
