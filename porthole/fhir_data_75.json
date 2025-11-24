@@ -1,0 +1,529 @@
+{
+  "document_id": 75,
+  "timestamp": "2025-11-23T16:35:00.894771",
+  "stage": "structured_fhir_conversion",
+  "patient_id": "68aed447-0087-4196-b6fd-b14995e00e3a",
+  "resource_count": 21,
+  "fhir_resources": [
+    {
+      "resourceType": "Condition",
+      "id": "6ed62dee-6a8f-4c01-bc45-898b0dbb6900",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.884807+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "ICD-726.5 (ICD10-M70.72)",
+            "display": "Other bursitis of hip, left hip"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "onsetDateTime": "2017-01-05 00:00:00"
+    },
+    {
+      "resourceType": "Condition",
+      "id": "fde257ae-af2e-4d51-84ea-5795c1124928",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.885597+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "ICD-213.7 (ICD10-D16.20)",
+            "display": "Osteochondroma, femur"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "onsetDateTime": "2017-02-06 00:00:00"
+    },
+    {
+      "resourceType": "Condition",
+      "id": "1607a1c9-997a-4f24-a0c1-fa1cce3789b6",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.885765+00:00"
+      },
+      "clinicalStatus": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+          }
+        ]
+      },
+      "code": {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "Symptomatic osteochondroma of the left proximal femur",
+            "display": "Symptomatic osteochondroma of the left proximal femur"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      }
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "04fb349d-0956-433e-8f25-5f421d0926ee",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.885936+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Ibuprofen"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "effectiveDateTime": "2025-11-23 21:35:00.885936+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "as needed for pain",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "3c0e32fc-8e55-4d54-ae0e-7de86ddcf1e2",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.887143+00:00"
+      },
+      "status": "active",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "Tramadol"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "effectiveDateTime": "2025-11-23 21:35:00.887143+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "at night as needed for pain",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "Observation",
+      "id": "da8ca96a-e40f-494a-9736-0dd11d4c4787",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2017-01-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-HEIGHT",
+            "display": "Height"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "effectiveDateTime": "2017-01-05 00:00:00+00:00",
+      "valueString": "65"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "de2a6864-5b7e-4c7f-acda-6c106283cbfa",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2017-01-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-WEIGHT",
+            "display": "Weight"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "effectiveDateTime": "2017-01-05 00:00:00+00:00",
+      "valueString": "252"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "cb779a71-10f1-45cc-9bdf-272087de377a",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2017-01-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-BMI",
+            "display": "BMI"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "effectiveDateTime": "2017-01-05 00:00:00+00:00",
+      "valueString": "41.93"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "88e4f086-817c-4b67-bbca-b9961c33d9ee",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2017-02-06 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-WEIGHT",
+            "display": "Weight"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "effectiveDateTime": "2017-02-06 00:00:00+00:00",
+      "valueString": "252"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "b7f419cf-f088-4afe-a1bc-f369caeb9e85",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2017-02-06 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-BMI",
+            "display": "BMI"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "effectiveDateTime": "2017-02-06 00:00:00+00:00",
+      "valueString": "41.93"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "b915e1b5-3c9d-479f-9568-b91215653175",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2017-03-21 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-WEIGHT",
+            "display": "Weight"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "effectiveDateTime": "2017-03-21 00:00:00+00:00",
+      "valueString": "252"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "86c3c187-fdf3-4b30-b636-d5ab465ed422",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2017-03-21 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "VITAL-BMI",
+            "display": "BMI"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "effectiveDateTime": "2017-03-21 00:00:00+00:00",
+      "valueString": "41.93"
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "98b7352d-438a-4949-894a-d87e27e20514",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.889056+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-77227",
+            "display": "Multiplanar MRI of the left hip without and with intravenous gadolinium"
+          }
+        ],
+        "text": "Multiplanar MRI of the left hip without and with intravenous gadolinium"
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "occurrenceDateTime": "2016-11-28 00:00:00",
+      "performer": [
+        {
+          "actor": {
+            "display": "ALKHAIRY, MD, TAHIR"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "Small effusion present inferior to the left hip joint with increased signal intensity within the left obturator internus muscle likely due to underlying muscular tear"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "4ea7fb66-a3e8-4f9c-a00d-8969e4ddfeb8",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.889459+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-63310",
+            "display": "X-ray left hip"
+          }
+        ],
+        "text": "X-ray left hip"
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "occurrenceDateTime": "2016-10-26 00:00:00",
+      "performer": [
+        {
+          "actor": {
+            "display": "Stovall, MD, Nicole"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "Bony excrescence extending from the lesser trochanter of the left hip identified"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "e7bfed01-55d9-45cb-81be-1ba6065fd00b",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.889610+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-36399",
+            "display": "Detailed 99203"
+          }
+        ],
+        "text": "Detailed 99203"
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "occurrenceDateTime": "2017-01-05 00:00:00"
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "6cbd2500-e356-41ca-872c-a5a45c2092bd",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.889730+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-84207",
+            "display": "Expanded 99213"
+          }
+        ],
+        "text": "Expanded 99213"
+      },
+      "subject": {
+        "reference": "Patient/68aed447-0087-4196-b6fd-b14995e00e3a"
+      },
+      "occurrenceDateTime": "2017-03-21 00:00:00"
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "88105b47-0cdc-4931-98ce-39b856ea401b",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.889896+00:00"
+      },
+      "name": [
+        {
+          "family": "NATALIE",
+          "given": [
+            "TEJADA,"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "085f9f35-5e88-4755-81a4-cf1f62e1b7a0",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.890187+00:00"
+      },
+      "name": [
+        {
+          "family": "MD, TAHIR",
+          "given": [
+            "ALKHAIRY,"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "b6163152-0b35-4dc9-aead-81c59b34080b",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.890315+00:00"
+      },
+      "name": [
+        {
+          "family": "MD, Nicole",
+          "given": [
+            "Stovall,"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "6912922f-7a62-4a1c-97cc-c0c483880cca",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.890408+00:00"
+      },
+      "name": [
+        {
+          "family": "Singh, MD",
+          "given": [
+            "Gundeep"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "b0f428e7-3521-494d-a4d5-b5a9c69e39db",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-23 21:35:00.890470+00:00"
+      },
+      "name": [
+        {
+          "family": "R Hunt PA-C",
+          "given": [
+            "Clara"
+          ]
+        }
+      ]
+    }
+  ],
+  "resource_types": {
+    "Condition": 3,
+    "MedicationStatement": 2,
+    "Observation": 7,
+    "Procedure": 4,
+    "Practitioner": 5
+  }
+}

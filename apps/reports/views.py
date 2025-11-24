@@ -27,6 +27,7 @@ from .generators import (
     ProviderReportTemplate,
     DocumentAuditTemplate
 )
+from apps.core.utils import log_user_activity, ActivityTypes
 
 
 class ReportDashboardView(LoginRequiredMixin, ListView):
@@ -125,7 +126,10 @@ class GenerateReportView(LoginRequiredMixin, FormView):
         # Convert model objects to IDs for serialization
         if 'patient' in parameters and parameters['patient']:
             parameters['patient_id'] = str(parameters['patient'].id)
+            patient_obj = parameters['patient'] # Store reference for logging
             del parameters['patient']  # Remove the model object
+        else:
+            patient_obj = None
         
         if 'provider' in parameters and parameters['provider']:
             parameters['provider_id'] = str(parameters['provider'].id)
@@ -159,6 +163,20 @@ class GenerateReportView(LoginRequiredMixin, FormView):
                 parameters_snapshot=parameters,
                 status='completed',
                 created_by=self.request.user
+            )
+            
+            # Log report generation
+            log_desc = f"Generated {report_type} report"
+            if patient_obj:
+                log_desc = f"{patient_obj.first_name} {patient_obj.last_name} - Report generated"
+            
+            log_user_activity(
+                user=self.request.user,
+                activity_type=ActivityTypes.REPORT_GENERATE,
+                description=log_desc,
+                request=self.request,
+                related_object_type='generatedreport',
+                related_object_id=generated_report.id
             )
             
             messages.success(
@@ -325,6 +343,16 @@ class ReportDownloadView(LoginRequiredMixin, View):
         # Set download filename
         filename = f"{report.configuration.name if report.configuration else 'report'}_{report.created_at.strftime('%Y%m%d')}.{report.format}"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        # Log report download
+        log_user_activity(
+            user=self.request.user,
+            activity_type=ActivityTypes.DOCUMENT_PROCESS, # Reuse document process for now
+            description=f"Downloaded report {filename}",
+            request=self.request,
+            related_object_type='generatedreport',
+            related_object_id=report.id
+        )
         
         return response
 

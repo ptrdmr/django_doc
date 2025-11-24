@@ -9,232 +9,118 @@
 
 {% block content %}
 <div class="p-6">
-  <!-- Dashboard Header -->
-  <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
-    <p class="text-gray-600 mt-1">Welcome back, {{ user.get_full_name|default:user.email }}. Here's what's happening with your medical data.</p>
+  <!-- Dashboard Header with Primary Action -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
+      <p class="text-gray-600 mt-1">Welcome back, {{ user.get_full_name|default:user.email }}.</p>
+    </div>
+    <div class="mt-4 sm:mt-0">
+      <a href="{% url 'documents:upload' %}" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+        <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+        </svg>
+        Upload New Document
+      </a>
+    </div>
   </div>
   
-  <!-- Quick Stats Cards -->
+  <!-- Interactive Stats Cards (Now Shortcuts) -->
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-    <div class="card">
+    <a href="{% url 'patients:list' %}" class="card hover:shadow-lg transition-shadow group block">
       <div class="card-body flex items-center">
         <div class="flex-shrink-0">
-          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+          <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
             <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
             </svg>
           </div>
         </div>
         <div class="ml-4">
-          <p class="text-sm font-medium text-gray-600">Total Patients</p>
+          <p class="text-sm font-medium text-gray-600 group-hover:text-blue-600">Total Patients</p>
           <p class="text-2xl font-bold text-gray-900">{{ patient_count|default:0 }}</p>
         </div>
       </div>
-    </div>
+    </a>
     
-    <div class="card">
+    <a href="{% url 'providers:list' %}" class="card hover:shadow-lg transition-shadow group block">
       <div class="card-body flex items-center">
         <div class="flex-shrink-0">
-          <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+          <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
             <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
             </svg>
           </div>
         </div>
         <div class="ml-4">
-          <p class="text-sm font-medium text-gray-600">Providers</p>
+          <p class="text-sm font-medium text-gray-600 group-hover:text-green-600">Providers</p>
           <p class="text-2xl font-bold text-gray-900">{{ provider_count|default:0 }}</p>
         </div>
       </div>
-    </div>
+    </a>
     
-    <div class="card">
+    <a href="{% url 'reports:dashboard' %}" class="card hover:shadow-lg transition-shadow group block">
       <div class="card-body flex items-center">
         <div class="flex-shrink-0">
-          <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+          <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors">
             <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
             </svg>
           </div>
         </div>
         <div class="ml-4">
-          <p class="text-sm font-medium text-gray-600">Documents Processed</p>
+          <p class="text-sm font-medium text-gray-600 group-hover:text-purple-600">Documents Processed</p>
           <p class="text-2xl font-bold text-gray-900">{{ document_count|default:0 }}</p>
         </div>
       </div>
-    </div>
+    </a>
   </div>
   
-  <!-- Quick Actions -->
-  <div class="mb-8">
-    <h2 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <a href="{% url 'documents:upload' %}" class="card hover:shadow-lg transition-shadow group">
-        <div class="card-body text-center">
-          <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-200 transition-colors">
-            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-            </svg>
-          </div>
-          <h3 class="text-sm font-medium text-gray-900 mb-1">Upload Document</h3>
-          <p class="text-xs text-gray-500">Process new medical files</p>
+  <!-- Recent Activity (Full Width) -->
+  <div class="card">
+    <div class="card-header border-b border-gray-200 bg-gray-50 px-6 py-4">
+      <h3 class="text-lg font-medium text-gray-900">Recent Activity</h3>
+    </div>
+    <div class="card-body p-0">
+      {% if recent_activities %}
+        <div class="flow-root max-h-96 overflow-y-auto">
+          <ul class="divide-y divide-gray-200">
+            {% for activity in recent_activities %}
+            <li class="px-6 py-4 hover:bg-gray-50 transition-colors">
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0">
+                  <span class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <svg class="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                  </span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-gray-900 truncate">
+                    {{ activity.description }}
+                  </p>
+                  <p class="text-sm text-gray-500">
+                    {{ activity.user.get_full_name|default:activity.user.username }}
+                  </p>
+                </div>
+                <div class="text-right text-sm text-gray-500 whitespace-nowrap">
+                  {{ activity.timestamp|timesince }} ago
+                </div>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
         </div>
-      </a>
-      
-      <a href="{% url 'patients:list' %}" class="card hover:shadow-lg transition-shadow group">
-        <div class="card-body text-center">
-          <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-green-200 transition-colors">
-            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
-            </svg>
-          </div>
-          <h3 class="text-sm font-medium text-gray-900 mb-1">Manage Patients</h3>
-          <p class="text-xs text-gray-500">View and edit patient records</p>
+      {% else %}
+        <div class="text-center py-12">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">No recent activity</h3>
+          <p class="mt-1 text-sm text-gray-500">Activities will appear here as you use the system.</p>
         </div>
-      </a>
-      
-      <a href="{% url 'providers:list' %}" class="card hover:shadow-lg transition-shadow group">
-        <div class="card-body text-center">
-          <div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-yellow-200 transition-colors">
-            <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
-            </svg>
-          </div>
-          <h3 class="text-sm font-medium text-gray-900 mb-1">Provider Directory</h3>
-          <p class="text-xs text-gray-500">Manage healthcare providers</p>
-        </div>
-      </a>
-      
-      <a href="{% url 'reports:dashboard' %}" class="card hover:shadow-lg transition-shadow group">
-        <div class="card-body text-center">
-          <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-purple-200 transition-colors">
-            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-            </svg>
-          </div>
-          <h3 class="text-sm font-medium text-gray-900 mb-1">Analytics</h3>
-          <p class="text-xs text-gray-500">View reports and insights</p>
-        </div>
-      </a>
-      
-      {% if user.is_staff or user.is_superuser %}
-      <a href="{% url 'accounts:invitation_list' %}" class="card hover:shadow-lg transition-shadow group">
-        <div class="card-body text-center">
-          <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-orange-200 transition-colors">
-            <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
-            </svg>
-          </div>
-          <h3 class="text-sm font-medium text-gray-900 mb-1">Provider Invitations</h3>
-          <p class="text-xs text-gray-500">Invite new healthcare providers</p>
-        </div>
-      </a>
       {% endif %}
     </div>
   </div>
-  
-  <!-- Recent Activity and System Status -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <!-- Recent Activity -->
-    <div class="card">
-      <div class="card-header">
-        <h3 class="text-lg font-medium text-gray-900">Recent Activity</h3>
-      </div>
-      <div class="card-body">
-        {% if recent_activities %}
-          <!-- Scrollable container with max height -->
-          <div class="flow-root max-h-64 overflow-y-auto border border-gray-100 rounded-lg p-2" style="scrollbar-width: auto;">
-            <ul class="-mb-8">
-              {% for activity in recent_activities %}
-              <li>
-                <div class="relative pb-8 {% if not forloop.last %}{% endif %}">
-                  {% if not forloop.last %}
-                  <span class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true"></span>
-                  {% endif %}
-                  <div class="relative flex space-x-3">
-                    <div>
-                      <span class="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center ring-8 ring-white">
-                        <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                      </span>
-                    </div>
-                    <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
-                      <div>
-                        <p class="text-sm text-gray-500">{{ activity.description }}</p>
-                      </div>
-                      <div class="text-right text-sm whitespace-nowrap text-gray-500">
-                        {{ activity.timestamp|timesince }} ago
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </li>
-              {% endfor %}
-            </ul>
-          </div>
-        {% else %}
-          <div class="text-center py-6">
-            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <h3 class="mt-2 text-sm font-medium text-gray-900">No recent activity</h3>
-            <p class="mt-1 text-sm text-gray-500">Activities will appear here as you use the system.</p>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-    
-    <!-- System Status -->
-    <div class="card">
-      <div class="card-header">
-        <h3 class="text-lg font-medium text-gray-900">System Status</h3>
-      </div>
-      <div class="card-body">
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center">
-              <svg class="h-5 w-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-              </svg>
-              <span class="text-sm text-gray-900">Database</span>
-            </div>
-            <span class="status-completed">Operational</span>
-          </div>
-          
-          <div class="flex items-center justify-between">
-            <div class="flex items-center">
-              <svg class="h-5 w-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-              </svg>
-              <span class="text-sm text-gray-900">Document Processing</span>
-            </div>
-            <span class="status-completed">Ready</span>
-          </div>
-          
-          <div class="flex items-center justify-between">
-            <div class="flex items-center secure-data">
-              <svg class="h-5 w-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-              </svg>
-              <span class="text-sm text-gray-900">HIPAA Compliance</span>
-            </div>
-            <span class="status-completed">Secure</span>
-          </div>
-          
-          <div class="flex items-center justify-between">
-            <div class="flex items-center">
-              <svg class="h-5 w-5 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-              </svg>
-              <span class="text-sm text-gray-900">Last Backup</span>
-            </div>
-            <span class="text-sm text-gray-500">{{ last_backup|default:"2 hours ago" }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
-{% endblock %} 
+{% endblock %}

@@ -22,6 +22,7 @@ from apps.patients.models import Patient
 from apps.providers.models import Provider
 from apps.accounts.decorators import has_permission, provider_required, admin_required
 from django.utils.decorators import method_decorator
+from apps.core.utils import log_user_activity, ActivityTypes
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,16 @@ class DocumentUploadView(LoginRequiredMixin, CreateView):
             logger.info(
                 f"Document uploaded successfully: {self.object.filename} "
                 f"by user {self.request.user.id} for patient {self.object.patient.id}"
+            )
+            
+            # Log user activity for dashboard
+            log_user_activity(
+                user=self.request.user,
+                activity_type=ActivityTypes.DOCUMENT_UPLOAD,
+                description=f"Uploaded {self.object.filename} for {self.object.patient.first_name} {self.object.patient.last_name}",
+                request=self.request,
+                related_object_type='document',
+                related_object_id=self.object.id
             )
             
             # Show success message

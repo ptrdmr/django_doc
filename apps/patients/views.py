@@ -20,6 +20,7 @@ from difflib import SequenceMatcher
 from .models import Patient, PatientHistory
 from .forms import PatientForm
 from apps.accounts.decorators import has_permission, requires_phi_access, provider_required, admin_required
+from apps.core.utils import log_user_activity, ActivityTypes
 from django.utils.decorators import method_decorator
 
 logger = logging.getLogger(__name__)
@@ -463,6 +464,17 @@ class PatientCreateView(LoginRequiredMixin, CreateView):
         try:
             response = super().form_valid(form)
             self.create_patient_history()
+            
+            # Log user activity for dashboard
+            log_user_activity(
+                user=self.request.user,
+                activity_type=ActivityTypes.PATIENT_CREATE,
+                description=f"{self.object.first_name} {self.object.last_name} - Patient created",
+                request=self.request,
+                related_object_type='patient',
+                related_object_id=self.object.id
+            )
+            
             self.show_success_message()
             return response
             
@@ -520,6 +532,17 @@ class PatientUpdateView(LoginRequiredMixin, UpdateView):
         try:
             response = super().form_valid(form)
             self.create_update_history()
+            
+            # Log user activity for dashboard
+            log_user_activity(
+                user=self.request.user,
+                activity_type=ActivityTypes.PATIENT_UPDATE,
+                description=f"{self.object.first_name} {self.object.last_name} - Demographic change",
+                request=self.request,
+                related_object_type='patient',
+                related_object_id=self.object.id
+            )
+            
             self.show_update_message()
             return response
             

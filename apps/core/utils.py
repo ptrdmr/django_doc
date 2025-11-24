@@ -14,32 +14,37 @@ def log_user_activity(user, activity_type, description, request=None,
                      related_object_type=None, related_object_id=None):
     """
     Log user activity for HIPAA compliance and audit trail.
-    Safe wrapper that won't fail if Activity model isn't available.
+    Uses the AuditLog model.
     
     Args:
         user: User who performed the activity
-        activity_type: Type of activity (must match Activity.ACTIVITY_TYPES)
+        activity_type: Type of activity (must match AuditLog event types ideally)
         description: Human-readable description
         request: HTTP request object (optional, for IP and user agent)
         related_object_type: Type of related object (optional)
         related_object_id: ID of related object (optional)
     
     Returns:
-        Activity instance or None if logging failed
+        AuditLog instance or None if logging failed
     """
     try:
-        Activity = apps.get_model('core', 'Activity')
-        return Activity.log_activity(
+        from apps.core.models import AuditLog
+        
+        # Map activity_type to AuditLog event_type if needed, or pass through
+        # AuditLog.log_event handles most details
+        return AuditLog.log_event(
+            event_type=activity_type,
             user=user,
-            activity_type=activity_type,
-            description=description,
             request=request,
-            related_object_type=related_object_type,
-            related_object_id=related_object_id
+            description=description,
+            # We can put related object info in details if needed, 
+            # or construct content_object if we had the instance.
+            # For now, basic logging is a huge step up.
+            details={
+                'related_object_type': related_object_type,
+                'related_object_id': related_object_id
+            }
         )
-    except (LookupError, AttributeError):
-        logger.debug("Activity model not available, skipping activity logging")
-        return None
     except Exception as e:
         logger.error(f"Error logging activity: {e}")
         return None
