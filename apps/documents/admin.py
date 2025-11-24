@@ -169,13 +169,15 @@ class ParsedDataAdmin(admin.ModelAdmin):
         'patient',
         'ai_model_used',
         'extraction_confidence',
-        'is_approved',
+        'review_status',
+        'is_approved',  # Deprecated but keeping for reference
         'is_merged',
         'fhir_resource_count',
         'created_at',
     ]
     
     list_filter = [
+        'review_status',
         'is_approved',
         'is_merged',
         'ai_model_used',
@@ -191,6 +193,7 @@ class ParsedDataAdmin(admin.ModelAdmin):
         'patient__mrn',
         'ai_model_used',
         'review_notes',
+        'rejection_reason',
     ]
     
     readonly_fields = [
@@ -223,10 +226,12 @@ class ParsedDataAdmin(admin.ModelAdmin):
         }),
         ('Review and Approval', {
             'fields': [
+                'review_status',
                 'is_approved',
                 'reviewed_by',
                 'reviewed_at',
                 'review_notes',
+                'rejection_reason',
             ]
         }),
         ('Integration Status', {
@@ -284,7 +289,7 @@ class ParsedDataAdmin(admin.ModelAdmin):
         """Action to approve extracted data."""
         count = 0
         for parsed_data in queryset:
-            if not parsed_data.is_approved:
+            if parsed_data.review_status != 'approved':
                 parsed_data.approve_extraction(request.user, "Approved via admin action")
                 count += 1
         
