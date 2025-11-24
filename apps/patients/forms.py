@@ -21,10 +21,12 @@ class PatientForm(forms.ModelForm):
             attrs={
                 'type': 'date',
                 'class': 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm'
-            }
+            },
+            format='%Y-%m-%d'  # Force ISO format for HTML5 date input
         ),
-        required=False,
-        help_text="Patient's date of birth"
+        required=True,  # Enforce required field to prevent DB integrity errors
+        help_text="Patient's date of birth",
+        input_formats=['%Y-%m-%d']  # Accept ISO format from browser
     )
     
     class Meta:
@@ -84,7 +86,7 @@ class PatientForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             dob = self.instance.get_date_of_birth()
             if dob:
-                self.fields['date_of_birth'].initial = dob
+                self.initial['date_of_birth'] = dob
     
     def clean_date_of_birth(self):
         """Validate date of birth."""
