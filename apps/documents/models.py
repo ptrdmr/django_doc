@@ -479,22 +479,45 @@ class ParsedData(BaseModel):
     )
     
     # Review and approval
+    REVIEW_STATUS_CHOICES = [
+        ('pending', 'Pending Review'),
+        ('approved', 'Approved - Ready to Merge'),
+        ('rejected', 'Rejected - Do Not Use'),
+        ('flagged', 'Flagged - Needs Attention'),
+    ]
+
+    review_status = models.CharField(
+        max_length=20,
+        choices=REVIEW_STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+        help_text="Current review status of the extraction"
+    )
+    
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='reviewed_parsed_data',
-        help_text="User who reviewed this parsed data"
+        help_text="User who reviewed (approved/rejected) this parsed data"
     )
     reviewed_at = models.DateTimeField(
         null=True,
         blank=True,
         help_text="When data was reviewed"
     )
+    
+    # Rejection details
+    rejection_reason = models.TextField(
+        blank=True,
+        help_text="Reason for rejection if status is rejected"
+    )
+    
+    # Deprecated: Use review_status instead
     is_approved = models.BooleanField(
         default=False,
-        help_text="Whether extracted data is approved for merging"
+        help_text="DEPRECATED: Whether extracted data is approved for merging"
     )
     
     # Quality metrics
@@ -525,6 +548,7 @@ class ParsedData(BaseModel):
         indexes = [
             models.Index(fields=['patient', 'is_merged']),
             models.Index(fields=['document', 'is_approved']),
+            models.Index(fields=['document', 'review_status']),
             models.Index(fields=['merged_at']),
             # Clinical date tracking indexes (Task 35)
             models.Index(fields=['clinical_date', 'date_status']),
@@ -546,11 +570,21 @@ class ParsedData(BaseModel):
     def approve_extraction(self, user, notes=""):
         """Approve the extracted data for merging."""
         self.is_approved = True
+        self.review_status = 'approved'
         self.reviewed_by = user
         self.reviewed_at = timezone.now()
         if notes:
             self.review_notes = notes
-        self.save(update_fields=['is_approved', 'reviewed_by', 'reviewed_at', 'review_notes'])
+        self.save(update_fields=['is_approved', 'review_status', 'reviewed_by', 'reviewed_at', 'review_notes'])
+
+    def reject_extraction(self, user, reason=""):
+        """Reject the extracted data."""
+        self.is_approved = False
+        self.review_status = 'rejected'
+        self.reviewed_by = user
+        self.reviewed_at = timezone.now()
+        self.rejection_reason = reason
+        self.save(update_fields=['is_approved', 'review_status', 'reviewed_by', 'reviewed_at', 'rejection_reason'])
     
     def set_clinical_date(self, date, source='extracted', status='pending'):
         """

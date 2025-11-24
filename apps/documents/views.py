@@ -768,7 +768,8 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             force_review = self.request.GET.get('force_review') == '1'
             
             if has_structured_data or force_review:
-                context['parsed_data'] = True  # Set to True so template conditions pass
+                # context['parsed_data'] will be set to the actual object below if it exists
+                # If forcing review without data, we'll set a dummy object or handle gracefully
                 
                 if has_structured_data:
                     # Use new structured data pipeline
@@ -794,12 +795,17 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 if hasattr(self.object, 'parsed_data'):
                     try:
                         parsed_data = self.object.parsed_data
+                        context['parsed_data'] = parsed_data  # Set the actual object in context
                         parsed_data_id = parsed_data.id
                         clinical_date = parsed_data.clinical_date
                         date_source = parsed_data.date_source
                         date_status = parsed_data.date_status
                     except Exception as e:
                         logger.warning(f"Could not get ParsedData for document {self.object.id}: {e}")
+                        context['parsed_data'] = True # Fallback for legacy behavior if object access fails
+                elif force_review:
+                     context['parsed_data'] = True # Force review mode without object
+
                 
                 for field_data in field_list:
                     # Check if field is approved in session
@@ -1738,11 +1744,8 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 logger.error(f"Error applying patient data comparisons: {comparison_error}")
                 # Don't fail the approval, just log the error
             
-            # Mark parsed data as approved
-            parsed_data.is_approved = True
-            parsed_data.reviewed_by = request.user
-            parsed_data.reviewed_at = timezone.now()
-            parsed_data.save()
+            # Mark parsed data as approved using the model method
+            parsed_data.approve_extraction(request.user)
             
             # Update document status to completed
             self.object.status = 'completed'
@@ -1806,14 +1809,15 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             HttpResponse: Redirect response
         """
         try:
-            notes = request.POST.get('rejection_notes', '').strip()
+            # Template sends 'notes' parameter
+            notes = request.POST.get('notes', '').strip()
+            if not notes:
+                # Fallback to rejection_notes if provided
+                notes = request.POST.get('rejection_notes', '').strip()
             
             parsed_data = self.object.parsed_data
-            parsed_data.is_approved = False
-            parsed_data.reviewed_by = request.user
-            parsed_data.reviewed_at = timezone.now()
-            parsed_data.review_notes = notes
-            parsed_data.save()
+            # Use new rejection method that sets status and reason
+            parsed_data.reject_extraction(request.user, reason=notes)
             
             # Update document status to failed (rejected)
             self.object.status = 'failed'
