@@ -28,6 +28,7 @@ SECURITY NOTES:
 """
 
 import uuid
+from datetime import datetime
 from django.db import models
 from django.utils import timezone
 from django.conf import settings
@@ -1230,7 +1231,11 @@ class Patient(MedicalRecord):
             
             # Extract dates
             if 'onsetDateTime' in condition:
-                condition_data['onset_date'] = condition['onsetDateTime'][:10]  # YYYY-MM-DD format
+                try:
+                    date_str = condition['onsetDateTime'][:10]
+                    condition_data['onset_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    condition_data['onset_date'] = None
                 
                 # Extract date precision from meta tags
                 if 'meta' in condition and 'tag' in condition['meta']:
@@ -1243,10 +1248,18 @@ class Patient(MedicalRecord):
                                 condition_data['onset_date_precision'] = 'month'
                             break
             elif 'onsetPeriod' in condition and 'start' in condition['onsetPeriod']:
-                condition_data['onset_date'] = condition['onsetPeriod']['start'][:10]
+                try:
+                    date_str = condition['onsetPeriod']['start'][:10]
+                    condition_data['onset_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    condition_data['onset_date'] = None
             
             if 'recordedDate' in condition:
-                condition_data['recorded_date'] = condition['recordedDate'][:10]
+                try:
+                    date_str = condition['recordedDate'][:10]
+                    condition_data['recorded_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    condition_data['recorded_date'] = None
             
             # Extract severity
             if 'severity' in condition and 'coding' in condition['severity']:
@@ -1303,20 +1316,62 @@ class Patient(MedicalRecord):
             
             # Extract dates (FHIR R4 uses occurrence[x] for Procedure)
             if 'occurrenceDateTime' in procedure:
-                procedure_data['performed_date'] = procedure['occurrenceDateTime'][:10]
+                try:
+                    date_str = procedure['occurrenceDateTime'][:10]
+                    procedure_data['performed_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    procedure_data['performed_date'] = None
             elif 'performedDateTime' in procedure:  # Legacy field name
-                procedure_data['performed_date'] = procedure['performedDateTime'][:10]
+                try:
+                    date_str = procedure['performedDateTime'][:10]
+                    procedure_data['performed_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    procedure_data['performed_date'] = None
             elif 'occurrencePeriod' in procedure:
                 period = procedure['occurrencePeriod']
+                start_date = None
+                end_date = None
+                
+                if period.get('start'):
+                    try:
+                        start_str = period['start'][:10]
+                        start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        start_date = None
+                
+                if period.get('end'):
+                    try:
+                        end_str = period['end'][:10]
+                        end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        end_date = None
+                
                 procedure_data['performed_period'] = {
-                    'start': period.get('start', '')[:10] if period.get('start') else None,
-                    'end': period.get('end', '')[:10] if period.get('end') else None
+                    'start': start_date,
+                    'end': end_date
                 }
             elif 'performedPeriod' in procedure:  # Legacy field name
                 period = procedure['performedPeriod']
+                start_date = None
+                end_date = None
+                
+                if period.get('start'):
+                    try:
+                        start_str = period['start'][:10]
+                        start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        start_date = None
+                
+                if period.get('end'):
+                    try:
+                        end_str = period['end'][:10]
+                        end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        end_date = None
+                
                 procedure_data['performed_period'] = {
-                    'start': period.get('start', '')[:10] if period.get('start') else None,
-                    'end': period.get('end', '')[:10] if period.get('end') else None
+                    'start': start_date,
+                    'end': end_date
                 }
             
             # Extract category
@@ -1438,20 +1493,43 @@ class Patient(MedicalRecord):
             # Extract effective period or effectiveDateTime
             if 'effectivePeriod' in medication:
                 period = medication['effectivePeriod']
+                start_date = None
+                end_date = None
+                
+                if period.get('start'):
+                    try:
+                        start_str = period['start'][:10]
+                        start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        start_date = None
+                
+                if period.get('end'):
+                    try:
+                        end_str = period['end'][:10]
+                        end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        end_date = None
+                
                 medication_data['effective_period'] = {
-                    'start': period.get('start', '')[:10] if period.get('start') else None,
-                    'end': period.get('end', '')[:10] if period.get('end') else None
+                    'start': start_date,
+                    'end': end_date
                 }
             elif 'effectiveDateTime' in medication:
                 # Handle single effectiveDateTime (convert to period format for consistency)
                 effective_date = medication['effectiveDateTime']
-                if effective_date:
-                    # Extract just the date part (YYYY-MM-DD)
-                    date_only = effective_date[:10] if len(effective_date) >= 10 else effective_date
-                    medication_data['effective_period'] = {
-                        'start': date_only,
-                        'end': None
-                    }
+                start_date = None
+                
+                if effective_date and len(effective_date) >= 10:
+                    try:
+                        date_str = effective_date[:10]
+                        start_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        start_date = None
+                
+                medication_data['effective_period'] = {
+                    'start': start_date,
+                    'end': None
+                }
             
             # Extract category
             if 'category' in medication and 'coding' in medication['category']:
@@ -1560,9 +1638,17 @@ class Patient(MedicalRecord):
             
             # Extract effective date
             if 'effectiveDateTime' in observation:
-                observation_data['effective_date'] = observation['effectiveDateTime'][:10]
+                try:
+                    date_str = observation['effectiveDateTime'][:10]
+                    observation_data['effective_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    observation_data['effective_date'] = None
             elif 'effectivePeriod' in observation and 'start' in observation['effectivePeriod']:
-                observation_data['effective_date'] = observation['effectivePeriod']['start'][:10]
+                try:
+                    date_str = observation['effectivePeriod']['start'][:10]
+                    observation_data['effective_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    observation_data['effective_date'] = None
             
             # Extract notes
             if 'note' in observation:
@@ -1610,9 +1696,26 @@ class Patient(MedicalRecord):
             # Extract period
             if 'period' in encounter:
                 period = encounter['period']
+                start_date = None
+                end_date = None
+                
+                if period.get('start'):
+                    try:
+                        start_str = period['start'][:10]
+                        start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        start_date = None
+                
+                if period.get('end'):
+                    try:
+                        end_str = period['end'][:10]
+                        end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        end_date = None
+                
                 encounter_data['period'] = {
-                    'start': period.get('start', '')[:10] if period.get('start') else None,
-                    'end': period.get('end', '')[:10] if period.get('end') else None
+                    'start': start_date,
+                    'end': end_date
                 }
             
             # Extract reason codes
