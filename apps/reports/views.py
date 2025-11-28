@@ -126,6 +126,9 @@ class GenerateReportView(LoginRequiredMixin, FormView):
         # Convert model objects to IDs for serialization
         if 'patient' in parameters and parameters['patient']:
             parameters['patient_id'] = str(parameters['patient'].id)
+            # Snapshot the name for display purposes
+            parameters['patient_name'] = f"{parameters['patient'].first_name} {parameters['patient'].last_name}"
+            
             patient_obj = parameters['patient'] # Store reference for logging
             del parameters['patient']  # Remove the model object
         else:
