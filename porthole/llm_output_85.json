@@ -1,0 +1,401 @@
+{
+  "document_id": 85,
+  "timestamp": "2025-11-28T02:06:17.615866",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Hypertension",
+        "status": "active",
+        "confidence": 0.85,
+        "onset_date": "2024-03-11",
+        "icd_code": null,
+        "source": {
+          "text": "BP slightly elevated (138/86)",
+          "start_index": 245,
+          "end_index": 271
+        }
+      },
+      {
+        "name": "Acute bronchitis",
+        "status": "resolved",
+        "confidence": 0.95,
+        "onset_date": "2024-07-02",
+        "icd_code": null,
+        "source": {
+          "text": "Dx: Acute bronchitis",
+          "start_index": 456,
+          "end_index": 475
+        }
+      },
+      {
+        "name": "Patellofemoral pain syndrome",
+        "status": "active",
+        "confidence": 0.8,
+        "onset_date": "2025-04-22",
+        "icd_code": null,
+        "source": {
+          "text": "suspected patellofemoral pain syndrome",
+          "start_index": 892,
+          "end_index": 930
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Albuterol inhaler",
+        "dosage": null,
+        "route": "inhalation",
+        "frequency": "PRN",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": "2024-07-02",
+        "stop_date": null,
+        "source": {
+          "text": "Albuterol inhaler PRN",
+          "start_index": 500,
+          "end_index": 521
+        }
+      },
+      {
+        "name": "Azithromycin",
+        "dosage": null,
+        "route": null,
+        "frequency": "5 day course",
+        "status": "completed",
+        "confidence": 0.9,
+        "start_date": "2024-07-02",
+        "stop_date": null,
+        "source": {
+          "text": "Azithromycin 5nday course",
+          "start_index": 523,
+          "end_index": 548
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Blood Pressure",
+        "value": "138/86",
+        "unit": "mmHg",
+        "timestamp": "2024-03-11",
+        "confidence": 0.95,
+        "source": {
+          "text": "BP slightly elevated (138/86)",
+          "start_index": 245,
+          "end_index": 271
+        }
+      },
+      {
+        "measurement": "Blood Pressure",
+        "value": "126/79",
+        "unit": "mmHg",
+        "timestamp": "2025-03-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "BP improved to 126/79",
+          "start_index": 750,
+          "end_index": 771
+        }
+      }
+    ],
+    "lab_results": [
+      {
+        "test_name": "CMP",
+        "value": "normal",
+        "unit": null,
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2025-03-05",
+        "confidence": 0.85,
+        "source": {
+          "text": "Labs normal",
+          "start_index": 805,
+          "end_index": 816
+        }
+      },
+      {
+        "test_name": "CBC",
+        "value": "normal",
+        "unit": null,
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2025-03-05",
+        "confidence": 0.85,
+        "source": {
+          "text": "Labs normal",
+          "start_index": 805,
+          "end_index": 816
+        }
+      },
+      {
+        "test_name": "Lipid Panel",
+        "value": "normal",
+        "unit": null,
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2025-03-05",
+        "confidence": 0.85,
+        "source": {
+          "text": "Labs normal",
+          "start_index": 805,
+          "end_index": 816
+        }
+      }
+    ],
+    "procedures": [
+      {
+        "name": "Chest X-ray",
+        "procedure_date": "2024-07-02",
+        "provider": null,
+        "outcome": "no consolidation",
+        "confidence": 0.9,
+        "source": {
+          "text": "CXR showed no consolidation",
+          "start_index": 428,
+          "end_index": 455
+        }
+      },
+      {
+        "name": "Dermoscopy",
+        "procedure_date": "2025-01-19",
+        "provider": null,
+        "outcome": "benign appearing",
+        "confidence": 0.9,
+        "source": {
+          "text": "Dermoscopy benignnappearing",
+          "start_index": 655,
+          "end_index": 682
+        }
+      },
+      {
+        "name": "X-ray knee",
+        "procedure_date": "2025-04-22",
+        "provider": null,
+        "outcome": "normal",
+        "confidence": 0.9,
+        "source": {
+          "text": "Xnray normal",
+          "start_index": 873,
+          "end_index": 885
+        }
+      }
+    ],
+    "providers": [],
+    "encounters": [
+      {
+        "encounter_id": null,
+        "encounter_type": "Primary Care Annual Exam",
+        "encounter_date": "2024-03-11",
+        "encounter_end_date": null,
+        "location": null,
+        "reason": "Annual Exam",
+        "participants": [],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Encounter Date: 2024/03/11 Visit Type: Primary Care – Annual Exam",
+          "start_index": 150,
+          "end_index": 215
+        }
+      },
+      {
+        "encounter_id": null,
+        "encounter_type": "Urgent Care",
+        "encounter_date": "2024-07-02",
+        "encounter_end_date": null,
+        "location": null,
+        "reason": "Respiratory symptoms",
+        "participants": [],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Encounter Date: 2024/07/02 Visit Type: Urgent Care – Respiratory",
+          "start_index": 340,
+          "end_index": 404
+        }
+      },
+      {
+        "encounter_id": null,
+        "encounter_type": "Dermatology",
+        "encounter_date": "2025-01-19",
+        "encounter_end_date": null,
+        "location": null,
+        "reason": "Evaluation of new mole",
+        "participants": [],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Encounter Date: 2025/01/19 Visit Type: Dermatology",
+          "start_index": 590,
+          "end_index": 640
+        }
+      },
+      {
+        "encounter_id": null,
+        "encounter_type": "Primary Care Follow-up",
+        "encounter_date": "2025-03-05",
+        "encounter_end_date": null,
+        "location": null,
+        "reason": "Follow-up",
+        "participants": [],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Encounter Date: 2025/03/05 Visit Type: Primary Care – Follown Up",
+          "start_index": 720,
+          "end_index": 784
+        }
+      },
+      {
+        "encounter_id": null,
+        "encounter_type": "Orthopedics",
+        "encounter_date": "2025-04-22",
+        "encounter_end_date": null,
+        "location": null,
+        "reason": "Knee pain",
+        "participants": [],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Encounter Date: 2025/04/22 Visit Type: Orthopedics",
+          "start_index": 860,
+          "end_index": 911
+        }
+      }
+    ],
+    "service_requests": [
+      {
+        "request_id": null,
+        "request_type": "lab test",
+        "requester": null,
+        "reason": "routine evaluation",
+        "priority": null,
+        "clinical_context": "Annual exam with elevated BP",
+        "request_date": "2024-03-11",
+        "confidence": 0.9,
+        "source": {
+          "text": "Basic labs ordered (CMP, CBC, Lipid Panel)",
+          "start_index": 295,
+          "end_index": 338
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "physical therapy referral",
+        "requester": null,
+        "reason": "patellofemoral pain syndrome",
+        "priority": null,
+        "clinical_context": "Mild right knee pain after jogging",
+        "request_date": "2025-04-22",
+        "confidence": 0.9,
+        "source": {
+          "text": "Physical therapy referral",
+          "start_index": 938,
+          "end_index": 963
+        }
+      }
+    ],
+    "diagnostic_reports": [
+      {
+        "report_id": null,
+        "report_type": "radiology",
+        "findings": "no consolidation",
+        "conclusion": null,
+        "recommendations": null,
+        "status": null,
+        "report_date": "2024-07-02",
+        "ordering_provider": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "CXR showed no consolidation",
+          "start_index": 428,
+          "end_index": 455
+        }
+      },
+      {
+        "report_id": null,
+        "report_type": "dermatology",
+        "findings": "benign appearing mole",
+        "conclusion": null,
+        "recommendations": "Recheck in 6 months",
+        "status": null,
+        "report_date": "2025-01-19",
+        "ordering_provider": null,
+        "confidence": 0.85,
+        "source": {
+          "text": "Dermoscopy benignnappearing, but photographed for monitoring",
+          "start_index": 655,
+          "end_index": 717
+        }
+      },
+      {
+        "report_id": null,
+        "report_type": "radiology",
+        "findings": "normal",
+        "conclusion": null,
+        "recommendations": null,
+        "status": null,
+        "report_date": "2025-04-22",
+        "ordering_provider": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Xnray normal",
+          "start_index": 873,
+          "end_index": 885
+        }
+      }
+    ],
+    "allergies": [],
+    "care_plans": [
+      {
+        "plan_id": null,
+        "plan_description": "Lifestyle modification for elevated blood pressure",
+        "goals": [
+          "Blood pressure control"
+        ],
+        "activities": [
+          "Lifestyle modification"
+        ],
+        "period_start": "2024-03-11",
+        "period_end": null,
+        "status": "active",
+        "intent": "plan",
+        "confidence": 0.85,
+        "source": {
+          "text": "Lifestyle modification recommended",
+          "start_index": 273,
+          "end_index": 305
+        }
+      },
+      {
+        "plan_id": null,
+        "plan_description": "Conservative management for patellofemoral pain syndrome",
+        "goals": [
+          "Pain relief",
+          "Functional improvement"
+        ],
+        "activities": [
+          "Physical therapy",
+          "Ice PRN"
+        ],
+        "period_start": "2025-04-22",
+        "period_end": null,
+        "status": "active",
+        "intent": "plan",
+        "confidence": 0.85,
+        "source": {
+          "text": "Physical therapy referral, ice PRN",
+          "start_index": 938,
+          "end_index": 970
+        }
+      }
+    ],
+    "organizations": [],
+    "extraction_timestamp": "2025-11-28T02:06:17.614691",
+    "document_type": null,
+    "confidence_average": 0.898
+  }
+}

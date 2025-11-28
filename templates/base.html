@@ -237,5 +237,151 @@
     <script src="https://unpkg.com/htmx.org@1.9.10" 
             integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" 
             crossorigin="anonymous"></script>
+            <div x-data="documentProgress()" 
+            x-init="init()" 
+            class="fixed bottom-4 right-4 z-50 w-80 space-y-2 font-sans"
+            style="display: none;" 
+            x-show="hasActiveUploads || recentUploads.length > 0"
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="opacity-0 transform translate-y-2"
+            x-transition:enter-end="opacity-100 transform translate-y-0"
+            x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="opacity-100 transform translate-y-0"
+            x-transition:leave-end="opacity-0 transform translate-y-2">
+       
+           <!-- Active Processing Items -->
+           <template x-for="doc in processingDocs" :key="doc.id">
+               <div class="bg-white rounded-lg shadow-lg border-l-4 border-blue-500 p-4 flex items-center space-x-3 animate-pulse">
+                   <div class="flex-shrink-0">
+                       <svg class="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                       </svg>
+                   </div>
+                   <div class="flex-1 min-w-0">
+                       <p class="text-sm font-medium text-gray-900 truncate" x-text="doc.filename"></p>
+                       <!-- Shows specific step if available, else generic status -->
+                       <p class="text-xs text-blue-600" x-text="doc.processing_message || doc.status_display || 'Processing...'"></p>
+                   </div>
+               </div>
+           </template>
+       
+           <!-- Recently Completed/Review/Failed Items -->
+           <template x-for="doc in recentUploads" :key="doc.id">
+               <div class="bg-white rounded-lg shadow-lg border-l-4 p-4 flex items-center space-x-3 transition-colors duration-150"
+                    :class="{
+                       'border-green-500': doc.status === 'completed',
+                       'border-yellow-500': doc.status === 'review',
+                       'border-red-500': doc.status === 'failed',
+                       'cursor-pointer hover:bg-gray-50': doc.status === 'review'
+                    }"
+                    @click="handleDocClick(doc)">
+                   
+                   <div class="flex-shrink-0">
+                       <!-- Review Icon (Yellow) -->
+                       <template x-if="doc.status === 'review'">
+                           <svg class="h-5 w-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                           </svg>
+                       </template>
+                       <!-- Success Icon (Green) -->
+                       <template x-if="doc.status === 'completed'">
+                           <svg class="h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                           </svg>
+                       </template>
+                       <!-- Failed Icon (Red) -->
+                       <template x-if="doc.status === 'failed'">
+                           <svg class="h-5 w-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                           </svg>
+                       </template>
+                   </div>
+                   
+                   <div class="flex-1 min-w-0">
+                       <p class="text-sm font-medium text-gray-900 truncate" x-text="doc.filename"></p>
+                       <p class="text-xs font-medium" 
+                          :class="{
+                              'text-green-600': doc.status === 'completed',
+                              'text-yellow-600': doc.status === 'review',
+                              'text-red-600': doc.status === 'failed'
+                          }">
+                          <span x-text="doc.status_display"></span>
+                          <span x-show="doc.status === 'review'" class="ml-1 text-gray-400 font-normal">Click to review &rarr;</span>
+                       </p>
+                   </div>
+                   
+                   <!-- Dismiss Button -->
+                   <button @click.stop="dismiss(doc.id)" class="text-gray-400 hover:text-gray-600 p-1">
+                       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                       </svg>
+                   </button>
+               </div>
+           </template>
+       </div>
+       
+       <script>
+           function documentProgress() {
+               return {
+                   processingDocs: [],
+                   recentUploads: [],
+                   hasActiveUploads: false,
+                   dismissedIds: new Set(),
+                   interval: null,
+                   
+                   init() {
+                       // Load dismissed IDs from localStorage
+                       try {
+                           const stored = localStorage.getItem('dismissed_upload_ids');
+                           if (stored) {
+                               this.dismissedIds = new Set(JSON.parse(stored));
+                           }
+                       } catch (e) {
+                           console.debug('Could not load dismissed IDs');
+                       }
+                       
+                       this.checkStatus();
+                       this.interval = setInterval(() => this.checkStatus(), 3000);
+                   },
+                   
+                   handleDocClick(doc) {
+                       if (doc.status === 'review') {
+                           window.location.href = `/documents/${doc.id}/review/`;
+                       }
+                   },
+                   
+                   dismiss(id) {
+                       this.dismissedIds.add(id);
+                       try {
+                           localStorage.setItem('dismissed_upload_ids', JSON.stringify([...this.dismissedIds]));
+                       } catch (e) {
+                           console.debug('Could not save dismissed IDs');
+                       }
+                       this.recentUploads = this.recentUploads.filter(d => d.id !== id);
+                   },
+                   
+                   async checkStatus() {
+                       try {
+                           const response = await fetch('/documents/api/processing-status/');
+                           if (!response.ok) {
+                               if (response.status === 401 || response.status === 403) clearInterval(this.interval);
+                               return;
+                           }
+                           
+                           const data = await response.json();
+                           if (data.success) {
+                               this.processingDocs = data.processing_documents;
+                               this.recentUploads = data.recent_documents.filter(doc => !this.dismissedIds.has(doc.id));
+                               this.hasActiveUploads = this.processingDocs.length > 0;
+                           }
+                       } catch (error) {
+                           console.debug('Status poll failed', error);
+                       }
+                   }
+               }
+           }
+       </script>
 </body>
 </html> 

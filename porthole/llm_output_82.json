@@ -1,0 +1,273 @@
+{
+  "document_id": 82,
+  "timestamp": "2025-11-25T01:02:53.415384",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [],
+    "medications": [
+      {
+        "name": "INFLUENZA, HIGH-DOSE, TRIVALENT, PF",
+        "dosage": null,
+        "route": null,
+        "frequency": "annual",
+        "status": "completed",
+        "confidence": 0.9,
+        "start_date": "2017-11-15",
+        "stop_date": null,
+        "source": {
+          "text": "Vaccine Group: INFLUENZA, HIGH-DOSE, TRIVALENT, PF - Date Administered: 11/15/2017",
+          "start_index": 0,
+          "end_index": 85
+        }
+      },
+      {
+        "name": "INFLUENZA, HIGH-DOSE, TRIVALENT, PF",
+        "dosage": null,
+        "route": null,
+        "frequency": "annual",
+        "status": "completed",
+        "confidence": 0.9,
+        "start_date": "2018-10-31",
+        "stop_date": null,
+        "source": {
+          "text": "Vaccine Group: INFLUENZA, HIGH-DOSE, TRIVALENT, PF - Date Administered: 10/31/2018",
+          "start_index": 0,
+          "end_index": 85
+        }
+      },
+      {
+        "name": "PNEUMOCOCCAL CONJUGATE PCV 13",
+        "dosage": null,
+        "route": null,
+        "frequency": null,
+        "status": "completed",
+        "confidence": 0.9,
+        "start_date": "2017-12-06",
+        "stop_date": null,
+        "source": {
+          "text": "Vaccine Group: PNEUMOCOCCAL CONJUGATE PCV 13 - Date Administered: 12/06/2017",
+          "start_index": 0,
+          "end_index": 78
+        }
+      },
+      {
+        "name": "ZOSTER LIVE",
+        "dosage": null,
+        "route": null,
+        "frequency": null,
+        "status": "completed",
+        "confidence": 0.9,
+        "start_date": "2015-06-01",
+        "stop_date": null,
+        "source": {
+          "text": "Vaccine Group: ZOSTER LIVE - Date Administered: 06/01/2015",
+          "start_index": 0,
+          "end_index": 59
+        }
+      }
+    ],
+    "vital_signs": [],
+    "lab_results": [],
+    "procedures": [
+      {
+        "name": "INFLUENZA HIGH-DOSE VACCINATION",
+        "procedure_date": "2017-11-15",
+        "provider": null,
+        "outcome": "completed",
+        "confidence": 0.9,
+        "source": {
+          "text": "Vaccine Group: INFLUENZA, HIGH-DOSE, TRIVALENT, PF - Date Administered: 11/15/2017 - Completion Status: CP",
+          "start_index": 0,
+          "end_index": 110
+        }
+      },
+      {
+        "name": "INFLUENZA HIGH-DOSE VACCINATION",
+        "procedure_date": "2018-10-31",
+        "provider": null,
+        "outcome": "completed",
+        "confidence": 0.9,
+        "source": {
+          "text": "Vaccine Group: INFLUENZA, HIGH-DOSE, TRIVALENT, PF - Date Administered: 10/31/2018 - Completion Status: CP",
+          "start_index": 0,
+          "end_index": 110
+        }
+      },
+      {
+        "name": "PNEUMOCOCCAL CONJUGATE PCV 13 VACCINATION",
+        "procedure_date": "2017-12-06",
+        "provider": null,
+        "outcome": "completed",
+        "confidence": 0.9,
+        "source": {
+          "text": "Vaccine Group: PNEUMOCOCCAL CONJUGATE PCV 13 - Date Administered: 12/06/2017 - Completion Status: CP",
+          "start_index": 0,
+          "end_index": 103
+        }
+      },
+      {
+        "name": "ZOSTER LIVE VACCINATION",
+        "procedure_date": "2015-06-01",
+        "provider": null,
+        "outcome": "completed",
+        "confidence": 0.9,
+        "source": {
+          "text": "Vaccine Group: ZOSTER LIVE - Date Administered: 06/01/2015 - Completion Status: CP",
+          "start_index": 0,
+          "end_index": 84
+        }
+      }
+    ],
+    "providers": [
+      {
+        "name": "MARK M MEDEIROS MD",
+        "specialty": null,
+        "role": "primary care provider",
+        "contact_info": "10210 N. 92ND ST STE 305, SCOTTSDALE AZ 85258-4525, Phone: (480) 551-6979, Fax: (480) 551-9725",
+        "confidence": 0.95,
+        "source": {
+          "text": "MARK M MEDEIROS MD 10210 N. 92ND ST STE 305, SCOTTSDALE AZ 85258-4525 Phone: (480) 551-6979 Fax: (480) 551-9725",
+          "start_index": 0,
+          "end_index": 120
+        }
+      }
+    ],
+    "encounters": [],
+    "service_requests": [
+      {
+        "request_id": null,
+        "request_type": "vaccination",
+        "requester": null,
+        "reason": "immunization forecast",
+        "priority": "routine",
+        "clinical_context": "TDAP due",
+        "request_date": null,
+        "confidence": 0.8,
+        "source": {
+          "text": "TDAP - Due Date: 08/03/1959 - Earliest Date to Give : 08/03/1959",
+          "start_index": 0,
+          "end_index": 65
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "vaccination",
+        "requester": null,
+        "reason": "immunization forecast",
+        "priority": "routine",
+        "clinical_context": "HEPB due",
+        "request_date": null,
+        "confidence": 0.8,
+        "source": {
+          "text": "HEPB - Due Date: 01/01/1986 - Earliest Date to Give : 01/01/1986",
+          "start_index": 0,
+          "end_index": 65
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "vaccination",
+        "requester": null,
+        "reason": "immunization forecast",
+        "priority": "routine",
+        "clinical_context": "HEPA due",
+        "request_date": null,
+        "confidence": 0.8,
+        "source": {
+          "text": "HEPA - Due Date: 01/01/1996 - Earliest Date to Give : 01/01/1996",
+          "start_index": 0,
+          "end_index": 65
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "vaccination",
+        "requester": null,
+        "reason": "immunization forecast",
+        "priority": "routine",
+        "clinical_context": "RSV due",
+        "request_date": null,
+        "confidence": 0.8,
+        "source": {
+          "text": "RSV - Due Date: 08/03/2012 - Earliest Date to Give : 08/03/2012",
+          "start_index": 0,
+          "end_index": 63
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "vaccination",
+        "requester": null,
+        "reason": "immunization forecast",
+        "priority": "routine",
+        "clinical_context": "ZOSTER due",
+        "request_date": null,
+        "confidence": 0.8,
+        "source": {
+          "text": "ZOSTER - Due Date: 07/27/2015 - Earliest Date to Give : 07/27/2015",
+          "start_index": 0,
+          "end_index": 67
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "vaccination",
+        "requester": null,
+        "reason": "immunization forecast",
+        "priority": "routine",
+        "clinical_context": "FLU due",
+        "request_date": null,
+        "confidence": 0.8,
+        "source": {
+          "text": "FLU - Due Date: 07/01/2019 - Earliest Date to Give : 07/01/2019",
+          "start_index": 0,
+          "end_index": 63
+        }
+      }
+    ],
+    "diagnostic_reports": [
+      {
+        "report_id": "1042-A-17798",
+        "report_type": "vaccination records",
+        "findings": "Patient has received influenza high-dose vaccines in 2017 and 2018, pneumococcal conjugate PCV 13 in 2017, and zoster live vaccine in 2015. All vaccines completed successfully.",
+        "conclusion": "Immunization history documented with completed vaccines",
+        "recommendations": "Continue following ACIP vaccine schedule for future immunizations",
+        "status": "final",
+        "report_date": "2024-09-26",
+        "ordering_provider": "MARK M MEDEIROS MD",
+        "confidence": 0.9,
+        "source": {
+          "text": "Medical Records - CONFIDENTIAL FROM: AZ - Medeiros, Mark Date Range: 01/01/2022 to 09/26/2024 This document contains the following records of the patient: Vaccination Records",
+          "start_index": 0,
+          "end_index": 180
+        }
+      }
+    ],
+    "allergies": [],
+    "care_plans": [],
+    "organizations": [
+      {
+        "organization_id": null,
+        "name": "MARK M MEDEIROS MD",
+        "identifier": null,
+        "organization_type": "medical practice",
+        "address": "10210 N. 92ND ST STE 305",
+        "city": "SCOTTSDALE",
+        "state": "AZ",
+        "postal_code": "85258-4525",
+        "phone": "(480) 551-6979",
+        "confidence": 0.95,
+        "source": {
+          "text": "MARK M MEDEIROS MD 10210 N. 92ND ST STE 305, SCOTTSDALE AZ 85258-4525 Phone: (480) 551-6979 Fax: (480) 551-9725",
+          "start_index": 0,
+          "end_index": 120
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-11-25T01:02:53.413178",
+    "document_type": null,
+    "confidence_average": 0.871
+  }
+}

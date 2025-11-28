@@ -470,7 +470,7 @@ class ProcessingStatusAPIView(LoginRequiredMixin, View):
             recent_cutoff = timezone.now() - timezone.timedelta(minutes=5)
             recent_docs = Document.objects.filter(
                 created_by=request.user,
-                status__in=['completed', 'failed'],
+                status__in=['completed', 'failed', 'review'],
                 processed_at__gte=recent_cutoff
             ).select_related('patient').order_by('-processed_at')[:5]
             
@@ -481,6 +481,7 @@ class ProcessingStatusAPIView(LoginRequiredMixin, View):
                     'filename': doc.filename,
                     'status': doc.status,
                     'status_display': doc.get_status_display(),
+                    'processing_message': doc.processing_message,
                     'patient_name': f"{doc.patient.first_name} {doc.patient.last_name}",
                     'uploaded_at': doc.uploaded_at.isoformat(),
                 })
@@ -492,6 +493,7 @@ class ProcessingStatusAPIView(LoginRequiredMixin, View):
                     'filename': doc.filename,
                     'status': doc.status,
                     'status_display': doc.get_status_display(),
+                    'processing_message': doc.processing_message,
                     'patient_name': f"{doc.patient.first_name} {doc.patient.last_name}",
                     'completed_at': doc.processing_completed_at.isoformat() if doc.processing_completed_at else None,
                 })

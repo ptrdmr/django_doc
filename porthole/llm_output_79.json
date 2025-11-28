@@ -1,0 +1,426 @@
+{
+  "document_id": 79,
+  "timestamp": "2025-11-25T01:00:59.558682",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [],
+    "medications": [],
+    "vital_signs": [],
+    "lab_results": [
+      {
+        "test_name": "Color, Urine",
+        "value": "Normal",
+        "unit": null,
+        "reference_range": "Normal",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F Color, Urine Normal Normal PAZ",
+          "start_index": 0,
+          "end_index": 32
+        }
+      },
+      {
+        "test_name": "Clarity, Urine",
+        "value": "Clear",
+        "unit": null,
+        "reference_range": "Clear",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F Clarity, Urine Clear Clear PAZ",
+          "start_index": 0,
+          "end_index": 33
+        }
+      },
+      {
+        "test_name": "Specific Gravity, Urine",
+        "value": "1.619",
+        "unit": null,
+        "reference_range": "1.005 - 1.030",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F Specific Gravity, Urine 1.619 1.005 - 1.030 PAZ",
+          "start_index": 0,
+          "end_index": 51
+        }
+      },
+      {
+        "test_name": "Leukocyte Esterase, Urine Qualitative",
+        "value": "Small",
+        "unit": null,
+        "reference_range": "Negative",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "Leukocyte Esterase, Small . Urine Qualitative A Negative PAZ",
+          "start_index": 0,
+          "end_index": 61
+        }
+      },
+      {
+        "test_name": "Nitrite, Urine Qualitative",
+        "value": "Negative",
+        "unit": null,
+        "reference_range": "Negative",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "Nitrite, Urine . . F Qualitative Negative Negative PAZ",
+          "start_index": 0,
+          "end_index": 55
+        }
+      },
+      {
+        "test_name": "pH, Urine",
+        "value": "6.5",
+        "unit": null,
+        "reference_range": "5.0 - 8.0",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F p H, Urine 6.5 5.0 - 8.0 PAZ",
+          "start_index": 0,
+          "end_index": 31
+        }
+      },
+      {
+        "test_name": "Blood, Urine Qualitative",
+        "value": "Negative",
+        "unit": null,
+        "reference_range": "Negative",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F Blood, Urine Qualitative Negative Negative PAZ",
+          "start_index": 0,
+          "end_index": 48
+        }
+      },
+      {
+        "test_name": "Glucose, Urine Qualitative",
+        "value": "Negative",
+        "unit": "mg/dL",
+        "reference_range": "Negative",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "Glucose, Urine . . Qualitative Negative Negative(mg/d L) PAZ",
+          "start_index": 0,
+          "end_index": 61
+        }
+      },
+      {
+        "test_name": "Ketones, Urine Qualitative",
+        "value": "Negative",
+        "unit": null,
+        "reference_range": "Negative",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "Ketones, Urine , . Qualitative Negative Negative PAZ",
+          "start_index": 0,
+          "end_index": 53
+        }
+      },
+      {
+        "test_name": "Urobilinogen, Urine Qualitative",
+        "value": "Normal",
+        "unit": "EU/dL",
+        "reference_range": "Normal",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "Urobilinogen, Urine F Qualitative Normal Normal(EU/d L) PAZ",
+          "start_index": 0,
+          "end_index": 60
+        }
+      },
+      {
+        "test_name": "Bilirubin, Urine Qualitative",
+        "value": "Negative",
+        "unit": null,
+        "reference_range": "Negative",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "Bilirubin, Urine . F Qualitative Negative Negative PAZ",
+          "start_index": 0,
+          "end_index": 55
+        }
+      },
+      {
+        "test_name": "Protein, Urine Qualitative",
+        "value": "Negative",
+        "unit": "mg/dL",
+        "reference_range": "Negative",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F Protein, Urine Negative Negative(mg/d L) PAZ",
+          "start_index": 0,
+          "end_index": 47
+        }
+      },
+      {
+        "test_name": "WBC, Urine",
+        "value": "8-5",
+        "unit": "/hpf",
+        "reference_range": "0-5",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F WBC, Urine 8-5 0-5(/hpf) PAZ",
+          "start_index": 0,
+          "end_index": 31
+        }
+      },
+      {
+        "test_name": "RBC, Urine",
+        "value": "None Seen",
+        "unit": "/hpf",
+        "reference_range": "0-3",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F RBC, Urine None Seen 0-3(/hpf) PAZ",
+          "start_index": 0,
+          "end_index": 37
+        }
+      },
+      {
+        "test_name": "Epithelial Cells, Urine",
+        "value": "None Seen",
+        "unit": "/hpf",
+        "reference_range": "0-5",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F Epithelial Cells, Urine None Seen 0-5(/hpf) PAZ",
+          "start_index": 0,
+          "end_index": 51
+        }
+      },
+      {
+        "test_name": "Bacteria, Urine",
+        "value": "None Seen",
+        "unit": "/hpf",
+        "reference_range": "None Seen",
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "F Bacteria, Urine None Seen None Seen(/hpf) PAZ",
+          "start_index": 0,
+          "end_index": 48
+        }
+      },
+      {
+        "test_name": "Urine Culture",
+        "value": "No growth",
+        "unit": null,
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2018-09-05",
+        "confidence": 0.95,
+        "source": {
+          "text": "Culture: No growth",
+          "start_index": 0,
+          "end_index": 18
+        }
+      }
+    ],
+    "procedures": [
+      {
+        "name": "Urinalysis Complete",
+        "procedure_date": "2018-09-05",
+        "provider": "Nelson, Roscoe",
+        "outcome": "Multiple abnormal findings including elevated specific gravity and WBC",
+        "confidence": 0.9,
+        "source": {
+          "text": "Urinalysis Complete",
+          "start_index": 0,
+          "end_index": 19
+        }
+      },
+      {
+        "name": "Urine Culture",
+        "procedure_date": "2018-09-05",
+        "provider": "Nelson, Roscoe",
+        "outcome": "No growth",
+        "confidence": 0.9,
+        "source": {
+          "text": "Urine Culture, rogram",
+          "start_index": 0,
+          "end_index": 21
+        }
+      },
+      {
+        "name": "Uroflow",
+        "procedure_date": null,
+        "provider": "Roscoe Nelson",
+        "outcome": "Maximum flow: 41.4 ml/s, Average flow: 5.6 ml/s, Voided volume: 174.6 ml",
+        "confidence": 0.9,
+        "source": {
+          "text": "Urofiow Report",
+          "start_index": 0,
+          "end_index": 14
+        }
+      }
+    ],
+    "providers": [
+      {
+        "name": "Nelson, Roscoe",
+        "specialty": "Urology",
+        "role": "Requesting Physician/Ordering Physician",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Requesting Physician: Nelson, Roscoe Ordering Physician: Nelson, Roscoe",
+          "start_index": 0,
+          "end_index": 72
+        }
+      },
+      {
+        "name": "Roscoe Nelson",
+        "specialty": "Urology",
+        "role": "Doctor",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Doctor: Roscoe Nelson",
+          "start_index": 0,
+          "end_index": 21
+        }
+      }
+    ],
+    "encounters": [],
+    "service_requests": [
+      {
+        "request_id": null,
+        "request_type": "lab test",
+        "requester": "Nelson, Roscoe",
+        "reason": null,
+        "priority": null,
+        "clinical_context": "Urinalysis and urine culture",
+        "request_date": "2018-09-05",
+        "confidence": 0.9,
+        "source": {
+          "text": "Order Date: 09/05/2018",
+          "start_index": 0,
+          "end_index": 23
+        }
+      }
+    ],
+    "diagnostic_reports": [
+      {
+        "report_id": "16236-146966",
+        "report_type": "lab",
+        "findings": "Urinalysis shows elevated specific gravity (1.619), small leukocyte esterase, elevated WBC (8-5/hpf). Urine culture shows no growth.",
+        "conclusion": "Abnormal urinalysis with elevated WBC and specific gravity, negative culture",
+        "recommendations": null,
+        "status": "final",
+        "report_date": "2018-09-07",
+        "ordering_provider": "Nelson, Roscoe",
+        "confidence": 0.9,
+        "source": {
+          "text": "FINAL RESULT",
+          "start_index": 0,
+          "end_index": 12
+        }
+      },
+      {
+        "report_id": null,
+        "report_type": "urology",
+        "findings": "Maximum flow: 41.4 ml/s, Average flow: 5.6 ml/s, Voiding time: 38.0 secs, Flow time: 31.0 secs, Time to max flow: 3.2 secs, Voided volume: 174.6 ml",
+        "conclusion": null,
+        "recommendations": null,
+        "status": null,
+        "report_date": null,
+        "ordering_provider": "Roscoe Nelson",
+        "confidence": 0.9,
+        "source": {
+          "text": "Urofiow Report",
+          "start_index": 0,
+          "end_index": 14
+        }
+      }
+    ],
+    "allergies": [],
+    "care_plans": [],
+    "organizations": [
+      {
+        "organization_id": null,
+        "name": "Arizona Center For Urology - TW",
+        "identifier": null,
+        "organization_type": "medical clinic",
+        "address": "6320 W UNION HILLS DR STE B-2600",
+        "city": "GLENDALE",
+        "state": "AZ",
+        "postal_code": "85308-7175",
+        "phone": "602/942/5600",
+        "confidence": 0.95,
+        "source": {
+          "text": "Arizona Center For Urology - TW",
+          "start_index": 0,
+          "end_index": 32
+        }
+      },
+      {
+        "organization_id": null,
+        "name": "Sonora Quest Laboratories",
+        "identifier": "PAZ",
+        "organization_type": "laboratory",
+        "address": "1255 W Washington St",
+        "city": "Tempe",
+        "state": "AZ",
+        "postal_code": "85281",
+        "phone": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "PERFORMING LAB: PAZ, Sonora Quest Laboratories1255 W Washington St, Tempe AZ85281",
+          "start_index": 0,
+          "end_index": 83
+        }
+      },
+      {
+        "organization_id": null,
+        "name": "Medi Copy Services, Inc.",
+        "identifier": null,
+        "organization_type": "health information services",
+        "address": "8 City Blvd Suite 400",
+        "city": "Nashville",
+        "state": "TN",
+        "postal_code": "37209",
+        "phone": "866/587/6274",
+        "confidence": 0.95,
+        "source": {
+          "text": "Medi Copy Services, Inc. 8 City Blvd Suite 400 Nashville, TN 37209",
+          "start_index": 0,
+          "end_index": 68
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-11-25T01:00:59.554796",
+    "document_type": null,
+    "confidence_average": 0.939
+  }
+}
