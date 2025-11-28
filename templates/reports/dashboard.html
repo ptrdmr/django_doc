@@ -54,10 +54,10 @@
                     <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap">
                             <div class="text-sm font-medium text-gray-900">
-                                {{ report.configuration.name|default:"Unnamed Report" }}
+                                {{ report.display_name }}
                             </div>
                             <div class="text-sm text-gray-500">
-                                {{ report.configuration.get_report_type_display }}
+                                {{ report.get_type_label }}
                             </div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">

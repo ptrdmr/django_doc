@@ -9,6 +9,7 @@ This module handles:
 
 from django.db import models
 from django.conf import settings
+import os
 from django.utils import timezone
 from apps.core.models import BaseModel
 
@@ -153,6 +154,43 @@ class GeneratedReport(BaseModel):
         from django.urls import reverse
         return reverse('reports:download', kwargs={'pk': self.pk})
     
+    @property
+    def display_name(self):
+        """
+        Smart display name:
+        1. "John Doe - Patient Summary" (if patient report)
+        2. "Provider Activity Report" (if no patient)
+        """
+        # 1. If we have a snapshotted patient name, use it
+        if self.parameters_snapshot and self.parameters_snapshot.get('patient_name'):
+            # Clean up the type: "patient_summary" -> "Patient Summary"
+            type_label = self.get_type_label()
+            return f"{self.parameters_snapshot['patient_name']} - {type_label}"
+
+        # 2. If it's a saved configuration, use that name
+        if self.configuration:
+            return self.configuration.name
+
+        # 3. Fallback to the generic type
+        return self.get_type_label()
+
+    def get_type_label(self):
+        """Helper to get clean type label from config or filename."""
+        if self.configuration:
+            return self.configuration.get_report_type_display()
+        
+        # Fallback map for ad-hoc reports
+        type_map = {
+            'patient_summary': 'Patient Summary',
+            'provider_activity': 'Provider Activity',
+            'document_audit': 'Document Audit',
+        }
+        # Try to find the key in the file path or default to generic
+        for key, label in type_map.items():
+            if key in self.file_path:
+                return label
+        return "Report"
+
     @property
     def file_size_mb(self):
         """Get file size in megabytes."""

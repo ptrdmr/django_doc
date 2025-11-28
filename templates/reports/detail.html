@@ -15,7 +15,7 @@
     <div class="bg-white shadow rounded-lg overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200">
             <h1 class="text-2xl font-bold text-gray-900">
-                {{ report.configuration.name|default:"Report" }}
+                {{ report.display_name }}
             </h1>
             <p class="mt-1 text-sm text-gray-500">
                 Generated on {{ report.created_at|date:"F d, Y \a\t g:i A" }}
@@ -47,7 +47,7 @@
             <div>
                 <dt class="text-sm font-medium text-gray-500">Report Type</dt>
                 <dd class="mt-1 text-sm text-gray-900">
-                    {{ report.configuration.get_report_type_display }}
+                    {{ report.get_type_label }}
                 </dd>
             </div>
 
