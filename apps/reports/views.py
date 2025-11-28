@@ -340,8 +340,46 @@ class ReportDownloadView(LoginRequiredMixin, View):
             content_type=content_type
         )
         
-        # Set download filename
-        filename = f"{report.configuration.name if report.configuration else 'report'}_{report.created_at.strftime('%Y%m%d')}.{report.format}"
+        # Determine filename
+        filename = None
+        
+        # 1. Try to generate "First_Last_Type" format if patient data exists
+        patient_id = report.parameters_snapshot.get('patient_id')
+        if patient_id:
+            try:
+                from apps.patients.models import Patient
+                patient = Patient.objects.get(pk=patient_id)
+                
+                # Determine clean report type string
+                if report.configuration:
+                    # e.g. "Patient Summary Report" -> "Patient_Summary"
+                    r_type = report.configuration.get_report_type_display()
+                    r_type = r_type.replace(' Report', '').replace(' ', '_')
+                else:
+                    # Fallback: infer from file path or default
+                    fname = os.path.basename(report.file_path)
+                    if 'patient_summary' in fname: 
+                        r_type = 'Patient_Summary'
+                    elif 'provider_activity' in fname: 
+                        r_type = 'Provider_Activity'
+                    else: 
+                        r_type = 'Report'
+                
+                # Sanitize names (replace spaces with underscores)
+                first = patient.first_name.strip().replace(' ', '_')
+                last = patient.last_name.strip().replace(' ', '_')
+                
+                filename = f"{first}_{last}_{r_type}.{report.format}"
+                
+            except Patient.DoesNotExist:
+                pass
+
+        # 2. Fallback to default format if no patient found
+        if not filename:
+            config_name = report.configuration.name if report.configuration else 'report'
+            date_str = report.created_at.strftime('%Y%m%d')
+            filename = f"{config_name}_{date_str}.{report.format}"
+
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         
         # Log report download

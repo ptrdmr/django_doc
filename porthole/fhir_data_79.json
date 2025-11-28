@@ -1,0 +1,535 @@
+{
+  "document_id": 79,
+  "timestamp": "2025-11-25T01:00:59.579067",
+  "stage": "structured_fhir_conversion",
+  "patient_id": "4173b298-db24-4b06-b90c-5640aa5de6fb",
+  "resource_count": 22,
+  "fhir_resources": [
+    {
+      "resourceType": "Observation",
+      "id": "41e944b5-856a-4b1c-accf-710f8d87957a",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-55084",
+            "display": "Color, Urine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Normal"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "2c1aa09d-0f29-49be-9899-8a4f25edb4b7",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-46939",
+            "display": "Clarity, Urine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Clear"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "c1edf7ee-87e1-4403-ba39-d4281a3880d1",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-32465",
+            "display": "Specific Gravity, Urine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "1.619"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "d305a1b8-9c75-45ac-b860-a51cb8f5c663",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-89574",
+            "display": "Leukocyte Esterase, Urine Qualitative"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Small"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "cf734ff0-49c8-45e7-b157-fe691bef8731",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-57034",
+            "display": "Nitrite, Urine Qualitative"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Negative"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "04fce5ae-32d5-4721-8b71-25b3f870365e",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-60437",
+            "display": "pH, Urine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "6.5"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "79cf9391-282a-4a41-9fa2-ceacd2dcaf71",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-88616",
+            "display": "Blood, Urine Qualitative"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Negative"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "1bc369ef-0735-4bdc-b58d-9add8f67e52b",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-10697",
+            "display": "Glucose, Urine Qualitative"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Negative"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "dcc6fa22-ef2e-4068-87a7-653338ba8662",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-50479",
+            "display": "Ketones, Urine Qualitative"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Negative"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "2434a55d-5c33-463d-94e6-236a509d51cf",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-82727",
+            "display": "Urobilinogen, Urine Qualitative"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Normal"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "b2f5bb06-fde5-4f91-8550-dab494a8d532",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-71749",
+            "display": "Bilirubin, Urine Qualitative"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Negative"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "39612123-4f01-4676-8ab6-5170cade9c9d",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-66151",
+            "display": "Protein, Urine Qualitative"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "Negative"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "91602e03-5be6-468d-be21-0c7ec0bdea70",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-89486",
+            "display": "WBC, Urine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "8-5"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "2bafcbf3-f227-4ff8-83e6-a528929fdba8",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-50600",
+            "display": "RBC, Urine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "None Seen"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "501fb829-7b93-4de2-8097-46af586a195c",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-87986",
+            "display": "Epithelial Cells, Urine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "None Seen"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "82dc1bc6-a52a-4176-b903-eea5a176fd06",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-95799",
+            "display": "Bacteria, Urine"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "None Seen"
+    },
+    {
+      "resourceType": "Observation",
+      "id": "0bc2d5a1-f4f3-4f50-9cd9-105d66c7ad84",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-09-05 00:00:00+00:00"
+      },
+      "status": "final",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "LAB-71533",
+            "display": "Urine Culture"
+          }
+        ]
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-09-05 00:00:00+00:00",
+      "valueString": "No growth"
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "a10668c7-7791-46eb-a28c-39ed33f21c01",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:00:59.575230+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-68742",
+            "display": "Urinalysis Complete"
+          }
+        ],
+        "text": "Urinalysis Complete"
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "occurrenceDateTime": "2018-09-05 00:00:00",
+      "performer": [
+        {
+          "actor": {
+            "display": "Nelson, Roscoe"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "Multiple abnormal findings including elevated specific gravity and WBC"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "f550b194-a99c-4988-8777-83b82384e8eb",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:00:59.575530+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-71533",
+            "display": "Urine Culture"
+          }
+        ],
+        "text": "Urine Culture"
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "occurrenceDateTime": "2018-09-05 00:00:00",
+      "performer": [
+        {
+          "actor": {
+            "display": "Nelson, Roscoe"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "No growth"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "14966e79-04ba-4a90-853b-9214f952b8ac",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:00:59.575809+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-12774",
+            "display": "Uroflow"
+          }
+        ],
+        "text": "Uroflow"
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "performer": [
+        {
+          "actor": {
+            "display": "Roscoe Nelson"
+          }
+        }
+      ],
+      "outcome": {
+        "text": "Maximum flow: 41.4 ml/s, Average flow: 5.6 ml/s, Voided volume: 174.6 ml"
+      }
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "692a02e1-16df-4b9d-89a8-25fe6e9f6fa3",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:00:59.575911+00:00"
+      },
+      "name": [
+        {
+          "family": "Roscoe",
+          "given": [
+            "Nelson,"
+          ]
+        }
+      ]
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "a04ceed9-d28f-4168-a57b-8d02b77b485d",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:00:59.576009+00:00"
+      },
+      "name": [
+        {
+          "family": "Nelson",
+          "given": [
+            "Roscoe"
+          ]
+        }
+      ]
+    }
+  ],
+  "resource_types": {
+    "Observation": 17,
+    "Procedure": 3,
+    "Practitioner": 2
+  }
+}

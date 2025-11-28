@@ -1,0 +1,10 @@
+{
+  "document_id": 77,
+  "timestamp": "2025-11-25T00:24:29.511659",
+  "stage": "error_structured_extraction",
+  "error_message": "Unexpected error during structured analysis: Claude response failed Pydantic validation: 4 validation errors for StructuredMedicalExtraction\nlab_results.0.value\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.11/v/string_type\nlab_results.1.value\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.11/v/string_type\nlab_results.2.value\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.11/v/string_type\nlab_results.3.value\n  Input should be a valid string [type=string_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.11/v/string_type",
+  "error_data": {
+    "context": null,
+    "text_length": 2108
+  }
+}

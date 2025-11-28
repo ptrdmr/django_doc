@@ -146,6 +146,13 @@ class Document(BaseModel):
         help_text="Current processing status"
     )
     
+    # Granular status message for UI feedback
+    processing_message = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Current granular processing step description"
+    )
+    
     # Processing timestamps
     uploaded_at = models.DateTimeField(
         auto_now_add=True,

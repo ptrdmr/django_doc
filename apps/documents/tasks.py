@@ -202,6 +202,7 @@ def process_document_async(self, document_id: int):
         # Update status to processing with comprehensive tracking
         try:
             document.status = 'processing'
+            document.processing_message = "Initializing processing..."
             document.processing_started_at = timezone.now()
             document.increment_processing_attempts()
             document.save()
@@ -213,6 +214,9 @@ def process_document_async(self, document_id: int):
             # Continue processing despite status update failure
             
         # STEP 1: Enhanced PDF text extraction with detailed error handling
+        document.processing_message = "Extracting text from PDF..."
+        document.save(update_fields=['processing_message'])
+        
         pdf_step_start = time.time()
         logger.info(f"[{task_id}] Step 1: Starting PDF text extraction from {document.file.path}")
         
@@ -363,6 +367,9 @@ def process_document_async(self, document_id: int):
                 logger.warning(f"[{task_id}] Text quality validation failed for document {document_id}, proceeding with caution")
             
             try:
+                document.processing_message = "Analyzing document with AI..."
+                document.save(update_fields=['processing_message'])
+                
                 logger.info(f"Step 2: Starting AI analysis with structured extraction pipeline for document {document_id}")
                 
                 # Initialize document analyzer
@@ -542,6 +549,9 @@ def process_document_async(self, document_id: int):
                     ai_result = ai_result
                 
                 if ai_result and ai_result.get('success'):
+                    document.processing_message = "Converting to FHIR format..."
+                    document.save(update_fields=['processing_message'])
+                    
                     logger.info(f"AI analysis successful: {len(ai_result['fields'])} fields extracted")
                     
                     # STEP 3: Convert to FHIR format using appropriate converter
@@ -812,6 +822,7 @@ def process_document_async(self, document_id: int):
         # Mark document as ready for review (NOT completed yet)
         # Data should only be marked 'completed' after user review and approval
         document.status = 'review'
+        document.processing_message = "Ready for review"
         document.processed_at = timezone.now()
         document.error_message = ''
         document.save()

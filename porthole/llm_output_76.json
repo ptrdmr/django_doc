@@ -1,0 +1,347 @@
+{
+  "document_id": 76,
+  "timestamp": "2025-11-25T00:23:54.902980",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Cryptorchid",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Physical Exam Note: Cryptorchid",
+          "start_index": 1050,
+          "end_index": 1080
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Pyrantel Pamoate",
+        "dosage": "0.5mL",
+        "route": "PO",
+        "frequency": "single dose",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": "2023-05-16",
+        "stop_date": null,
+        "source": {
+          "text": "Dewormer: Pyrantel (50mg/ml):0.5m L PO",
+          "start_index": 2150,
+          "end_index": 2185
+        }
+      },
+      {
+        "name": "Heartgard Plus",
+        "dosage": "1 chew",
+        "route": "by mouth",
+        "frequency": "every 30 days",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": "2023-05-16",
+        "stop_date": null,
+        "source": {
+          "text": "Rx: Heartgard Plus (up to 25#) #1: administer 1 chew by mouth every 30 days. Continue for the lifetime of your pet.",
+          "start_index": 2280,
+          "end_index": 2395
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Weight",
+        "value": "4.98",
+        "unit": "lbs",
+        "timestamp": "2023-05-16",
+        "confidence": 0.95,
+        "source": {
+          "text": "Weight: 4.98 lbs.",
+          "start_index": 650,
+          "end_index": 668
+        }
+      },
+      {
+        "measurement": "Temperature",
+        "value": "99.9",
+        "unit": "°F",
+        "timestamp": "2023-05-16",
+        "confidence": 0.95,
+        "source": {
+          "text": "Temperature: 99.9",
+          "start_index": 669,
+          "end_index": 686
+        }
+      },
+      {
+        "measurement": "Pulse",
+        "value": "126",
+        "unit": "bpm",
+        "timestamp": "2023-05-16",
+        "confidence": 0.95,
+        "source": {
+          "text": "Pulse: 126",
+          "start_index": 687,
+          "end_index": 697
+        }
+      },
+      {
+        "measurement": "Respiration",
+        "value": "32",
+        "unit": "breaths/min",
+        "timestamp": "2023-05-16",
+        "confidence": 0.95,
+        "source": {
+          "text": "Respiration: 32",
+          "start_index": 698,
+          "end_index": 713
+        }
+      },
+      {
+        "measurement": "Body Condition Score",
+        "value": "5",
+        "unit": "(1-9 scale)",
+        "timestamp": "2023-05-16",
+        "confidence": 0.9,
+        "source": {
+          "text": "BCS: 5(1-9)",
+          "start_index": 1350,
+          "end_index": 1361
+        }
+      },
+      {
+        "measurement": "Capillary Refill Time",
+        "value": "1.5",
+        "unit": "sec",
+        "timestamp": "2023-05-16",
+        "confidence": 0.9,
+        "source": {
+          "text": "CRT: 1.5 sec",
+          "start_index": 1420,
+          "end_index": 1433
+        }
+      }
+    ],
+    "lab_results": [
+      {
+        "test_name": "Fecal Parasites Test",
+        "value": "pending",
+        "unit": null,
+        "reference_range": null,
+        "status": "pending",
+        "test_date": "2023-05-16",
+        "confidence": 0.85,
+        "source": {
+          "text": "Fecal Parasites Test Pending: Results are not available yet",
+          "start_index": 4200,
+          "end_index": 4260
+        }
+      }
+    ],
+    "procedures": [
+      {
+        "name": "DAPPL Vaccination",
+        "procedure_date": "2023-05-16",
+        "provider": "Dr. Emily Turitto",
+        "outcome": "administered right forelimb SQ",
+        "confidence": 0.9,
+        "source": {
+          "text": "DAPPL: Right forelimb SQ",
+          "start_index": 2080,
+          "end_index": 2105
+        }
+      },
+      {
+        "name": "Bordetella Vaccination",
+        "procedure_date": "2023-05-16",
+        "provider": "Dr. Emily Turitto",
+        "outcome": "administered intranasal",
+        "confidence": 0.9,
+        "source": {
+          "text": "Bordetella: intranasal",
+          "start_index": 2106,
+          "end_index": 2128
+        }
+      },
+      {
+        "name": "Physical Examination",
+        "procedure_date": "2023-05-16",
+        "provider": "Dr. Emily Turitto",
+        "outcome": "apparently healthy for vaccines, cryptorchid noted",
+        "confidence": 0.9,
+        "source": {
+          "text": "Physical Exam",
+          "start_index": 4320,
+          "end_index": 4333
+        }
+      },
+      {
+        "name": "Intestinal Parasite Screening",
+        "procedure_date": "2023-05-16",
+        "provider": "Dr. Emily Turitto",
+        "outcome": "sample collection ordered",
+        "confidence": 0.85,
+        "source": {
+          "text": "Intestinal Parasite Screening: Owner to collect sample and return for screening",
+          "start_index": 2220,
+          "end_index": 2300
+        }
+      }
+    ],
+    "providers": [
+      {
+        "name": "Dr. Emily Turitto",
+        "specialty": "Veterinary Medicine",
+        "role": "Vet On Duty",
+        "contact_info": "License #: 8286",
+        "confidence": 0.95,
+        "source": {
+          "text": "Vet On Duty: Turitto, Emily Vet License #: 8286",
+          "start_index": 580,
+          "end_index": 628
+        }
+      }
+    ],
+    "encounters": [
+      {
+        "encounter_id": null,
+        "encounter_type": "wellness visit",
+        "encounter_date": "2023-05-16",
+        "encounter_end_date": null,
+        "location": "El Mirage, Walmart, 12900 W. Thunderbird Rd.",
+        "reason": "examination and wellness services, first vaccinations",
+        "participants": [
+          "Dr. Emily Turitto"
+        ],
+        "status": "completed",
+        "confidence": 0.9,
+        "source": {
+          "text": "Clinic Visit Location: El Mirage, Walmart, 12900 W. Thunderbird Rd. Date: 05/16/2023",
+          "start_index": 520,
+          "end_index": 600
+        }
+      }
+    ],
+    "service_requests": [
+      {
+        "request_id": null,
+        "request_type": "diagnostic test",
+        "requester": "Dr. Emily Turitto",
+        "reason": "intestinal parasite screening",
+        "priority": "routine",
+        "clinical_context": "puppy wellness visit",
+        "request_date": "2023-05-16",
+        "confidence": 0.85,
+        "source": {
+          "text": "Intestinal Parasite Screening: Owner to collect sample and return for screening",
+          "start_index": 2220,
+          "end_index": 2300
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "follow-up vaccination",
+        "requester": "Dr. Emily Turitto",
+        "reason": "complete vaccination series",
+        "priority": "routine",
+        "clinical_context": "final DAPPL booster and Rabies vaccine at 16 weeks",
+        "request_date": "2023-06-13",
+        "confidence": 0.9,
+        "source": {
+          "text": "In 3-4 weeks from that visit (at 16 weeks of age), Kuzco will receive the final DAPPL booster and his Rabies vaccine",
+          "start_index": 2750,
+          "end_index": 2870
+        }
+      }
+    ],
+    "diagnostic_reports": [
+      {
+        "report_id": null,
+        "report_type": "physical examination",
+        "findings": "BAR, adequately hydrated, mm: pink, moist, CRT: 1.5 sec, no dental tartar/plaque, no gingivitis, no oculonasal discharge, normal heart rate and rhythm, no murmurs or arrhythmias, strong synchronous pulses, eupneic, no crackles or wheezes, no palpable masses or fluid wave, adequate and symmetric muscling, no lameness, appropriate mentation and ambulation, no peripheral lymphadenopathy, 1 descended testicle (1 undescended testicle), no preputial swelling or discharge, full and clean hair coat, no ectoparasites",
+        "conclusion": "Apparently healthy for vaccines, Cryptorchid",
+        "recommendations": "Vaccines administered, dewormer given, heartworm prevention started, castration recommended at 6 months",
+        "status": "final",
+        "report_date": "2023-05-16",
+        "ordering_provider": "Dr. Emily Turitto",
+        "confidence": 0.9,
+        "source": {
+          "text": "Objective: BCS: 5(1-9) Gen: BAR, adequately hydrated, mm: pink, moist, CRT: 1.5 sec Oral: no dental tartar/plaque, no gingivitis EENT: no oculonasal discharge CV: normal heart rate and rhythm, no murmurs or arrhythmias appreciated. Strong synchronous pulses Resp: Eupneic, no crackles or wheezes appreciated Abdo: no palpable masses or fluid wave Msk: adequate and symmetric muscling, no lameness Neuro: appropriate mentation and ambulation LN: no peripheral lymphadenopathy Urogenital: 1descended testicle (1 undescended testicle).no preputial swelling or discharge appreciated Integ: full and clean hair coat, no ectoparasites appreciated Assessment: Apparently healthy for vaccines -Cryptorchid",
+          "start_index": 1330,
+          "end_index": 2050
+        }
+      }
+    ],
+    "allergies": [],
+    "care_plans": [
+      {
+        "plan_id": null,
+        "plan_description": "Puppy vaccination and wellness plan",
+        "goals": [
+          "Complete vaccination series through 16 weeks",
+          "Prevent heartworm disease",
+          "Monitor for cryptorchidism resolution"
+        ],
+        "activities": [
+          "DAPPL booster in 3-4 weeks",
+          "Rabies vaccine at 16 weeks",
+          "Daily heartworm prevention",
+          "Castration at 6 months",
+          "Annual heartworm testing starting at 6 months"
+        ],
+        "period_start": "2023-05-16",
+        "period_end": null,
+        "status": "active",
+        "intent": "plan",
+        "confidence": 0.85,
+        "source": {
+          "text": "Plan: Vaccines: DAPPL: Right forelimb SQ Bordetella: intranasal Dewormer: Pyrantel (50mg/ml):0.5m L PO Diagnostics: -Intestinal Parasite Screening: Owner to collect sample and return for screening. Rx: Heartgard Plus (up to 25#) #1: administer 1 chew by mouth every 30 days. Continue for the lifetime of your pet.",
+          "start_index": 2070,
+          "end_index": 2395
+        }
+      }
+    ],
+    "organizations": [
+      {
+        "organization_id": null,
+        "name": "VetIQ Pet Care",
+        "identifier": null,
+        "organization_type": "veterinary clinic",
+        "address": "230 E Riverside Dr",
+        "city": "Eagle",
+        "state": "ID",
+        "postal_code": "83616",
+        "phone": "833.838.4792",
+        "confidence": 0.95,
+        "source": {
+          "text": "230 E Riverside Dr, Eagle, ID 83616 | vetiqpetcare.com | 833.838.4792",
+          "start_index": 50,
+          "end_index": 120
+        }
+      },
+      {
+        "organization_id": null,
+        "name": "Walmart El Mirage",
+        "identifier": null,
+        "organization_type": "retail location with veterinary services",
+        "address": "12900 W. Thunderbird Rd.",
+        "city": "El Mirage",
+        "state": null,
+        "postal_code": null,
+        "phone": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Clinic Visit Location: El Mirage, Walmart, 12900 W. Thunderbird Rd.",
+          "start_index": 520,
+          "end_index": 580
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-11-25T00:23:54.897696",
+    "document_type": null,
+    "confidence_average": 0.907
+  }
+}

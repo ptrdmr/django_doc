@@ -1,0 +1,256 @@
+{
+  "document_id": 82,
+  "timestamp": "2025-11-25T01:02:53.427849",
+  "stage": "structured_fhir_conversion",
+  "patient_id": "4173b298-db24-4b06-b90c-5640aa5de6fb",
+  "resource_count": 9,
+  "fhir_resources": [
+    {
+      "resourceType": "MedicationStatement",
+      "id": "b5329521-6e3f-4bac-9c04-8cbca3e33376",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2017-11-15 00:00:00+00:00"
+      },
+      "status": "completed",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "INFLUENZA, HIGH-DOSE, TRIVALENT, PF"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2017-11-15 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "annual",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "97c0541a-1916-4125-aef3-a43dc6636ae9",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2018-10-31 00:00:00+00:00"
+      },
+      "status": "completed",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "INFLUENZA, HIGH-DOSE, TRIVALENT, PF"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2018-10-31 00:00:00+00:00",
+      "dosage": [
+        {
+          "sequence": 1,
+          "text": "annual",
+          "timing": {
+            "repeat": {
+              "frequency": 1,
+              "period": "1",
+              "periodUnit": "d"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "0f866761-fe84-4053-8141-6bb59da7bcdc",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2017-12-06 00:00:00+00:00"
+      },
+      "status": "completed",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "PNEUMOCOCCAL CONJUGATE PCV 13"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2017-12-06 00:00:00+00:00"
+    },
+    {
+      "resourceType": "MedicationStatement",
+      "id": "87929dd6-4bca-45e9-bbfc-a44ea41bcbd3",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2015-06-01 00:00:00+00:00"
+      },
+      "status": "completed",
+      "medication": {
+        "concept": {
+          "coding": [
+            {
+              "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+              "code": "unknown",
+              "display": "ZOSTER LIVE"
+            }
+          ]
+        }
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "effectiveDateTime": "2015-06-01 00:00:00+00:00"
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "98f873ed-410c-4a19-9c17-710cdda13583",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:02:53.425055+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-08245",
+            "display": "INFLUENZA HIGH-DOSE VACCINATION"
+          }
+        ],
+        "text": "INFLUENZA HIGH-DOSE VACCINATION"
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "occurrenceDateTime": "2017-11-15 00:00:00",
+      "outcome": {
+        "text": "completed"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "d11ff07e-dd88-4c70-bdb7-8ac9047f2de0",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:02:53.425319+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-08245",
+            "display": "INFLUENZA HIGH-DOSE VACCINATION"
+          }
+        ],
+        "text": "INFLUENZA HIGH-DOSE VACCINATION"
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "occurrenceDateTime": "2018-10-31 00:00:00",
+      "outcome": {
+        "text": "completed"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "b895424b-3d71-4652-949d-a03445627c5d",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:02:53.425481+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-50544",
+            "display": "PNEUMOCOCCAL CONJUGATE PCV 13 VACCINATION"
+          }
+        ],
+        "text": "PNEUMOCOCCAL CONJUGATE PCV 13 VACCINATION"
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "occurrenceDateTime": "2017-12-06 00:00:00",
+      "outcome": {
+        "text": "completed"
+      }
+    },
+    {
+      "resourceType": "Procedure",
+      "id": "27eaa248-2593-47ce-b8ec-7538de129501",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:02:53.425709+00:00"
+      },
+      "status": "completed",
+      "code": {
+        "coding": [
+          {
+            "system": "http://loinc.org",
+            "code": "PROC-67172",
+            "display": "ZOSTER LIVE VACCINATION"
+          }
+        ],
+        "text": "ZOSTER LIVE VACCINATION"
+      },
+      "subject": {
+        "reference": "Patient/4173b298-db24-4b06-b90c-5640aa5de6fb"
+      },
+      "occurrenceDateTime": "2015-06-01 00:00:00",
+      "outcome": {
+        "text": "completed"
+      }
+    },
+    {
+      "resourceType": "Practitioner",
+      "id": "10d226e4-4b46-451d-baa7-889552f44064",
+      "meta": {
+        "versionId": "1",
+        "lastUpdated": "2025-11-25 06:02:53.425865+00:00"
+      },
+      "name": [
+        {
+          "family": "M MEDEIROS MD",
+          "given": [
+            "MARK"
+          ]
+        }
+      ]
+    }
+  ],
+  "resource_types": {
+    "MedicationStatement": 4,
+    "Procedure": 4,
+    "Practitioner": 1
+  }
+}

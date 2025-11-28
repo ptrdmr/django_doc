@@ -1,0 +1,18 @@
+{
+  "document_id": 85,
+  "timestamp": "2025-11-28T02:05:47.289620",
+  "stage": "pdf_extraction",
+  "text_length": 1309,
+  "text_content": "--- Page 1 ---\nPatient Medical Record (Mock)\nPatient Name: Johnathan Doe\nDOB: 1981/04/12\nMRN: 00482917\nMedical History Entries:\n1. Encounter Date: 2024/03/11\nVisit Type: Primary Care – Annual Exam\nSummary: Routine evaluation. BP slightly elevated (138/86). Lifestyle modification recommended. Basic labs ordered (CMP, CBC, Lipid Panel). Plan: Follow-up in 1 year unless symptoms change.\n2. Encounter Date: 2024/07/02\nVisit Type: Urgent Care – Respiratory\nSummary: Patient presented with productive cough x7 days. CXR showed no consolidation. Dx: Acute\nbronchitis. Medications Prescribed: Albuterol inhaler PRN, Azithromycin 5nday course. Plan: Rest, fluids, return if symptoms worsen.\n3. Encounter Date: 2025/01/19\nVisit Type: Dermatology\nSummary: Evaluation of new mole on left shoulder. Dermoscopy benignnappearing, but photographed\nfor monitoring. Plan: Recheck in 6 months; return sooner if changes noted.\n4. Encounter Date: 2025/03/05\nVisit Type: Primary Care – Follown Up\nSummary: BP improved to 126/79 after lifestyle adjustments. Labs normal. Plan: Continue regimen, next visit in 6 months.\n5. Encounter Date: 2025/04/22\nVisit Type: Orthopedics\n\n--- Page 2 ---\nSummary: Mild right knee pain after jogging. Xnray normal, suspected patellofemoral pain syndrome. Plan: Physical therapy referral, ice PRN.",
+  "metadata": {
+    "page_count": 2,
+    "file_size_mb": 0.0,
+    "pdf_metadata": {
+      "title": "(anonymous)",
+      "author": "(anonymous)",
+      "creator": "(unspecified)",
+      "creation_date": "D:20251128065448+00'00'",
+      "extraction_method": "embedded_text"
+    }
+  }
+}
