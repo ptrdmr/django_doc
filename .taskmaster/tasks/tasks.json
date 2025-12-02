@@ -2962,7 +2962,7 @@
             "description": "Update the ParsedData model to include auto_approved as a BooleanField and flag_reason as a TextField to support the optimistic concurrency model.",
             "dependencies": [],
             "details": "In models.py, add auto_approved = models.BooleanField(default=False) and flag_reason = models.TextField(null=True, blank=True) to the ParsedData model. Set appropriate default values and ensure they can be null/blank when appropriate.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Create unit tests to verify the fields are correctly added and can be set/retrieved properly."
           },
           {
@@ -3272,7 +3272,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-12-01T07:41:18.363Z",
+      "updated": "2025-12-02T15:55:27.477Z",
       "description": "Tasks for master context"
     }
   }

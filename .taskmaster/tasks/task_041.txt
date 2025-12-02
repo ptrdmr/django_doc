@@ -125,7 +125,7 @@ This task involves implementing a comprehensive optimistic concurrency system wi
    - Verify threshold tuning works as expected
 
 # Subtasks:
-## 1. Add auto_approved and flag_reason fields to ParsedData model [pending]
+## 1. Add auto_approved and flag_reason fields to ParsedData model [done]
 ### Dependencies: None
 ### Description: Update the ParsedData model to include auto_approved as a BooleanField and flag_reason as a TextField to support the optimistic concurrency model.
 ### Details:
