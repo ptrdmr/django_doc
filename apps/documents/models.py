@@ -501,6 +501,17 @@ class ParsedData(BaseModel):
         help_text="Current review status of the extraction"
     )
     
+    # Optimistic concurrency fields (Task 41)
+    auto_approved = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Whether this extraction was automatically approved for immediate merge"
+    )
+    flag_reason = models.TextField(
+        blank=True,
+        help_text="Reason why this extraction was flagged for manual review (if applicable)"
+    )
+    
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
