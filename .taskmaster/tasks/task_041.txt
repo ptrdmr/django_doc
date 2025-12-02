@@ -149,7 +149,7 @@ Add a determine_review_status() method to the ParsedData model that evaluates ex
 ### Details:
 Add a check_quick_conflicts() method that compares extracted patient identifiers (name, DOB) with existing patient records. Optimize for performance (<100ms). Return boolean indicating conflict and reason if found.
 
-## 5. Add database indexes for optimistic concurrency [pending]
+## 5. Add database indexes for optimistic concurrency [done]
 ### Dependencies: 41.1, 41.2
 ### Description: Add appropriate database indexes to support efficient querying for the new fields and status values.
 ### Details:

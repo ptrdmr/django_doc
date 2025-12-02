@@ -3007,7 +3007,7 @@
               2
             ],
             "details": "Create a migration to add indexes on auto_approved field and a composite index on (review_status, created_at) to optimize query performance for the new workflow.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Verify index creation in the database and test query performance with and without indexes."
           },
           {
@@ -3272,7 +3272,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-12-02T16:26:09.550Z",
+      "updated": "2025-12-02T16:34:12.882Z",
       "description": "Tasks for master context"
     }
   }
