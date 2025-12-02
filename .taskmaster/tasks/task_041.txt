@@ -143,7 +143,7 @@ In models.py, update the REVIEW_STATUS_CHOICES tuple to include all five states 
 ### Details:
 Add a determine_review_status() method to the ParsedData model that evaluates extraction confidence, model type, resource count, and patient data conflicts. Return the appropriate status ('auto_approved' or 'flagged') and reason if flagged.
 
-## 4. Add check_quick_conflicts method to ParsedData model [pending]
+## 4. Add check_quick_conflicts method to ParsedData model [done]
 ### Dependencies: 41.3
 ### Description: Implement a method to quickly check for conflicts between parsed data and existing patient records.
 ### Details:
