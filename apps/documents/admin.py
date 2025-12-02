@@ -286,15 +286,16 @@ class ParsedDataAdmin(admin.ModelAdmin):
     view_document_link.short_description = 'Source Document'
     
     def approve_extraction(self, request, queryset):
-        """Action to approve extracted data."""
+        """Action to manually approve extracted data (sets status to 'reviewed')."""
         count = 0
         for parsed_data in queryset:
-            if parsed_data.review_status != 'approved':
+            # Only approve if not already reviewed or rejected
+            if parsed_data.review_status not in ('reviewed', 'rejected'):
                 parsed_data.approve_extraction(request.user, "Approved via admin action")
                 count += 1
         
-        self.message_user(request, f'{count} extractions approved.')
-    approve_extraction.short_description = 'Approve selected extractions'
+        self.message_user(request, f'{count} extractions approved (status set to reviewed).')
+    approve_extraction.short_description = 'Approve selected extractions (manual review)'
     
     def mark_as_merged(self, request, queryset):
         """Action to mark data as merged."""
