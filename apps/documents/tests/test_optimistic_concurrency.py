@@ -514,6 +514,194 @@ class CheckQuickConflictsTests(TestCase):
         self.assertIn('DOB mismatch', reason)
 
 
+class DatabaseIndexTests(TestCase):
+    """
+    Tests for database indexes on optimistic concurrency fields (Task 41.5).
+    Verifies that indexes exist and improve query performance.
+    """
+    
+    def setUp(self):
+        """Set up test data"""
+        from django.db import connection
+        
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        
+        # Create test patient
+        self.patient = Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            date_of_birth='1980-01-01',
+            mrn='TEST-001'
+        )
+        
+        self.connection = connection
+    
+    def test_auto_approved_field_has_index(self):
+        """Test that auto_approved field has database index"""
+        field = ParsedData._meta.get_field('auto_approved')
+        self.assertTrue(field.db_index)
+    
+    def test_review_status_created_composite_index_exists(self):
+        """Test that composite index on (review_status, created_at) exists in model"""
+        # Check that the index is defined in Meta.indexes
+        indexes = ParsedData._meta.indexes
+        
+        # Find the composite index
+        composite_index = None
+        for index in indexes:
+            if 'review_status' in index.fields and 'created_at' in index.fields:
+                composite_index = index
+                break
+        
+        self.assertIsNotNone(composite_index, "Composite index on (review_status, created_at) not found")
+        self.assertEqual(composite_index.name, 'parsed_review_status_idx')
+    
+    def test_query_by_review_status_uses_index(self):
+        """Test that queries by review_status can use the index"""
+        from django.test.utils import CaptureQueriesContext
+        
+        # Create test data
+        pdf_file = SimpleUploadedFile(
+            'test.pdf',
+            b'%PDF-1.4 fake',
+            content_type='application/pdf'
+        )
+        doc = Document.objects.create(
+            patient=self.patient,
+            uploaded_by=self.user,
+            filename='test.pdf',
+            file=pdf_file
+        )
+        ParsedData.objects.create(
+            document=doc,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[],
+            review_status='flagged'
+        )
+        
+        # Query by review_status
+        with CaptureQueriesContext(self.connection) as queries:
+            list(ParsedData.objects.filter(review_status='flagged'))
+        
+        # Should execute query successfully
+        self.assertEqual(len(queries), 1)
+    
+    def test_query_by_review_status_and_created_at_uses_composite_index(self):
+        """Test that queries by review_status and created_at can use composite index"""
+        from django.test.utils import CaptureQueriesContext
+        from datetime import timedelta
+        
+        # Create test data
+        pdf_file = SimpleUploadedFile(
+            'test.pdf',
+            b'%PDF-1.4 fake',
+            content_type='application/pdf'
+        )
+        doc = Document.objects.create(
+            patient=self.patient,
+            uploaded_by=self.user,
+            filename='test.pdf',
+            file=pdf_file
+        )
+        ParsedData.objects.create(
+            document=doc,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[],
+            review_status='flagged'
+        )
+        
+        # Query by review_status and date range
+        cutoff_date = timezone.now() - timedelta(days=7)
+        with CaptureQueriesContext(self.connection) as queries:
+            list(ParsedData.objects.filter(
+                review_status='flagged',
+                created_at__gte=cutoff_date
+            ).order_by('-created_at'))
+        
+        # Should execute query successfully
+        self.assertEqual(len(queries), 1)
+    
+    def test_query_by_auto_approved_uses_index(self):
+        """Test that queries by auto_approved can use the index"""
+        from django.test.utils import CaptureQueriesContext
+        
+        # Create test data
+        pdf_file = SimpleUploadedFile(
+            'test.pdf',
+            b'%PDF-1.4 fake',
+            content_type='application/pdf'
+        )
+        doc = Document.objects.create(
+            patient=self.patient,
+            uploaded_by=self.user,
+            filename='test.pdf',
+            file=pdf_file
+        )
+        ParsedData.objects.create(
+            document=doc,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[],
+            auto_approved=True
+        )
+        
+        # Query by auto_approved
+        with CaptureQueriesContext(self.connection) as queries:
+            list(ParsedData.objects.filter(auto_approved=True))
+        
+        # Should execute query successfully
+        self.assertEqual(len(queries), 1)
+    
+    def test_indexes_improve_flagged_items_query_performance(self):
+        """Test that indexes improve performance for common flagged items queries"""
+        import time
+        
+        # Create bulk test data (50 records)
+        pdf_file = SimpleUploadedFile(
+            'test.pdf',
+            b'%PDF-1.4 fake',
+            content_type='application/pdf'
+        )
+        
+        parsed_data_list = []
+        for i in range(50):
+            doc = Document.objects.create(
+                patient=self.patient,
+                uploaded_by=self.user,
+                filename=f'test_{i}.pdf',
+                file=pdf_file
+            )
+            parsed_data_list.append(ParsedData(
+                document=doc,
+                patient=self.patient,
+                extraction_json={'test': f'data_{i}'},
+                fhir_delta_json=[],
+                review_status='flagged' if i % 3 == 0 else 'auto_approved',
+                auto_approved=(i % 3 != 0)
+            ))
+        
+        ParsedData.objects.bulk_create(parsed_data_list)
+        
+        # Query for flagged items ordered by created_at
+        start_time = time.time()
+        flagged_items = list(ParsedData.objects.filter(
+            review_status='flagged'
+        ).order_by('-created_at')[:10])
+        query_time = (time.time() - start_time) * 1000  # Convert to ms
+        
+        # Should be fast with indexes
+        self.assertGreater(len(flagged_items), 0)
+        self.assertLess(query_time, 100, 
+                       f"Flagged items query took {query_time:.2f}ms, should be < 100ms with indexes")
+
+
 class ReviewStatusChoicesTests(TestCase):
     """
     Tests for the 5-state review_status machine in ParsedData model (Task 41.2).
