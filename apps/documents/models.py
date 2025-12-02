@@ -579,6 +579,9 @@ class ParsedData(BaseModel):
             # Clinical date tracking indexes (Task 35)
             models.Index(fields=['clinical_date', 'date_status']),
             models.Index(fields=['patient', 'clinical_date']),
+            # Optimistic concurrency indexes (Task 41)
+            # Note: auto_approved index created in migration 0013
+            models.Index(fields=['review_status', 'created_at'], name='parsed_review_status_idx'),
         ]
     
     def __str__(self):
