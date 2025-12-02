@@ -485,12 +485,20 @@ class ParsedData(BaseModel):
         help_text="Whether data has been merged into patient record"
     )
     
-    # Review and approval
+    # Review and approval - 5-state machine for optimistic concurrency (Task 41)
+    # State transitions:
+    #   pending -> auto_approved (high confidence, no conflicts)
+    #   pending -> flagged (low confidence, conflicts, or issues detected)
+    #   flagged -> reviewed (human verified and approved)
+    #   flagged -> rejected (human rejected the extraction)
+    #   auto_approved -> reviewed (optional human verification)
+    #   auto_approved -> rejected (human found issues after auto-approval)
     REVIEW_STATUS_CHOICES = [
-        ('pending', 'Pending Review'),
-        ('approved', 'Approved - Ready to Merge'),
+        ('pending', 'Pending Processing'),
+        ('auto_approved', 'Auto-Approved - Merged Immediately'),
+        ('flagged', 'Flagged - Needs Manual Review'),
+        ('reviewed', 'Reviewed - Manually Approved'),
         ('rejected', 'Rejected - Do Not Use'),
-        ('flagged', 'Flagged - Needs Attention'),
     ]
 
     review_status = models.CharField(
@@ -498,7 +506,7 @@ class ParsedData(BaseModel):
         choices=REVIEW_STATUS_CHOICES,
         default='pending',
         db_index=True,
-        help_text="Current review status of the extraction"
+        help_text="Current review status of the extraction (5-state machine for optimistic concurrency)"
     )
     
     # Optimistic concurrency fields (Task 41)
@@ -586,9 +594,9 @@ class ParsedData(BaseModel):
         self.save(update_fields=['is_merged', 'merged_at', 'updated_by', 'updated_at'])
     
     def approve_extraction(self, user, notes=""):
-        """Approve the extracted data for merging."""
+        """Manually approve the extracted data for merging (sets status to 'reviewed')."""
         self.is_approved = True
-        self.review_status = 'approved'
+        self.review_status = 'reviewed'
         self.reviewed_by = user
         self.reviewed_at = timezone.now()
         if notes:

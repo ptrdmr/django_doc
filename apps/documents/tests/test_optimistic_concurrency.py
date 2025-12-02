@@ -1,10 +1,12 @@
 """
-Tests for optimistic concurrency fields in ParsedData model (Task 41.1).
-Tests the auto_approved and flag_reason fields.
+Tests for optimistic concurrency features in ParsedData model.
+- Task 41.1: auto_approved and flag_reason fields
+- Task 41.2: 5-state review_status choices
 """
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 
 from apps.patients.models import Patient
 from apps.documents.models import Document, ParsedData
@@ -207,4 +209,307 @@ class ParsedDataOptimisticConcurrencyTests(TestCase):
         # Query for non-auto-approved items
         not_auto_approved = ParsedData.objects.filter(auto_approved=False)
         self.assertIn(self.parsed_data, not_auto_approved)
+
+
+class ReviewStatusChoicesTests(TestCase):
+    """
+    Tests for the 5-state review_status machine in ParsedData model (Task 41.2).
+    States: pending, auto_approved, flagged, reviewed, rejected
+    """
+    
+    def setUp(self):
+        """Set up test data"""
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        
+        # Create test patient
+        self.patient = Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            date_of_birth='1980-01-01',
+            mrn='TEST-001'
+        )
+        
+        # Create test document
+        pdf_content = b'%PDF-1.4 fake pdf content'
+        pdf_file = SimpleUploadedFile(
+            'test_document.pdf',
+            pdf_content,
+            content_type='application/pdf'
+        )
+        
+        self.document = Document.objects.create(
+            patient=self.patient,
+            uploaded_by=self.user,
+            filename='test_document.pdf',
+            file=pdf_file,
+            status='completed'
+        )
+        
+        # Create test parsed data
+        self.parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json={'resourceType': 'Patient'},
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.85
+        )
+    
+    def test_review_status_choices_contains_all_5_states(self):
+        """Test that REVIEW_STATUS_CHOICES contains exactly 5 states"""
+        choices = ParsedData.REVIEW_STATUS_CHOICES
+        self.assertEqual(len(choices), 5)
+        
+        # Extract choice keys
+        choice_keys = [choice[0] for choice in choices]
+        
+        # Verify all 5 states exist
+        self.assertIn('pending', choice_keys)
+        self.assertIn('auto_approved', choice_keys)
+        self.assertIn('flagged', choice_keys)
+        self.assertIn('reviewed', choice_keys)
+        self.assertIn('rejected', choice_keys)
+    
+    def test_review_status_default_is_pending(self):
+        """Test that new ParsedData defaults to 'pending' status"""
+        self.assertEqual(self.parsed_data.review_status, 'pending')
+    
+    def test_review_status_can_be_set_to_pending(self):
+        """Test that review_status can be set to 'pending'"""
+        self.parsed_data.review_status = 'pending'
+        self.parsed_data.save()
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'pending')
+    
+    def test_review_status_can_be_set_to_auto_approved(self):
+        """Test that review_status can be set to 'auto_approved'"""
+        self.parsed_data.review_status = 'auto_approved'
+        self.parsed_data.save()
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'auto_approved')
+    
+    def test_review_status_can_be_set_to_flagged(self):
+        """Test that review_status can be set to 'flagged'"""
+        self.parsed_data.review_status = 'flagged'
+        self.parsed_data.save()
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'flagged')
+    
+    def test_review_status_can_be_set_to_reviewed(self):
+        """Test that review_status can be set to 'reviewed'"""
+        self.parsed_data.review_status = 'reviewed'
+        self.parsed_data.save()
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'reviewed')
+    
+    def test_review_status_can_be_set_to_rejected(self):
+        """Test that review_status can be set to 'rejected'"""
+        self.parsed_data.review_status = 'rejected'
+        self.parsed_data.save()
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'rejected')
+    
+    def test_approve_extraction_sets_status_to_reviewed(self):
+        """Test that approve_extraction() sets status to 'reviewed' (not 'approved')"""
+        self.parsed_data.approve_extraction(self.user, "Test approval")
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'reviewed')
+        self.assertTrue(self.parsed_data.is_approved)
+        self.assertEqual(self.parsed_data.reviewed_by, self.user)
+        self.assertIsNotNone(self.parsed_data.reviewed_at)
+    
+    def test_reject_extraction_sets_status_to_rejected(self):
+        """Test that reject_extraction() sets status to 'rejected'"""
+        self.parsed_data.reject_extraction(self.user, "Test rejection reason")
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'rejected')
+        self.assertFalse(self.parsed_data.is_approved)
+        self.assertEqual(self.parsed_data.reviewed_by, self.user)
+        self.assertEqual(self.parsed_data.rejection_reason, "Test rejection reason")
+    
+    def test_query_by_review_status(self):
+        """Test querying ParsedData by different review_status values"""
+        # Create additional parsed data with different statuses
+        statuses_to_test = ['auto_approved', 'flagged', 'reviewed', 'rejected']
+        
+        for i, status in enumerate(statuses_to_test):
+            pdf_file = SimpleUploadedFile(
+                f'test_doc_{i}.pdf',
+                b'%PDF-1.4 fake',
+                content_type='application/pdf'
+            )
+            doc = Document.objects.create(
+                patient=self.patient,
+                uploaded_by=self.user,
+                filename=f'test_doc_{i}.pdf',
+                file=pdf_file
+            )
+            ParsedData.objects.create(
+                document=doc,
+                patient=self.patient,
+                extraction_json={'test': f'data_{i}'},
+                fhir_delta_json={'resourceType': 'Observation'},
+                review_status=status
+            )
+        
+        # Query for each status and verify count
+        self.assertEqual(ParsedData.objects.filter(review_status='pending').count(), 1)
+        self.assertEqual(ParsedData.objects.filter(review_status='auto_approved').count(), 1)
+        self.assertEqual(ParsedData.objects.filter(review_status='flagged').count(), 1)
+        self.assertEqual(ParsedData.objects.filter(review_status='reviewed').count(), 1)
+        self.assertEqual(ParsedData.objects.filter(review_status='rejected').count(), 1)
+    
+    def test_review_status_field_is_indexed(self):
+        """Test that review_status field has database index"""
+        field = ParsedData._meta.get_field('review_status')
+        self.assertTrue(field.db_index)
+    
+    def test_old_approved_status_not_in_choices(self):
+        """Test that the old 'approved' status is NOT in the choices"""
+        choice_keys = [choice[0] for choice in ParsedData.REVIEW_STATUS_CHOICES]
+        self.assertNotIn('approved', choice_keys)
+    
+    def test_state_transition_pending_to_auto_approved(self):
+        """Test state transition: pending -> auto_approved"""
+        self.assertEqual(self.parsed_data.review_status, 'pending')
+        
+        self.parsed_data.review_status = 'auto_approved'
+        self.parsed_data.auto_approved = True
+        self.parsed_data.save()
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'auto_approved')
+        self.assertTrue(self.parsed_data.auto_approved)
+    
+    def test_state_transition_pending_to_flagged(self):
+        """Test state transition: pending -> flagged"""
+        self.assertEqual(self.parsed_data.review_status, 'pending')
+        
+        self.parsed_data.review_status = 'flagged'
+        self.parsed_data.flag_reason = "Low confidence extraction"
+        self.parsed_data.save()
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'flagged')
+        self.assertEqual(self.parsed_data.flag_reason, "Low confidence extraction")
+    
+    def test_state_transition_flagged_to_reviewed(self):
+        """Test state transition: flagged -> reviewed (human approval)"""
+        self.parsed_data.review_status = 'flagged'
+        self.parsed_data.save()
+        
+        # Human reviews and approves
+        self.parsed_data.approve_extraction(self.user, "Verified by human")
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'reviewed')
+    
+    def test_state_transition_flagged_to_rejected(self):
+        """Test state transition: flagged -> rejected (human rejection)"""
+        self.parsed_data.review_status = 'flagged'
+        self.parsed_data.save()
+        
+        # Human reviews and rejects
+        self.parsed_data.reject_extraction(self.user, "Data quality issues")
+        
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'rejected')
+    
+    def test_invalid_status_value_raises_error(self):
+        """Test that setting an invalid status value raises ValidationError"""
+        from django.core.exceptions import ValidationError
+        
+        # Try to set invalid status
+        self.parsed_data.review_status = 'invalid_status'
+        
+        # Django should raise ValidationError on full_clean()
+        with self.assertRaises(ValidationError) as context:
+            self.parsed_data.full_clean()
+        
+        # Verify the error is for review_status field
+        self.assertIn('review_status', context.exception.message_dict)
+    
+    def test_old_approved_status_is_invalid(self):
+        """Test that the old 'approved' status is no longer valid"""
+        from django.core.exceptions import ValidationError
+        
+        # Try to set old 'approved' status
+        self.parsed_data.review_status = 'approved'
+        
+        # Should raise ValidationError
+        with self.assertRaises(ValidationError) as context:
+            self.parsed_data.full_clean()
+        
+        self.assertIn('review_status', context.exception.message_dict)
+    
+    def test_review_status_choices_have_correct_display_names(self):
+        """Test that all status choices have appropriate display names"""
+        choices_dict = dict(ParsedData.REVIEW_STATUS_CHOICES)
+        
+        # Verify display names are meaningful
+        self.assertEqual(choices_dict['pending'], 'Pending Processing')
+        self.assertEqual(choices_dict['auto_approved'], 'Auto-Approved - Merged Immediately')
+        self.assertEqual(choices_dict['flagged'], 'Flagged - Needs Manual Review')
+        self.assertEqual(choices_dict['reviewed'], 'Reviewed - Manually Approved')
+        self.assertEqual(choices_dict['rejected'], 'Rejected - Do Not Use')
+    
+    def test_multiple_parsed_data_can_have_different_statuses(self):
+        """Test that different ParsedData records can have different statuses simultaneously"""
+        # Create 5 documents with different statuses
+        statuses = ['pending', 'auto_approved', 'flagged', 'reviewed', 'rejected']
+        created_records = []
+        
+        for i, status in enumerate(statuses):
+            pdf_file = SimpleUploadedFile(
+                f'multi_status_{i}.pdf',
+                b'%PDF-1.4 fake',
+                content_type='application/pdf'
+            )
+            doc = Document.objects.create(
+                patient=self.patient,
+                uploaded_by=self.user,
+                filename=f'multi_status_{i}.pdf',
+                file=pdf_file
+            )
+            parsed = ParsedData.objects.create(
+                document=doc,
+                patient=self.patient,
+                extraction_json={'test': f'data_{i}'},
+                fhir_delta_json={'resourceType': 'Observation'},
+                review_status=status
+            )
+            created_records.append(parsed)
+        
+        # Verify all records exist with correct statuses
+        for i, status in enumerate(statuses):
+            created_records[i].refresh_from_db()
+            self.assertEqual(created_records[i].review_status, status)
+    
+    def test_status_persists_across_save_operations(self):
+        """Test that status doesn't get reset when updating other fields"""
+        # Set to auto_approved
+        self.parsed_data.review_status = 'auto_approved'
+        self.parsed_data.auto_approved = True
+        self.parsed_data.save()
+        
+        # Update a different field
+        self.parsed_data.extraction_confidence = 0.95
+        self.parsed_data.save()
+        
+        # Status should remain unchanged
+        self.parsed_data.refresh_from_db()
+        self.assertEqual(self.parsed_data.review_status, 'auto_approved')
+        self.assertTrue(self.parsed_data.auto_approved)
 
