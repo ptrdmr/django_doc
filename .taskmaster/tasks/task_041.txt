@@ -137,7 +137,7 @@ In models.py, add auto_approved = models.BooleanField(default=False) and flag_re
 ### Details:
 In models.py, update the REVIEW_STATUS_CHOICES tuple to include all five states with appropriate display names. Ensure backward compatibility with existing code by maintaining the same choice keys where possible.
 
-## 3. Add determine_review_status method to ParsedData model [pending]
+## 3. Add determine_review_status method to ParsedData model [done]
 ### Dependencies: 41.2
 ### Description: Implement a method that determines whether a document should be auto-approved or flagged based on quality check criteria.
 ### Details:
