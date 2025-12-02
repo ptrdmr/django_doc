@@ -782,8 +782,129 @@ class ParsedData(BaseModel):
         # if has_conflict:
         #     return ('flagged', f'Patient data conflict: {conflict_reason}')
         
+        # Check 5: Patient data conflicts (implemented in subtask 41.4)
+        has_conflict, conflict_reason = self.check_quick_conflicts()
+        if has_conflict:
+            return ('flagged', f'Patient data conflict: {conflict_reason}')
+        
         # All checks passed - auto-approve
         return ('auto_approved', '')
+    
+    def check_quick_conflicts(self):
+        """
+        Quickly check for conflicts between extracted patient data and existing patient record.
+        
+        Compares extracted patient identifiers (name, DOB) from FHIR resources with
+        the patient record this document is associated with. Detects mismatches that
+        could indicate wrong patient assignment or data quality issues.
+        
+        Returns:
+            tuple: (has_conflict, reason) where has_conflict is boolean,
+                   and reason is a string explaining the conflict (empty if no conflict)
+        
+        Performance Target: < 100ms
+        """
+        # Get patient demographics from FHIR resources
+        extracted_demographics = self._extract_patient_demographics_from_fhir()
+        
+        if not extracted_demographics:
+            # No patient demographics in FHIR data - can't check for conflicts
+            return (False, '')
+        
+        conflicts = []
+        
+        # Check date of birth mismatch
+        if extracted_demographics.get('birthDate'):
+            extracted_dob = extracted_demographics['birthDate']
+            patient_dob = self.patient.date_of_birth  # This is a string in YYYY-MM-DD format
+            
+            if extracted_dob != patient_dob:
+                conflicts.append(f"DOB mismatch (extracted: {extracted_dob}, patient: {patient_dob})")
+        
+        # Check name mismatch (case-insensitive comparison)
+        if extracted_demographics.get('name'):
+            extracted_name = extracted_demographics['name'].lower().strip()
+            patient_name = f"{self.patient.first_name} {self.patient.last_name}".lower().strip()
+            
+            # Allow for partial matches (e.g., "John" vs "John Michael")
+            # Flag only if names are completely different
+            if extracted_name and patient_name:
+                # Check if either name contains the other (handles middle names, nicknames)
+                if extracted_name not in patient_name and patient_name not in extracted_name:
+                    # Check individual name components
+                    extracted_parts = set(extracted_name.split())
+                    patient_parts = set(patient_name.split())
+                    
+                    # If no common name parts, it's a mismatch
+                    if not extracted_parts.intersection(patient_parts):
+                        conflicts.append(f"Name mismatch (extracted: '{extracted_demographics['name']}', patient: '{self.patient.first_name} {self.patient.last_name}')")
+        
+        if conflicts:
+            return (True, '; '.join(conflicts))
+        
+        return (False, '')
+    
+    def _extract_patient_demographics_from_fhir(self):
+        """
+        Extract patient demographics from FHIR resources.
+        
+        Returns:
+            dict: Patient demographics with keys 'name', 'birthDate', etc.
+                  Empty dict if no Patient resource found.
+        """
+        if not self.fhir_delta_json:
+            return {}
+        
+        # Handle list format (new format)
+        if isinstance(self.fhir_delta_json, list):
+            for resource in self.fhir_delta_json:
+                if resource.get('resourceType') == 'Patient':
+                    return self._parse_fhir_patient_resource(resource)
+        
+        # Handle dict format (legacy format)
+        elif isinstance(self.fhir_delta_json, dict):
+            patient_resources = self.fhir_delta_json.get('Patient', [])
+            if patient_resources and len(patient_resources) > 0:
+                return self._parse_fhir_patient_resource(patient_resources[0])
+        
+        return {}
+    
+    def _parse_fhir_patient_resource(self, patient_resource):
+        """
+        Parse a FHIR Patient resource to extract demographics.
+        
+        Args:
+            patient_resource (dict): FHIR Patient resource
+        
+        Returns:
+            dict: Extracted demographics
+        """
+        demographics = {}
+        
+        # Extract birth date
+        if patient_resource.get('birthDate'):
+            demographics['birthDate'] = patient_resource['birthDate']
+        
+        # Extract name (use official name if available, otherwise first name)
+        if patient_resource.get('name'):
+            names = patient_resource['name']
+            if isinstance(names, list) and len(names) > 0:
+                name_obj = names[0]
+                
+                # Construct full name from given and family names
+                given = name_obj.get('given', [])
+                family = name_obj.get('family', '')
+                
+                if isinstance(given, list):
+                    given_str = ' '.join(given)
+                else:
+                    given_str = given if given else ''
+                
+                full_name = f"{given_str} {family}".strip()
+                if full_name:
+                    demographics['name'] = full_name
+        
+        return demographics
 
 
 class PatientDataComparison(BaseModel):

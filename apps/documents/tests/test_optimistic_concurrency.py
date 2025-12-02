@@ -211,6 +211,309 @@ class ParsedDataOptimisticConcurrencyTests(TestCase):
         self.assertIn(self.parsed_data, not_auto_approved)
 
 
+class CheckQuickConflictsTests(TestCase):
+    """
+    Tests for the check_quick_conflicts() method in ParsedData model (Task 41.4).
+    Tests patient data conflict detection with performance validation.
+    """
+    
+    def setUp(self):
+        """Set up test data"""
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        
+        # Create test patient
+        self.patient = Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            date_of_birth='1980-01-01',
+            mrn='TEST-001'
+        )
+        
+        # Create test document
+        pdf_content = b'%PDF-1.4 fake pdf content'
+        pdf_file = SimpleUploadedFile(
+            'test_document.pdf',
+            pdf_content,
+            content_type='application/pdf'
+        )
+        
+        self.document = Document.objects.create(
+            patient=self.patient,
+            uploaded_by=self.user,
+            filename='test_document.pdf',
+            file=pdf_file,
+            status='completed'
+        )
+    
+    def test_no_conflict_when_demographics_match(self):
+        """Test that matching demographics return no conflict"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{
+                'resourceType': 'Patient',
+                'name': [{'given': ['John'], 'family': 'Doe'}],
+                'birthDate': '1980-01-01'
+            }],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        self.assertFalse(has_conflict)
+        self.assertEqual(reason, '')
+    
+    def test_conflict_when_dob_mismatches(self):
+        """Test that DOB mismatch triggers conflict"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{
+                'resourceType': 'Patient',
+                'name': [{'given': ['John'], 'family': 'Doe'}],
+                'birthDate': '1985-05-15'  # Different DOB
+            }],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        self.assertTrue(has_conflict)
+        self.assertIn('DOB mismatch', reason)
+        self.assertIn('1985-05-15', reason)
+        self.assertIn('1980-01-01', reason)
+    
+    def test_conflict_when_name_completely_different(self):
+        """Test that completely different name triggers conflict"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{
+                'resourceType': 'Patient',
+                'name': [{'given': ['Jane'], 'family': 'Smith'}],  # Completely different name
+                'birthDate': '1980-01-01'
+            }],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        self.assertTrue(has_conflict)
+        self.assertIn('Name mismatch', reason)
+        self.assertIn('Jane Smith', reason)
+        self.assertIn('John Doe', reason)
+    
+    def test_no_conflict_with_middle_name_variation(self):
+        """Test that middle name variations don't trigger false conflicts"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{
+                'resourceType': 'Patient',
+                'name': [{'given': ['John', 'Michael'], 'family': 'Doe'}],  # Added middle name
+                'birthDate': '1980-01-01'
+            }],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        # Should NOT conflict - John Doe matches John Michael Doe
+        self.assertFalse(has_conflict)
+        self.assertEqual(reason, '')
+    
+    def test_no_conflict_with_nickname_variation(self):
+        """Test that reasonable name variations don't trigger conflicts"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{
+                'resourceType': 'Patient',
+                'name': [{'given': ['J'], 'family': 'Doe'}],  # Initial only
+                'birthDate': '1980-01-01'
+            }],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        # Should NOT conflict - partial match is acceptable
+        self.assertFalse(has_conflict)
+        self.assertEqual(reason, '')
+    
+    def test_no_conflict_when_no_patient_resource_in_fhir(self):
+        """Test that missing Patient resource doesn't trigger conflict"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{
+                'resourceType': 'Observation',  # No Patient resource
+                'code': {'text': 'Blood Pressure'}
+            }],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        # Should NOT conflict - can't check if no demographics extracted
+        self.assertFalse(has_conflict)
+        self.assertEqual(reason, '')
+    
+    def test_no_conflict_when_fhir_data_empty(self):
+        """Test that empty FHIR data doesn't trigger conflict"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[],  # Empty
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        self.assertFalse(has_conflict)
+        self.assertEqual(reason, '')
+    
+    def test_multiple_conflicts_reported_together(self):
+        """Test that multiple conflicts are reported in a single reason string"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{
+                'resourceType': 'Patient',
+                'name': [{'given': ['Jane'], 'family': 'Smith'}],  # Wrong name
+                'birthDate': '1985-05-15'  # Wrong DOB
+            }],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        self.assertTrue(has_conflict)
+        # Should contain both conflicts
+        self.assertIn('DOB mismatch', reason)
+        self.assertIn('Name mismatch', reason)
+        self.assertIn(';', reason)  # Multiple conflicts separated by semicolon
+    
+    def test_check_quick_conflicts_performance(self):
+        """Test that check_quick_conflicts executes in < 100ms"""
+        import time
+        
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{
+                'resourceType': 'Patient',
+                'name': [{'given': ['John'], 'family': 'Doe'}],
+                'birthDate': '1980-01-01'
+            }],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        # Measure execution time
+        start_time = time.time()
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        execution_time = (time.time() - start_time) * 1000  # Convert to ms
+        
+        # Should complete in < 100ms
+        self.assertLess(execution_time, 100,
+                       f"check_quick_conflicts took {execution_time:.2f}ms, exceeds 100ms target")
+    
+    def test_dict_format_fhir_patient_resource_handled(self):
+        """Test that legacy dict format FHIR data is handled correctly"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json={
+                'Patient': [{
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['John'], 'family': 'Doe'}],
+                    'birthDate': '1980-01-01'
+                }]
+            },  # Dict format
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        self.assertFalse(has_conflict)
+        self.assertEqual(reason, '')
+    
+    def test_case_insensitive_name_comparison(self):
+        """Test that name comparison is case-insensitive"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{
+                'resourceType': 'Patient',
+                'name': [{'given': ['JOHN'], 'family': 'DOE'}],  # All caps
+                'birthDate': '1980-01-01'
+            }],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92
+        )
+        
+        has_conflict, reason = parsed_data.check_quick_conflicts()
+        
+        # Should NOT conflict - case-insensitive match
+        self.assertFalse(has_conflict)
+        self.assertEqual(reason, '')
+    
+    def test_integration_with_determine_review_status(self):
+        """Test that conflicts detected by check_quick_conflicts trigger flagging in determine_review_status"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['Jane'], 'family': 'Smith'}],
+                    'birthDate': '1985-05-15'
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],  # 4 resources total - passes resource count check
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,  # High confidence - passes confidence check
+            fallback_method_used=''  # Primary model - passes fallback check
+        )
+        
+        # Even with high confidence and good resource count,
+        # patient conflict should trigger flagging
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('Patient data conflict', reason)
+        self.assertIn('DOB mismatch', reason)
+
+
 class ReviewStatusChoicesTests(TestCase):
     """
     Tests for the 5-state review_status machine in ParsedData model (Task 41.2).
