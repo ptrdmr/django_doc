@@ -513,3 +513,297 @@ class ReviewStatusChoicesTests(TestCase):
         self.assertEqual(self.parsed_data.review_status, 'auto_approved')
         self.assertTrue(self.parsed_data.auto_approved)
 
+
+class DetermineReviewStatusTests(TestCase):
+    """
+    Tests for the determine_review_status() method in ParsedData model (Task 41.3).
+    Tests all flag conditions and auto-approval logic.
+    """
+    
+    def setUp(self):
+        """Set up test data"""
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        
+        # Create test patient
+        self.patient = Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            date_of_birth='1980-01-01',
+            mrn='TEST-001'
+        )
+        
+        # Create test document
+        pdf_content = b'%PDF-1.4 fake pdf content'
+        pdf_file = SimpleUploadedFile(
+            'test_document.pdf',
+            pdf_content,
+            content_type='application/pdf'
+        )
+        
+        self.document = Document.objects.create(
+            patient=self.patient,
+            uploaded_by=self.user,
+            filename='test_document.pdf',
+            file=pdf_file,
+            status='completed'
+        )
+    
+    def test_high_confidence_with_resources_auto_approves(self):
+        """Test that high confidence extraction with resources is auto-approved"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {'resourceType': 'Condition', 'id': '1'},
+                {'resourceType': 'Observation', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_low_confidence_flags_for_review(self):
+        """Test that low confidence (<0.80) triggers flagging"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.65,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('0.65', reason)
+        self.assertIn('0.80', reason)
+        self.assertIn('confidence', reason.lower())
+    
+    def test_none_confidence_flags_for_review(self):
+        """Test that missing confidence score triggers flagging"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=None,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('unknown', reason.lower())
+        self.assertIn('confidence', reason.lower())
+    
+    def test_fallback_method_flags_for_review(self):
+        """Test that using fallback extraction method triggers flagging"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}],
+            ai_model_used='gpt-3.5-turbo',
+            extraction_confidence=0.85,
+            fallback_method_used='gpt-fallback'
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('gpt-fallback', reason)
+        self.assertIn('fallback', reason.lower())
+    
+    def test_zero_resources_flags_for_review(self):
+        """Test that zero extracted resources triggers flagging"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[],  # Empty list
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('zero', reason.lower())
+        self.assertIn('resources', reason.lower())
+    
+    def test_low_resource_count_with_medium_confidence_flags(self):
+        """Test that <3 resources with <0.95 confidence triggers flagging"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {'resourceType': 'Condition', 'id': '1'},
+                {'resourceType': 'Observation', 'id': '2'},
+            ],  # Only 2 resources
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.88,  # < 0.95
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('2', reason)  # Resource count
+        self.assertIn('0.88', reason)  # Confidence
+        self.assertIn('resource count', reason.lower())
+    
+    def test_low_resource_count_with_high_confidence_auto_approves(self):
+        """Test that <3 resources with >=0.95 confidence auto-approves"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {'resourceType': 'Condition', 'id': '1'},
+                {'resourceType': 'Observation', 'id': '2'},
+            ],  # Only 2 resources
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.96,  # >= 0.95
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_exactly_3_resources_with_medium_confidence_auto_approves(self):
+        """Test that exactly 3 resources with any confidence auto-approves"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {'resourceType': 'Condition', 'id': '1'},
+                {'resourceType': 'Observation', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],  # Exactly 3 resources
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.82,  # < 0.95 but >= 0.80
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_confidence_at_threshold_boundary_80(self):
+        """Test extraction with confidence exactly at 0.80 threshold"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.80,  # Exactly at threshold
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # At threshold should auto-approve
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_confidence_just_below_threshold(self):
+        """Test extraction with confidence just below 0.80 threshold"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.79,  # Just below threshold
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('0.79', reason)
+    
+    def test_multiple_flag_conditions_returns_first_match(self):
+        """Test that when multiple flag conditions exist, first one is returned"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[],  # Zero resources
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.65,  # Low confidence
+            fallback_method_used='regex'  # Fallback used
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Should return first flag condition (low confidence)
+        self.assertEqual(status, 'flagged')
+        self.assertIn('confidence', reason.lower())
+    
+    def test_determine_review_status_performance(self):
+        """Test that determine_review_status executes in < 100ms"""
+        import time
+        
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 10,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        # Measure execution time
+        start_time = time.time()
+        status, reason = parsed_data.determine_review_status()
+        execution_time = (time.time() - start_time) * 1000  # Convert to ms
+        
+        # Should complete in < 100ms
+        self.assertLess(execution_time, 100, 
+                       f"determine_review_status took {execution_time:.2f}ms, exceeds 100ms target")
+    
+    def test_dict_format_fhir_resources_counted_correctly(self):
+        """Test that legacy dict format FHIR resources are counted correctly"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json={
+                'Condition': [{'id': '1'}, {'id': '2'}],
+                'Observation': [{'id': '3'}],
+            },  # Dict format with 3 total resources
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.85,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Should auto-approve (3 resources, good confidence)
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+

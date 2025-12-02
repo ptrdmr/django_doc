@@ -736,6 +736,54 @@ class ParsedData(BaseModel):
                 indicators['needs_review'] = True
         
         return indicators
+    
+    def determine_review_status(self):
+        """
+        Determine whether this extraction should be auto-approved or flagged.
+        
+        This method evaluates multiple quality criteria to decide if the extraction
+        is high enough quality for immediate merge or needs manual review.
+        
+        Returns:
+            tuple: (status, reason) where status is 'auto_approved' or 'flagged',
+                   and reason is a string explaining why (empty for auto_approved)
+        
+        Flag Conditions (any one triggers flagging):
+        - Extraction confidence < 0.80
+        - Fallback AI model was used
+        - Zero resources extracted
+        - Fewer than 3 resources AND confidence < 0.95
+        - Patient data conflicts (DOB/name mismatch)
+        
+        Performance Target: < 100ms for quick checks
+        """
+        # Check 1: Extraction confidence threshold
+        if self.extraction_confidence is None or self.extraction_confidence < 0.80:
+            confidence_value = self.extraction_confidence if self.extraction_confidence is not None else 'unknown'
+            return ('flagged', f'Low extraction confidence ({confidence_value} < 0.80 threshold)')
+        
+        # Check 2: Fallback model usage
+        if self.fallback_method_used:
+            return ('flagged', f'Fallback extraction method used: {self.fallback_method_used}')
+        
+        # Check 3: Zero resources extracted
+        resource_count = self.get_fhir_resource_count()
+        if resource_count == 0:
+            return ('flagged', 'Zero FHIR resources extracted from document')
+        
+        # Check 4: Low resource count with medium confidence
+        if resource_count < 3 and self.extraction_confidence < 0.95:
+            return ('flagged', f'Low resource count ({resource_count} resources) with insufficient confidence ({self.extraction_confidence})')
+        
+        # Check 5: Patient data conflicts (implemented in subtask 41.4)
+        # This will be added after check_quick_conflicts() method is implemented
+        # For now, we'll add a placeholder that can be uncommented later
+        # has_conflict, conflict_reason = self.check_quick_conflicts()
+        # if has_conflict:
+        #     return ('flagged', f'Patient data conflict: {conflict_reason}')
+        
+        # All checks passed - auto-approve
+        return ('auto_approved', '')
 
 
 class PatientDataComparison(BaseModel):
