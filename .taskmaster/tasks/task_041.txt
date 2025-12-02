@@ -130,30 +130,182 @@ This task involves implementing a comprehensive optimistic concurrency system wi
 ### Description: Update the ParsedData model to include auto_approved as a BooleanField and flag_reason as a TextField to support the optimistic concurrency model.
 ### Details:
 In models.py, add auto_approved = models.BooleanField(default=False) and flag_reason = models.TextField(null=True, blank=True) to the ParsedData model. Set appropriate default values and ensure they can be null/blank when appropriate.
+<info added on 2025-12-02T16:36:41.243Z>
+Added `auto_approved` BooleanField (with database index) and `flag_reason` TextField to the ParsedData model in models.py. Created and applied migration 0013_add_optimistic_concurrency_fields. Implemented comprehensive test coverage in test_optimistic_concurrency.py with 11 tests. Fixed development.py configuration to default to PostgreSQL. All changes verified in the Docker PostgreSQL database with 100% test coverage for the new functionality.
+</info added on 2025-12-02T16:36:41.243Z>
 
 ## 2. Update REVIEW_STATUS_CHOICES in ParsedData model [done]
 ### Dependencies: 41.1
 ### Description: Modify the REVIEW_STATUS_CHOICES to implement the 5-state machine: 'pending', 'auto_approved', 'flagged', 'reviewed', 'rejected'.
 ### Details:
 In models.py, update the REVIEW_STATUS_CHOICES tuple to include all five states with appropriate display names. Ensure backward compatibility with existing code by maintaining the same choice keys where possible.
+<info added on 2025-12-02T16:36:59.688Z>
+## Implementation Complete - Task 41.2
+
+**What We Built:**
+- Updated REVIEW_STATUS_CHOICES from 4-state to 5-state machine
+- Replaced 'approved' with 'reviewed' and added 'auto_approved'
+- Updated approve_extraction() method to set 'reviewed' status
+- Updated admin action for backward compatibility
+- Created migration 0014_update_review_status_choices_5state
+
+**5-State Machine:**
+1. pending → Initial state after extraction
+2. auto_approved → High confidence, merged immediately (NEW)
+3. flagged → Needs manual review
+4. reviewed → Manually approved by human (replaces 'approved')
+5. rejected → Rejected by human reviewer
+
+**State Transitions:**
+- pending → auto_approved (high confidence, no conflicts)
+- pending → flagged (low confidence, conflicts, issues)
+- flagged → reviewed (human verified)
+- flagged → rejected (human rejected)
+- auto_approved → reviewed (optional verification)
+- auto_approved → rejected (issues found after auto-approval)
+
+**Test Coverage:**
+- Added ReviewStatusChoicesTests class with 21 tests
+- Tests cover: all 5 states, transitions, methods, queries, validation
+- Invalid status values properly rejected
+- Old 'approved' status no longer valid
+- All 21 tests passing
+- Test strictness: 4/5
+
+**Files Modified:**
+1. apps/documents/models.py - Updated REVIEW_STATUS_CHOICES + approve_extraction()
+2. apps/documents/admin.py - Updated admin action
+3. apps/documents/migrations/0014_update_review_status_choices_5state.py - Migration
+4. apps/documents/tests/test_optimistic_concurrency.py - 21 tests
+
+**Total Tests:** 32 passing (11 from 41.1 + 21 from 41.2)
+</info added on 2025-12-02T16:36:59.688Z>
 
 ## 3. Add determine_review_status method to ParsedData model [done]
 ### Dependencies: 41.2
 ### Description: Implement a method that determines whether a document should be auto-approved or flagged based on quality check criteria.
 ### Details:
 Add a determine_review_status() method to the ParsedData model that evaluates extraction confidence, model type, resource count, and patient data conflicts. Return the appropriate status ('auto_approved' or 'flagged') and reason if flagged.
+<info added on 2025-12-02T16:37:18.244Z>
+The determine_review_status() method has been implemented in the ParsedData model. The method evaluates five quality criteria to determine whether a parsed document should be auto-approved or flagged for review:
+
+1. Extraction confidence below 0.80 results in flagging
+2. Documents processed using fallback AI models are flagged
+3. Documents with zero extracted resources are flagged
+4. Documents with fewer than 3 resources AND confidence below 0.95 are flagged
+5. Documents with patient data conflicts (detected via check_quick_conflicts) are flagged
+
+The method follows a sequential check pattern, where checks run in order (confidence → fallback → resources → conflicts). The first failing check triggers flagging with a detailed reason. If all checks pass, the document is marked as auto_approved with an empty reason string.
+
+The implementation returns a tuple in the format (status, reason) for transparency, where status is either 'auto_approved' or 'flagged' and reason contains the specific quality check that failed.
+
+Performance was a key consideration, with the method executing in under 100ms. The implementation uses lightweight checks before more expensive operations to optimize for high-throughput document processing.
+
+Test coverage includes 13 new tests in the DetermineReviewStatusTests class, covering all flag conditions, boundary cases, performance requirements, and validation of auto-approval logic for both list and dict FHIR formats.
+</info added on 2025-12-02T16:37:18.244Z>
 
 ## 4. Add check_quick_conflicts method to ParsedData model [done]
 ### Dependencies: 41.3
 ### Description: Implement a method to quickly check for conflicts between parsed data and existing patient records.
 ### Details:
 Add a check_quick_conflicts() method that compares extracted patient identifiers (name, DOB) with existing patient records. Optimize for performance (<100ms). Return boolean indicating conflict and reason if found.
+<info added on 2025-12-02T16:37:38.425Z>
+## Implementation Complete
+
+**What We Built:**
+- Implemented check_quick_conflicts() method for fast patient data validation
+- Added 2 helper methods for FHIR patient demographic extraction
+- Integrated conflict check into determine_review_status() as Check #5
+
+**Methods Implemented:**
+1. check_quick_conflicts() - Main conflict detection
+2. _extract_patient_demographics_from_fhir() - Extracts demographics from FHIR
+3. _parse_fhir_patient_resource() - Parses FHIR Patient resource
+
+**Conflict Detection Logic:**
+- DOB mismatch: Exact match required between extracted and patient record
+- Name mismatch: Fuzzy matching with smart partial match logic
+- Case-insensitive comparison
+- Handles middle names, initials, variations
+- Only flags completely different names
+
+**Smart Name Matching:**
+- 'John Doe' matches 'John Michael Doe' (middle name) ✅
+- 'John Doe' matches 'J Doe' (initial) ✅
+- 'JOHN DOE' matches 'john doe' (case) ✅
+- 'John Doe' does NOT match 'Jane Smith' (different) ❌
+
+**FHIR Format Support:**
+- List format: [{'resourceType': 'Patient', ...}]
+- Dict format: {'Patient': [{'resourceType': 'Patient', ...}]}
+- Handles missing Patient resource gracefully
+
+**Integration:**
+- Integrated into determine_review_status() as final check
+- Two-layer protection: quick check + full ConflictDetector during merge
+- Complementary, not redundant
+
+**Test Coverage:**
+- Added CheckQuickConflictsTests class with 12 tests
+- Tests cover: matching, DOB conflicts, name conflicts, variations, performance
+- Performance validated: <100ms execution
+- Integration with determine_review_status verified
+- All 12 tests passing
+
+**Files Modified:**
+1. apps/documents/models.py - Added 3 methods
+2. apps/documents/tests/test_optimistic_concurrency.py - 12 tests
+</info added on 2025-12-02T16:37:38.425Z>
 
 ## 5. Add database indexes for optimistic concurrency [done]
 ### Dependencies: 41.1, 41.2
 ### Description: Add appropriate database indexes to support efficient querying for the new fields and status values.
 ### Details:
 Create a migration to add indexes on auto_approved field and a composite index on (review_status, created_at) to optimize query performance for the new workflow.
+<info added on 2025-12-02T16:37:57.170Z>
+## Implementation Complete - Task 41.5
+
+**What We Built:**
+- Added composite index on (review_status, created_at) to ParsedData model
+- Created migration 0015_add_review_status_created_index
+- Applied migration to Docker PostgreSQL database
+
+**Indexes Summary:**
+Both required indexes now exist:
+1. auto_approved index (created in migration 0013) - Single field index
+2. (review_status, created_at) composite index (created in migration 0015) - Composite index
+
+**Index Details:**
+- Name: parsed_review_status_idx
+- Fields: review_status, created_at
+- Type: btree
+- Purpose: Optimize flagged items dashboard queries
+
+**Performance Benefits:**
+- Fast filtering by review_status (flagged, pending, auto_approved, etc.)
+- Efficient time-based queries (e.g., "flagged in last 7 days")
+- Optimized sorting by created_at within status groups
+- Scalable as data volume grows
+
+**Test Coverage:**
+- Added DatabaseIndexTests class with 6 tests
+- Tests verify: indexes exist, queries use indexes, performance
+- Performance test: Flagged items query <100ms with 50 records
+- All 6 tests passing
+- Test strictness: 4/5
+
+**Database Verification:**
+Confirmed in PostgreSQL:
+- parsed_data_auto_approved_0786de7f btree (auto_approved)
+- parsed_review_status_idx btree (review_status, created_at)
+
+**Files Modified:**
+1. apps/documents/models.py - Added composite index to Meta.indexes
+2. apps/documents/migrations/0015_add_review_status_created_index.py - Migration
+3. apps/documents/tests/test_optimistic_concurrency.py - 6 tests
+
+**Total Tests:** 63 passing (11 + 21 + 13 + 12 + 6)
+</info added on 2025-12-02T16:37:57.170Z>
 
 ## 6. Implement update_fhir_resources method in Patient model [pending]
 ### Dependencies: None
