@@ -24,14 +24,13 @@ if NGROK_HOSTNAME:
 ALLOWED_HOSTS.append('moritrac.ngrok.pizza')
 
 
-# Database Configuration - supports both SQLite and PostgreSQL
-# Use environment variable DB_ENGINE to switch between databases
-# Default: SQLite for quick development
-# Set DB_ENGINE=postgresql to use PostgreSQL with JSONB support
-db_engine = config('DB_ENGINE', default='sqlite')
+# Database Configuration - ALWAYS use PostgreSQL for this medical application
+# PostgreSQL is required for JSONB support and HIPAA compliance
+# SQLite is NOT suitable for production medical data
+db_engine = config('DB_ENGINE', default='postgresql')
 
 if db_engine == 'postgresql':
-    # PostgreSQL for testing JSONB functionality
+    # PostgreSQL for JSONB functionality and production-like development
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -47,16 +46,17 @@ if db_engine == 'postgresql':
             'CONN_MAX_AGE': 60,
         }
     }
-    print("Using PostgreSQL database for development")
+    print("💾 Using PostgreSQL database for development")
 else:
-    # SQLite for development simplicity
+    # SQLite fallback (NOT RECOMMENDED for medical data)
+    # Only use for quick testing of non-medical features
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-    print("Using SQLite database for development")
+    print("⚠️  WARNING: Using SQLite database (NOT suitable for medical data or JSONB features)")
 
 # Development-friendly security settings (less strict)
 SECURE_SSL_REDIRECT = False
