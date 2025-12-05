@@ -2960,9 +2960,9 @@
             "id": 6,
             "title": "Implement update_fhir_resources method in Patient model",
             "description": "Create a method to handle idempotent merging of FHIR resources into the patient record using composite key matching.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
-            "details": "Add update_fhir_resources(fhir_resources, document_id) method to the Patient model with the following implementation:\n\n**Composite Key Matching Strategy:**\n- Match existing resources using (meta.source, resourceType) tuple to identify duplicates\n- This ensures idempotency - if the same document is processed twice, resources are updated rather than duplicated\n- For each incoming resource:\n  * Check if (meta.source, resourceType) already exists in patient's bundle\n  * If exists: UPDATE the existing resource\n  * If new: APPEND to bundle\n\n**Implementation Details:**\n- Use Django's transaction.atomic() for atomicity\n- Tag all resources with meta.source = \"document_{document_id}\"\n- Tag all resources with meta.lastUpdated = current timestamp\n- Tag all resources with meta.versionId = UUID\n\n**Audit Trail (HIPAA Compliance):**\n- Create PatientHistory record for each merge operation\n- Log: document_id, resource types merged, resource counts, timestamp\n- Log: action='fhir_merge', fhir_delta=resources merged\n- This maintains complete traceability for compliance",
+            "details": "Add update_fhir_resources(fhir_resources, document_id) method to the Patient model with the following implementation:\n\n**Composite Key Matching Strategy:**\n- Match existing resources using (meta.source, resourceType) tuple to identify duplicates\n- This ensures idempotency - if the same document is processed twice, resources are updated rather than duplicated\n- For each incoming resource:\n  * Check if (meta.source, resourceType) already exists in patient's bundle\n  * If exists: UPDATE the existing resource\n  * If new: APPEND to bundle\n\n**Implementation Details:**\n- Use Django's transaction.atomic() for atomicity\n- Tag all resources with meta.source = \"document_{document_id}\"\n- Tag all resources with meta.lastUpdated = current timestamp\n- Tag all resources with meta.versionId = UUID\n\n**Audit Trail (HIPAA Compliance):**\n- Create PatientHistory record for each merge operation\n- Log: document_id, resource types merged, resource counts, timestamp\n- Log: action='fhir_merge', fhir_delta=resources merged\n- This maintains complete traceability for compliance\n<info added on 2025-12-05T16:07:44.763Z>\nImplement rollback_document_merge method in the Patient model that:\n\n1. Takes a document_id parameter\n2. Removes all FHIR resources with meta.source = \"document_{document_id}\" from the patient's bundle\n3. Uses Django's transaction.atomic() for atomicity\n4. Creates a PatientHistory audit record with:\n   - action='fhir_rollback'\n   - document_id=document_id\n   - fhir_delta=removed resources\n   - Statistics including removed_count and resource_types\n\nThe method should:\n- Return a dictionary with statistics about the rollback operation\n- Handle the case where no resources are found for the document_id\n- Maintain the same audit trail standards as the add_fhir_resources method\n</info added on 2025-12-05T16:07:44.763Z>",
             "testStrategy": "Create unit tests for successful merges, idempotency (calling twice produces same result), composite key matching logic, audit trail creation, and error handling."
           },
           {
@@ -3272,7 +3272,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-12-02T16:34:12.882Z",
+      "updated": "2025-12-05T16:07:26.145Z",
       "description": "Tasks for master context"
     }
   }
