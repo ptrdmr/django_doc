@@ -2950,12 +2950,269 @@
         "id": 41,
         "title": "Implement Optimistic Concurrency Merge System",
         "description": "Transform the document processing pipeline from a pessimistic locking model to an optimistic concurrency model that merges data immediately and flags exceptions for review. This architectural shift removes the human bottleneck that prevents clinical staff from accessing parsed medical data in real-time, while maintaining data quality through intelligent automated flagging and surgical rollback capabilities.",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "medium",
         "details": "This task involves implementing a comprehensive optimistic concurrency system with the following components:\n\n1. **Data Model Changes**:\n   - Add `auto_approved` (BooleanField) and `flag_reason` (TextField) to ParsedData model\n   - Update REVIEW_STATUS_CHOICES to the 5-state machine: 'pending', 'auto_approved', 'flagged', 'reviewed', 'rejected'\n   - Add methods `determine_review_status()` and `check_quick_conflicts()`\n   - Add indexes on `auto_approved` and `(review_status, created_at)`\n\n2. **Patient Model Enhancements**:\n   - Implement `update_fhir_resources(fhir_resources, document_id)` method for idempotent merges\n   - Implement `rollback_document_merge(document_id)` for surgical removal of resources\n   - Use Django's transaction management to ensure atomicity\n   - Ensure meta.source tagging for document traceability\n\n3. **Quality Check Logic**:\n   - Implement flag conditions in `determine_review_status()`:\n     - Extraction confidence < 0.80\n     - Fallback AI model used\n     - Zero resources extracted\n     - Fewer than 3 resources AND confidence < 0.95\n     - DOB/name conflicts with patient record\n   - Optimize for < 100ms performance on quick checks\n\n4. **Task Flow Modification**:\n   - Update `process_document_async` in tasks.py to implement immediate merge\n   - Call `determine_review_status()` and then merge regardless of flag status\n   - Set appropriate status flags and handle errors gracefully\n\n5. **Data Migration**:\n   - Create migration to map existing records to new status system\n   - Test thoroughly on staging data before deployment\n\n6. **Test Coverage**:\n   - Unit tests for quality check logic, FHIR operations\n   - Integration tests for the entire workflow\n   - Performance tests for merge operations (< 500ms target)\n   - Retry safety tests for idempotency\n\n7. **Staging Deployment & Monitoring**:\n   - Deploy to staging and process test documents\n   - Monitor flag rates (5-20% target) and tune thresholds\n   - Validate merge performance and failure rates\n\n8. **Flagged Items UI**:\n   - Create dashboard widget showing flagged count\n   - Build flagged items list view and detail/verification view\n   - Implement actions: Mark as Correct, Correct Data, Rollback Merge\n\n9. **Cleanup Old Review Workflow**:\n   - Remove obsolete code and templates\n   - Update documentation\n   - Deploy to production\n\n**Technical Implementation Notes:**\n- Use Django 4.2+ for the latest ORM features and performance improvements\n- Leverage Django's transaction.atomic() for FHIR operations\n- Use Django-FHIR (fhirstore 2.x) for FHIR resource handling\n- Implement Celery task idempotency using unique task IDs\n- Use Django signals for audit trail creation\n- Consider using Django REST Framework 3.14+ for the flagged items API\n- Implement proper exception handling with contextual error messages\n- Use Django's select_related() and prefetch_related() to optimize queries\n- Consider adding Redis caching for frequently accessed patient data\n\n**Libraries and Versions:**\n- Django 4.2+\n- Celery 5.3+\n- Django REST Framework 3.14+\n- fhirstore 2.x\n- django-auditlog 2.2+ for audit trails\n- django-filter 23.1+ for flagged items filtering\n- pytest 7.3+ for testing\n\n**Database Considerations:**\n- Add appropriate indexes for performance\n- Use Django's F() expressions to prevent race conditions\n- Consider partial indexes for flagged items\n- Use select_for_update() where appropriate for concurrent operations",
         "testStrategy": "1. **Unit Tests**:\n   - Test each flag condition in isolation\n   - Test resource matching logic in update_fhir_resources()\n   - Test rollback filtering logic\n   - Test performance of quick checks (< 100ms)\n\n2. **Integration Tests**:\n   - End-to-end document processing with immediate merge\n   - Test retry safety (run task twice, verify no duplicates)\n   - Test flagged documents still merge successfully\n   - Test rollback removes only target document's resources\n\n3. **Test Data**:\n   - Create fixtures for various document types:\n     - High confidence document (should auto-approve)\n     - Low confidence document (should flag)\n     - Document with DOB conflict (should flag)\n     - Document with zero resources (should flag)\n\n4. **Performance Testing**:\n   - Benchmark merge operations (target: < 500ms)\n   - Test with large FHIR bundles (100+ resources)\n   - Test concurrent merges (10+ simultaneous)\n\n5. **Regression Testing**:\n   - Verify existing document processing still works\n   - Verify audit trail completeness\n   - Verify no data loss during migration\n\n6. **User Acceptance Testing**:\n   - Verify clinicians can see data within 5 minutes\n   - Verify data stewards can efficiently review flagged items\n   - Verify compliance officers can access audit trail\n\n7. **Monitoring Tests**:\n   - Set up metrics collection for flag rates\n   - Set up alerts for high flag rates or merge failures\n   - Verify threshold tuning works as expected",
-        "priority": "medium",
-        "dependencies": [],
-        "status": "pending",
         "subtasks": [
+          {
+            "id": 6,
+            "title": "Implement update_fhir_resources method in Patient model",
+            "description": "Create a method to handle idempotent merging of FHIR resources into the patient record using composite key matching.",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Add update_fhir_resources(fhir_resources, document_id) method to the Patient model with the following implementation:\n\n**Composite Key Matching Strategy:**\n- Match existing resources using (meta.source, resourceType) tuple to identify duplicates\n- This ensures idempotency - if the same document is processed twice, resources are updated rather than duplicated\n- For each incoming resource:\n  * Check if (meta.source, resourceType) already exists in patient's bundle\n  * If exists: UPDATE the existing resource\n  * If new: APPEND to bundle\n\n**Implementation Details:**\n- Use Django's transaction.atomic() for atomicity\n- Tag all resources with meta.source = \"document_{document_id}\"\n- Tag all resources with meta.lastUpdated = current timestamp\n- Tag all resources with meta.versionId = UUID\n\n**Audit Trail (HIPAA Compliance):**\n- Create PatientHistory record for each merge operation\n- Log: document_id, resource types merged, resource counts, timestamp\n- Log: action='fhir_merge', fhir_delta=resources merged\n- This maintains complete traceability for compliance",
+            "testStrategy": "Create unit tests for successful merges, idempotency (calling twice produces same result), composite key matching logic, audit trail creation, and error handling."
+          },
+          {
+            "id": 7,
+            "title": "Implement rollback_document_merge method in Patient model",
+            "description": "Create a method to surgically remove FHIR resources associated with a specific document using source filtering.",
+            "status": "pending",
+            "dependencies": [
+              6
+            ],
+            "details": "Add rollback_document_merge(document_id) method to the Patient model with the following implementation:\n\n**Source Filtering Strategy:**\n- Filter FHIR bundle to remove ALL resources where meta.source = \"document_{document_id}\"\n- This surgically removes only the target document's resources without affecting other data\n- Preserves all resources from other documents\n\n**Implementation Details:**\n- Use Django's transaction.atomic() for atomicity\n- Iterate through patient's encrypted_fhir_bundle['entry']\n- Keep resources where meta.source != \"document_{document_id}\"\n- Remove resources where meta.source == \"document_{document_id}\"\n- Return count of removed resources\n\n**Audit Trail (HIPAA Compliance):**\n- Create PatientHistory record for each rollback operation\n- Log: document_id, resource types removed, resource counts, timestamp\n- Log: action='fhir_rollback', notes=f\"Rolled back {count} resources from document {document_id}\"\n- This maintains complete traceability for compliance\n\n**Error Handling:**\n- If document_id not found in any resources, return 0 (idempotent)\n- If bundle is empty or malformed, handle gracefully\n- Log all operations for debugging",
+            "testStrategy": "Create unit tests for successful rollbacks, partial rollbacks, idempotency (calling twice produces same result), audit trail creation, and error handling. Verify no unintended data is removed and that resources from other documents remain intact."
+          },
+          {
+            "id": 8,
+            "title": "Implement extraction confidence check in determine_review_status",
+            "description": "Add logic to flag documents with extraction confidence below 0.80.",
+            "status": "pending",
+            "dependencies": [
+              3
+            ],
+            "details": "In the determine_review_status() method, implement logic to check if the overall extraction confidence is below 0.80. If so, set the flag_reason accordingly and return 'flagged' status.",
+            "testStrategy": "Create unit tests with various confidence values to verify correct flagging behavior."
+          },
+          {
+            "id": 9,
+            "title": "Implement fallback model check in determine_review_status",
+            "description": "Add logic to flag documents processed using the fallback AI model.",
+            "status": "pending",
+            "dependencies": [
+              3
+            ],
+            "details": "In the determine_review_status() method, implement logic to check if the fallback AI model was used for extraction. If so, set the flag_reason accordingly and return 'flagged' status.",
+            "testStrategy": "Create unit tests for both primary and fallback model scenarios to verify correct flagging behavior."
+          },
+          {
+            "id": 10,
+            "title": "Implement zero resources check in determine_review_status",
+            "description": "Add logic to flag documents with zero extracted FHIR resources.",
+            "status": "pending",
+            "dependencies": [
+              3
+            ],
+            "details": "In the determine_review_status() method, implement logic to check if no FHIR resources were extracted. If so, set the flag_reason accordingly and return 'flagged' status.",
+            "testStrategy": "Create unit tests with empty and non-empty resource sets to verify correct flagging behavior."
+          },
+          {
+            "id": 11,
+            "title": "Implement resource count and confidence check in determine_review_status",
+            "description": "Add logic to flag documents with fewer than 3 resources AND confidence < 0.95.",
+            "status": "pending",
+            "dependencies": [
+              3
+            ],
+            "details": "In the determine_review_status() method, implement logic to check if fewer than 3 resources were extracted AND the confidence is below 0.95. If both conditions are true, set the flag_reason accordingly and return 'flagged' status.",
+            "testStrategy": "Create unit tests with various resource counts and confidence values to verify correct flagging behavior."
+          },
+          {
+            "id": 12,
+            "title": "Implement patient data conflict check in determine_review_status",
+            "description": "Add logic to flag documents with DOB/name conflicts with existing patient records.",
+            "status": "pending",
+            "dependencies": [
+              3,
+              4
+            ],
+            "details": "In the determine_review_status() method, call the check_quick_conflicts() method and flag the document if conflicts are found. Set the flag_reason with details about the conflict.",
+            "testStrategy": "Create unit tests with various conflict scenarios to verify correct flagging behavior."
+          },
+          {
+            "id": 13,
+            "title": "Update process_document_async in tasks.py for immediate merge",
+            "description": "Modify the document processing task to implement immediate merging of data regardless of review status.",
+            "status": "pending",
+            "dependencies": [
+              3,
+              6,
+              7
+            ],
+            "details": "Update the process_document_async function in tasks.py to call determine_review_status(), set the appropriate status flags, and then merge the data into the patient record using add_fhir_resources() regardless of whether the document is flagged or auto-approved.",
+            "testStrategy": "Create integration tests that verify the entire workflow from document processing to data merging."
+          },
+          {
+            "id": 14,
+            "title": "Implement error handling in process_document_async",
+            "description": "Add robust error handling to the document processing task to ensure failures are properly logged and managed.",
+            "status": "pending",
+            "dependencies": [
+              13
+            ],
+            "details": "Enhance process_document_async with try-except blocks to catch and handle various error scenarios. Log detailed error information, update document status appropriately, and ensure the task can be safely retried if needed.",
+            "testStrategy": "Create tests that simulate various failure scenarios to verify proper error handling and recovery."
+          },
+          {
+            "id": 15,
+            "title": "Implement task idempotency for process_document_async",
+            "description": "Ensure the document processing task is idempotent to prevent duplicate processing.",
+            "status": "pending",
+            "dependencies": [
+              14
+            ],
+            "details": "Modify process_document_async to check if the document has already been processed before performing operations. Use unique task IDs based on document ID and implement appropriate locking mechanisms to prevent race conditions.",
+            "testStrategy": "Create tests that attempt to process the same document multiple times to verify idempotency."
+          },
+          {
+            "id": 16,
+            "title": "Create data migration for existing records",
+            "description": "Develop a migration script to map existing records to the new status system.",
+            "status": "pending",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Create a Django migration that updates existing ParsedData records to use the new status system. Map 'pending' to 'pending', 'approved' to 'reviewed', and other statuses appropriately. Set auto_approved based on existing data.",
+            "testStrategy": "Test the migration on a copy of production data in a staging environment before deployment. Verify record counts match expectations for each status."
+          },
+          {
+            "id": 17,
+            "title": "Create unit tests for quality check logic",
+            "description": "Develop comprehensive unit tests for all quality check logic in the determine_review_status method.",
+            "status": "pending",
+            "dependencies": [
+              8,
+              9,
+              10,
+              11,
+              12
+            ],
+            "details": "Create pytest test cases that cover all flag conditions individually and in combination. Include edge cases and boundary testing for confidence values and resource counts.",
+            "testStrategy": "Use pytest parametrization to test multiple scenarios efficiently. Aim for 100% code coverage of the quality check logic."
+          },
+          {
+            "id": 18,
+            "title": "Create unit tests for FHIR operations",
+            "description": "Develop comprehensive unit tests for the FHIR resource update and rollback methods.",
+            "status": "pending",
+            "dependencies": [
+              6,
+              7
+            ],
+            "details": "Create pytest test cases for update_fhir_resources and rollback_document_merge methods. Test successful operations, error handling, and edge cases like empty resource sets or non-existent documents.",
+            "testStrategy": "Use mock objects to simulate FHIR resources and test both successful and failure scenarios."
+          },
+          {
+            "id": 19,
+            "title": "Create integration tests for the optimistic concurrency workflow",
+            "description": "Develop end-to-end tests for the entire document processing and merging workflow.",
+            "status": "pending",
+            "dependencies": [
+              13,
+              14,
+              15
+            ],
+            "details": "Create integration tests that simulate the entire process from document upload through processing, status determination, and data merging. Test both auto-approved and flagged scenarios.",
+            "testStrategy": "Use Django's TestCase with transaction support to test the entire workflow. Create realistic test documents and verify correct database state after processing."
+          },
+          {
+            "id": 20,
+            "title": "Create performance tests for merge operations",
+            "description": "Develop tests to measure and validate the performance of merge operations.",
+            "status": "pending",
+            "dependencies": [
+              6,
+              7
+            ],
+            "details": "Create performance tests that measure the execution time of update_fhir_resources and rollback_document_merge methods with various resource counts. Ensure operations complete within the 500ms target.",
+            "testStrategy": "Use pytest-benchmark to measure performance. Test with small, medium, and large resource sets to establish performance characteristics."
+          },
+          {
+            "id": 21,
+            "title": "Deploy to staging and process test documents",
+            "description": "Deploy the optimistic concurrency system to staging and validate with test documents.",
+            "status": "pending",
+            "dependencies": [
+              16,
+              17,
+              18,
+              19,
+              20
+            ],
+            "details": "Deploy the updated code to the staging environment. Process a set of test documents representing various scenarios (clean, flaggable, etc.) and verify correct behavior.",
+            "testStrategy": "Create a test plan with specific documents and expected outcomes. Manually verify results and collect metrics on processing time and flag rates."
+          },
+          {
+            "id": 22,
+            "title": "Monitor flag rates and tune thresholds",
+            "description": "Monitor the flag rates in staging and adjust thresholds to achieve the target 5-20% flag rate.",
+            "status": "pending",
+            "dependencies": [
+              21
+            ],
+            "details": "Collect metrics on flag rates in staging. If outside the 5-20% target range, adjust thresholds in the determine_review_status method (confidence levels, resource counts) to achieve the desired balance.",
+            "testStrategy": "Process a large sample of documents and measure flag rates. Adjust thresholds iteratively until target rates are achieved."
+          },
+          {
+            "id": 23,
+            "title": "Create dashboard widget showing flagged count",
+            "description": "Develop a UI widget for the dashboard that displays the count of flagged documents requiring review.",
+            "status": "pending",
+            "dependencies": [
+              21
+            ],
+            "details": "Create a Django template partial and view that queries the count of documents with 'flagged' status. Implement as a dashboard widget with appropriate styling and a link to the flagged items list view.",
+            "testStrategy": "Create unit tests for the view logic and manual testing of the widget display and interaction."
+          },
+          {
+            "id": 24,
+            "title": "Build flagged items list view",
+            "description": "Develop a list view showing all flagged documents requiring review.",
+            "status": "pending",
+            "dependencies": [
+              23
+            ],
+            "details": "Create a Django view and template for listing flagged documents. Include filtering options by date, flag reason, and patient. Display key information including document type, patient name, flag reason, and timestamp.",
+            "testStrategy": "Create unit tests for the view logic and filtering. Manually test the UI with various filter combinations."
+          },
+          {
+            "id": 25,
+            "title": "Build flagged item detail and verification view",
+            "description": "Develop a detailed view for reviewing and verifying flagged documents.",
+            "status": "pending",
+            "dependencies": [
+              24
+            ],
+            "details": "Create a Django view and template for displaying detailed information about a flagged document. Show the extracted data, flag reason, and original document for comparison. Implement forms for verification actions.",
+            "testStrategy": "Create unit tests for the view logic and form processing. Manually test the UI with various document types."
+          },
+          {
+            "id": 26,
+            "title": "Implement verification actions for flagged items",
+            "description": "Develop the action handlers for Mark as Correct, Correct Data, and Rollback Merge operations.",
+            "status": "pending",
+            "dependencies": [
+              25,
+              7
+            ],
+            "details": "Create view functions and forms to handle the three verification actions: Mark as Correct (changes status to 'reviewed'), Correct Data (allows manual edits before marking as 'reviewed'), and Rollback Merge (calls rollback_document_merge and resets status).",
+            "testStrategy": "Create unit tests for each action handler. Test both successful operations and error handling."
+          },
+          {
+            "id": 27,
+            "title": "Remove obsolete code and update documentation",
+            "description": "Clean up the codebase by removing obsolete review workflow code and updating documentation.",
+            "status": "pending",
+            "dependencies": [
+              26
+            ],
+            "details": "Identify and remove code related to the old pessimistic locking review workflow. Update API documentation, user guides, and developer documentation to reflect the new optimistic concurrency model.",
+            "testStrategy": "Perform regression testing to ensure removal of obsolete code doesn't break existing functionality. Review documentation for accuracy and completeness."
+          },
           {
             "id": 1,
             "title": "Add auto_approved and flag_reason fields to ParsedData model",
@@ -3009,263 +3266,6 @@
             "details": "Create a migration to add indexes on auto_approved field and a composite index on (review_status, created_at) to optimize query performance for the new workflow.\n<info added on 2025-12-02T16:37:57.170Z>\n## Implementation Complete - Task 41.5\n\n**What We Built:**\n- Added composite index on (review_status, created_at) to ParsedData model\n- Created migration 0015_add_review_status_created_index\n- Applied migration to Docker PostgreSQL database\n\n**Indexes Summary:**\nBoth required indexes now exist:\n1. auto_approved index (created in migration 0013) - Single field index\n2. (review_status, created_at) composite index (created in migration 0015) - Composite index\n\n**Index Details:**\n- Name: parsed_review_status_idx\n- Fields: review_status, created_at\n- Type: btree\n- Purpose: Optimize flagged items dashboard queries\n\n**Performance Benefits:**\n- Fast filtering by review_status (flagged, pending, auto_approved, etc.)\n- Efficient time-based queries (e.g., \"flagged in last 7 days\")\n- Optimized sorting by created_at within status groups\n- Scalable as data volume grows\n\n**Test Coverage:**\n- Added DatabaseIndexTests class with 6 tests\n- Tests verify: indexes exist, queries use indexes, performance\n- Performance test: Flagged items query <100ms with 50 records\n- All 6 tests passing\n- Test strictness: 4/5\n\n**Database Verification:**\nConfirmed in PostgreSQL:\n- parsed_data_auto_approved_0786de7f btree (auto_approved)\n- parsed_review_status_idx btree (review_status, created_at)\n\n**Files Modified:**\n1. apps/documents/models.py - Added composite index to Meta.indexes\n2. apps/documents/migrations/0015_add_review_status_created_index.py - Migration\n3. apps/documents/tests/test_optimistic_concurrency.py - 6 tests\n\n**Total Tests:** 63 passing (11 + 21 + 13 + 12 + 6)\n</info added on 2025-12-02T16:37:57.170Z>",
             "status": "done",
             "testStrategy": "Verify index creation in the database and test query performance with and without indexes."
-          },
-          {
-            "id": 6,
-            "title": "Implement update_fhir_resources method in Patient model",
-            "description": "Create a method to handle idempotent merging of FHIR resources into the patient record using composite key matching.",
-            "dependencies": [],
-            "details": "Add update_fhir_resources(fhir_resources, document_id) method to the Patient model with the following implementation:\n\n**Composite Key Matching Strategy:**\n- Match existing resources using (meta.source, resourceType) tuple to identify duplicates\n- This ensures idempotency - if the same document is processed twice, resources are updated rather than duplicated\n- For each incoming resource:\n  * Check if (meta.source, resourceType) already exists in patient's bundle\n  * If exists: UPDATE the existing resource\n  * If new: APPEND to bundle\n\n**Implementation Details:**\n- Use Django's transaction.atomic() for atomicity\n- Tag all resources with meta.source = \"document_{document_id}\"\n- Tag all resources with meta.lastUpdated = current timestamp\n- Tag all resources with meta.versionId = UUID\n\n**Audit Trail (HIPAA Compliance):**\n- Create PatientHistory record for each merge operation\n- Log: document_id, resource types merged, resource counts, timestamp\n- Log: action='fhir_merge', fhir_delta=resources merged\n- This maintains complete traceability for compliance",
-            "status": "pending",
-            "testStrategy": "Create unit tests for successful merges, idempotency (calling twice produces same result), composite key matching logic, audit trail creation, and error handling."
-          },
-          {
-            "id": 7,
-            "title": "Implement rollback_document_merge method in Patient model",
-            "description": "Create a method to surgically remove FHIR resources associated with a specific document using source filtering.",
-            "dependencies": [
-              6
-            ],
-            "details": "Add rollback_document_merge(document_id) method to the Patient model with the following implementation:\n\n**Source Filtering Strategy:**\n- Filter FHIR bundle to remove ALL resources where meta.source = \"document_{document_id}\"\n- This surgically removes only the target document's resources without affecting other data\n- Preserves all resources from other documents\n\n**Implementation Details:**\n- Use Django's transaction.atomic() for atomicity\n- Iterate through patient's encrypted_fhir_bundle['entry']\n- Keep resources where meta.source != \"document_{document_id}\"\n- Remove resources where meta.source == \"document_{document_id}\"\n- Return count of removed resources\n\n**Audit Trail (HIPAA Compliance):**\n- Create PatientHistory record for each rollback operation\n- Log: document_id, resource types removed, resource counts, timestamp\n- Log: action='fhir_rollback', notes=f\"Rolled back {count} resources from document {document_id}\"\n- This maintains complete traceability for compliance\n\n**Error Handling:**\n- If document_id not found in any resources, return 0 (idempotent)\n- If bundle is empty or malformed, handle gracefully\n- Log all operations for debugging",
-            "status": "pending",
-            "testStrategy": "Create unit tests for successful rollbacks, partial rollbacks, idempotency (calling twice produces same result), audit trail creation, and error handling. Verify no unintended data is removed and that resources from other documents remain intact."
-          },
-          {
-            "id": 8,
-            "title": "Implement extraction confidence check in determine_review_status",
-            "description": "Add logic to flag documents with extraction confidence below 0.80.",
-            "dependencies": [
-              3
-            ],
-            "details": "In the determine_review_status() method, implement logic to check if the overall extraction confidence is below 0.80. If so, set the flag_reason accordingly and return 'flagged' status.",
-            "status": "pending",
-            "testStrategy": "Create unit tests with various confidence values to verify correct flagging behavior."
-          },
-          {
-            "id": 9,
-            "title": "Implement fallback model check in determine_review_status",
-            "description": "Add logic to flag documents processed using the fallback AI model.",
-            "dependencies": [
-              3
-            ],
-            "details": "In the determine_review_status() method, implement logic to check if the fallback AI model was used for extraction. If so, set the flag_reason accordingly and return 'flagged' status.",
-            "status": "pending",
-            "testStrategy": "Create unit tests for both primary and fallback model scenarios to verify correct flagging behavior."
-          },
-          {
-            "id": 10,
-            "title": "Implement zero resources check in determine_review_status",
-            "description": "Add logic to flag documents with zero extracted FHIR resources.",
-            "dependencies": [
-              3
-            ],
-            "details": "In the determine_review_status() method, implement logic to check if no FHIR resources were extracted. If so, set the flag_reason accordingly and return 'flagged' status.",
-            "status": "pending",
-            "testStrategy": "Create unit tests with empty and non-empty resource sets to verify correct flagging behavior."
-          },
-          {
-            "id": 11,
-            "title": "Implement resource count and confidence check in determine_review_status",
-            "description": "Add logic to flag documents with fewer than 3 resources AND confidence < 0.95.",
-            "dependencies": [
-              3
-            ],
-            "details": "In the determine_review_status() method, implement logic to check if fewer than 3 resources were extracted AND the confidence is below 0.95. If both conditions are true, set the flag_reason accordingly and return 'flagged' status.",
-            "status": "pending",
-            "testStrategy": "Create unit tests with various resource counts and confidence values to verify correct flagging behavior."
-          },
-          {
-            "id": 12,
-            "title": "Implement patient data conflict check in determine_review_status",
-            "description": "Add logic to flag documents with DOB/name conflicts with existing patient records.",
-            "dependencies": [
-              3,
-              4
-            ],
-            "details": "In the determine_review_status() method, call the check_quick_conflicts() method and flag the document if conflicts are found. Set the flag_reason with details about the conflict.",
-            "status": "pending",
-            "testStrategy": "Create unit tests with various conflict scenarios to verify correct flagging behavior."
-          },
-          {
-            "id": 13,
-            "title": "Update process_document_async in tasks.py for immediate merge",
-            "description": "Modify the document processing task to implement immediate merging of data regardless of review status.",
-            "dependencies": [
-              3,
-              6,
-              7
-            ],
-            "details": "Update the process_document_async function in tasks.py to call determine_review_status(), set the appropriate status flags, and then merge the data into the patient record using update_fhir_resources() regardless of whether the document is flagged or auto-approved.",
-            "status": "pending",
-            "testStrategy": "Create integration tests that verify the entire workflow from document processing to data merging."
-          },
-          {
-            "id": 14,
-            "title": "Implement error handling in process_document_async",
-            "description": "Add robust error handling to the document processing task to ensure failures are properly logged and managed.",
-            "dependencies": [
-              13
-            ],
-            "details": "Enhance process_document_async with try-except blocks to catch and handle various error scenarios. Log detailed error information, update document status appropriately, and ensure the task can be safely retried if needed.",
-            "status": "pending",
-            "testStrategy": "Create tests that simulate various failure scenarios to verify proper error handling and recovery."
-          },
-          {
-            "id": 15,
-            "title": "Implement task idempotency for process_document_async",
-            "description": "Ensure the document processing task is idempotent to prevent duplicate processing.",
-            "dependencies": [
-              14
-            ],
-            "details": "Modify process_document_async to check if the document has already been processed before performing operations. Use unique task IDs based on document ID and implement appropriate locking mechanisms to prevent race conditions.",
-            "status": "pending",
-            "testStrategy": "Create tests that attempt to process the same document multiple times to verify idempotency."
-          },
-          {
-            "id": 16,
-            "title": "Create data migration for existing records",
-            "description": "Develop a migration script to map existing records to the new status system.",
-            "dependencies": [
-              1,
-              2
-            ],
-            "details": "Create a Django migration that updates existing ParsedData records to use the new status system. Map 'pending' to 'pending', 'approved' to 'reviewed', and other statuses appropriately. Set auto_approved based on existing data.",
-            "status": "pending",
-            "testStrategy": "Test the migration on a copy of production data in a staging environment before deployment. Verify record counts match expectations for each status."
-          },
-          {
-            "id": 17,
-            "title": "Create unit tests for quality check logic",
-            "description": "Develop comprehensive unit tests for all quality check logic in the determine_review_status method.",
-            "dependencies": [
-              8,
-              9,
-              10,
-              11,
-              12
-            ],
-            "details": "Create pytest test cases that cover all flag conditions individually and in combination. Include edge cases and boundary testing for confidence values and resource counts.",
-            "status": "pending",
-            "testStrategy": "Use pytest parametrization to test multiple scenarios efficiently. Aim for 100% code coverage of the quality check logic."
-          },
-          {
-            "id": 18,
-            "title": "Create unit tests for FHIR operations",
-            "description": "Develop comprehensive unit tests for the FHIR resource update and rollback methods.",
-            "dependencies": [
-              6,
-              7
-            ],
-            "details": "Create pytest test cases for update_fhir_resources and rollback_document_merge methods. Test successful operations, error handling, and edge cases like empty resource sets or non-existent documents.",
-            "status": "pending",
-            "testStrategy": "Use mock objects to simulate FHIR resources and test both successful and failure scenarios."
-          },
-          {
-            "id": 19,
-            "title": "Create integration tests for the optimistic concurrency workflow",
-            "description": "Develop end-to-end tests for the entire document processing and merging workflow.",
-            "dependencies": [
-              13,
-              14,
-              15
-            ],
-            "details": "Create integration tests that simulate the entire process from document upload through processing, status determination, and data merging. Test both auto-approved and flagged scenarios.",
-            "status": "pending",
-            "testStrategy": "Use Django's TestCase with transaction support to test the entire workflow. Create realistic test documents and verify correct database state after processing."
-          },
-          {
-            "id": 20,
-            "title": "Create performance tests for merge operations",
-            "description": "Develop tests to measure and validate the performance of merge operations.",
-            "dependencies": [
-              6,
-              7
-            ],
-            "details": "Create performance tests that measure the execution time of update_fhir_resources and rollback_document_merge methods with various resource counts. Ensure operations complete within the 500ms target.",
-            "status": "pending",
-            "testStrategy": "Use pytest-benchmark to measure performance. Test with small, medium, and large resource sets to establish performance characteristics."
-          },
-          {
-            "id": 21,
-            "title": "Deploy to staging and process test documents",
-            "description": "Deploy the optimistic concurrency system to staging and validate with test documents.",
-            "dependencies": [
-              16,
-              17,
-              18,
-              19,
-              20
-            ],
-            "details": "Deploy the updated code to the staging environment. Process a set of test documents representing various scenarios (clean, flaggable, etc.) and verify correct behavior.",
-            "status": "pending",
-            "testStrategy": "Create a test plan with specific documents and expected outcomes. Manually verify results and collect metrics on processing time and flag rates."
-          },
-          {
-            "id": 22,
-            "title": "Monitor flag rates and tune thresholds",
-            "description": "Monitor the flag rates in staging and adjust thresholds to achieve the target 5-20% flag rate.",
-            "dependencies": [
-              21
-            ],
-            "details": "Collect metrics on flag rates in staging. If outside the 5-20% target range, adjust thresholds in the determine_review_status method (confidence levels, resource counts) to achieve the desired balance.",
-            "status": "pending",
-            "testStrategy": "Process a large sample of documents and measure flag rates. Adjust thresholds iteratively until target rates are achieved."
-          },
-          {
-            "id": 23,
-            "title": "Create dashboard widget showing flagged count",
-            "description": "Develop a UI widget for the dashboard that displays the count of flagged documents requiring review.",
-            "dependencies": [
-              21
-            ],
-            "details": "Create a Django template partial and view that queries the count of documents with 'flagged' status. Implement as a dashboard widget with appropriate styling and a link to the flagged items list view.",
-            "status": "pending",
-            "testStrategy": "Create unit tests for the view logic and manual testing of the widget display and interaction."
-          },
-          {
-            "id": 24,
-            "title": "Build flagged items list view",
-            "description": "Develop a list view showing all flagged documents requiring review.",
-            "dependencies": [
-              23
-            ],
-            "details": "Create a Django view and template for listing flagged documents. Include filtering options by date, flag reason, and patient. Display key information including document type, patient name, flag reason, and timestamp.",
-            "status": "pending",
-            "testStrategy": "Create unit tests for the view logic and filtering. Manually test the UI with various filter combinations."
-          },
-          {
-            "id": 25,
-            "title": "Build flagged item detail and verification view",
-            "description": "Develop a detailed view for reviewing and verifying flagged documents.",
-            "dependencies": [
-              24
-            ],
-            "details": "Create a Django view and template for displaying detailed information about a flagged document. Show the extracted data, flag reason, and original document for comparison. Implement forms for verification actions.",
-            "status": "pending",
-            "testStrategy": "Create unit tests for the view logic and form processing. Manually test the UI with various document types."
-          },
-          {
-            "id": 26,
-            "title": "Implement verification actions for flagged items",
-            "description": "Develop the action handlers for Mark as Correct, Correct Data, and Rollback Merge operations.",
-            "dependencies": [
-              25,
-              7
-            ],
-            "details": "Create view functions and forms to handle the three verification actions: Mark as Correct (changes status to 'reviewed'), Correct Data (allows manual edits before marking as 'reviewed'), and Rollback Merge (calls rollback_document_merge and resets status).",
-            "status": "pending",
-            "testStrategy": "Create unit tests for each action handler. Test both successful operations and error handling."
-          },
-          {
-            "id": 27,
-            "title": "Remove obsolete code and update documentation",
-            "description": "Clean up the codebase by removing obsolete review workflow code and updating documentation.",
-            "dependencies": [
-              26
-            ],
-            "details": "Identify and remove code related to the old pessimistic locking review workflow. Update API documentation, user guides, and developer documentation to reflect the new optimistic concurrency model.",
-            "status": "pending",
-            "testStrategy": "Perform regression testing to ensure removal of obsolete code doesn't break existing functionality. Review documentation for accuracy and completeness."
           }
         ]
       }
