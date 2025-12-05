@@ -202,17 +202,21 @@ class Patient(MedicalRecord):
     
     def add_fhir_resources(self, fhir_resources, document_id=None):
         """
-        Append new FHIR resources to the encrypted bundle and extract searchable metadata.
+        Idempotently merge FHIR resources into the encrypted bundle using composite key matching.
+        
+        This method ensures that processing the same document twice updates existing
+        resources rather than creating duplicates. Uses (meta.source, resourceType)
+        as composite key for matching.
         
         This is the core method for the hybrid encryption approach. It:
-        1. Adds FHIR resources to the encrypted_fhir_bundle (with PHI)
+        1. Merges FHIR resources to encrypted_fhir_bundle (with PHI) using composite key matching
         2. Extracts searchable metadata without PHI
         3. Updates encounter dates and provider references
         4. Creates audit trail
         
         Args:
-            fhir_resources (dict or list): FHIR resource(s) to add
-            document_id (int, optional): ID of source document for audit trail
+            fhir_resources (dict or list): FHIR resource(s) to merge
+            document_id (int, optional): ID of source document for audit trail and composite key
             
         Returns:
             bool: True if successful, False otherwise
@@ -223,6 +227,7 @@ class Patient(MedicalRecord):
         """
         import uuid
         from django.utils import timezone
+        from django.db import transaction
         
         # Validate input
         if not fhir_resources:
@@ -242,55 +247,87 @@ class Patient(MedicalRecord):
                 raise ValueError("Each FHIR resource must have a 'resourceType' field")
         
         try:
-            # Get current encrypted bundle or initialize empty one
-            current_bundle = self.encrypted_fhir_bundle or {"resourceType": "Bundle", "entry": []}
-            
-            # Ensure bundle has proper structure
-            if "entry" not in current_bundle:
-                current_bundle["entry"] = []
-            
-            # Add provenance and metadata to each resource
-            for resource in resources:
-                # Add metadata for tracking
-                if "meta" not in resource:
-                    resource["meta"] = {}
+            # Use atomic transaction for data integrity (Task 41.6)
+            with transaction.atomic():
+                # Get current encrypted bundle or initialize empty one
+                current_bundle = self.encrypted_fhir_bundle or {"resourceType": "Bundle", "entry": []}
                 
-                resource["meta"].update({
-                    "source": f"document_{document_id}" if document_id else "direct_entry",
+                # Ensure bundle has proper structure
+                if "entry" not in current_bundle:
+                    current_bundle["entry"] = []
+                
+                # Build composite key index for existing resources (Task 41.6)
+                # Key: (meta.source, resourceType) -> entry index
+                # This enables idempotent merging - same document processed twice updates, not duplicates
+                existing_keys = {}
+                if document_id:  # Only use composite key matching if document_id provided
+                    for idx, entry in enumerate(current_bundle["entry"]):
+                        resource = entry.get("resource", {})
+                        meta_source = resource.get("meta", {}).get("source", "")
+                        resource_type = resource.get("resourceType", "")
+                        
+                        if meta_source and resource_type:
+                            composite_key = (meta_source, resource_type)
+                            existing_keys[composite_key] = idx
+                
+                # Track merge statistics for audit trail
+                added_count = 0
+                updated_count = 0
+                source_tag = f"document_{document_id}" if document_id else "direct_entry"
+                
+                # Process each incoming resource
+                for resource in resources:
+                    # Add metadata for tracking
+                    if "meta" not in resource:
+                        resource["meta"] = {}
+                    
+                    resource["meta"].update({
+                        "source": source_tag,
+                        "lastUpdated": timezone.now().isoformat(),
+                        "versionId": str(uuid.uuid4()),
+                        "security": [{
+                            "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+                            "code": "HCOMPL",
+                            "display": "health compliance"
+                        }]
+                    })
+                    
+                    # Check for existing resource using composite key (Task 41.6)
+                    resource_type = resource["resourceType"]
+                    composite_key = (source_tag, resource_type)
+                    
+                    if document_id and composite_key in existing_keys:
+                        # UPDATE existing resource (idempotent merge)
+                        existing_idx = existing_keys[composite_key]
+                        current_bundle["entry"][existing_idx]["resource"] = resource
+                        updated_count += 1
+                    else:
+                        # APPEND new resource
+                        current_bundle["entry"].append({
+                            "resource": resource,
+                            "fullUrl": f"urn:uuid:{uuid.uuid4()}"
+                        })
+                        added_count += 1
+                
+                # Update bundle metadata
+                current_bundle["meta"] = {
                     "lastUpdated": timezone.now().isoformat(),
-                    "versionId": str(uuid.uuid4()),
-                    "security": [{
-                        "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
-                        "code": "HCOMPL",
-                        "display": "health compliance"
-                    }]
-                })
+                    "versionId": str(uuid.uuid4())
+                }
                 
-                # Add to bundle
-                current_bundle["entry"].append({
-                    "resource": resource,
-                    "fullUrl": f"urn:uuid:{uuid.uuid4()}"
-                })
-            
-            # Update bundle metadata
-            current_bundle["meta"] = {
-                "lastUpdated": timezone.now().isoformat(),
-                "versionId": str(uuid.uuid4())
-            }
-            
-            # Store the updated encrypted bundle
-            self.encrypted_fhir_bundle = current_bundle
-            
-            # Extract searchable metadata (this will be implemented in next subtask)
-            self.extract_searchable_metadata(resources)
-            
-            # Save the patient record
-            self.save()
-            
-            # Create audit trail
-            self._create_fhir_audit_record(resources, document_id)
-            
-            return True
+                # Store the updated encrypted bundle
+                self.encrypted_fhir_bundle = current_bundle
+                
+                # Extract searchable metadata
+                self.extract_searchable_metadata(resources)
+                
+                # Save the patient record
+                self.save()
+                
+                # Create audit trail with merge statistics
+                self._create_fhir_audit_record(resources, document_id, added_count, updated_count)
+                
+                return True
             
         except Exception as e:
             # Log error but don't expose sensitive details
@@ -299,14 +336,27 @@ class Patient(MedicalRecord):
             logger.error(f"Error adding FHIR resources to patient {self.mrn}: {str(e)}")
             raise
     
-    def _create_fhir_audit_record(self, resources, document_id=None):
-        """Create audit trail for FHIR resource addition."""
+    def _create_fhir_audit_record(self, resources, document_id=None, added_count=0, updated_count=0):
+        """
+        Create audit trail for FHIR resource merge operation.
+        
+        Args:
+            resources (list): Resources that were merged
+            document_id (int, optional): Source document ID
+            added_count (int): Count of resources added (default: 0 for backward compatibility)
+            updated_count (int): Count of resources updated (default: 0 for backward compatibility)
+        """
         try:
             # Create sanitized resource summary for audit (no PHI)
             resource_summary = []
+            resource_type_counts = {}
+            
             for resource in resources:
+                resource_type = resource.get("resourceType", "Unknown")
+                resource_type_counts[resource_type] = resource_type_counts.get(resource_type, 0) + 1
+                
                 summary = {
-                    "resourceType": resource.get("resourceType"),
+                    "resourceType": resource_type,
                     "id": resource.get("id"),
                     "meta": resource.get("meta", {})
                 }
@@ -321,13 +371,36 @@ class Patient(MedicalRecord):
                     ]
                 resource_summary.append(summary)
             
-            # Create history record
+            # Determine action based on merge statistics (Task 41.6)
+            if added_count > 0 or updated_count > 0:
+                action = 'fhir_merge'
+                notes = f"Merged {len(resources)} FHIR resource(s) from document {document_id} " \
+                        f"(added: {added_count}, updated: {updated_count})"
+            else:
+                # Backward compatibility: if no counts provided, use old behavior
+                action = 'fhir_append'
+                notes = f"Added {len(resources)} FHIR resource(s)" + \
+                        (f" from document {document_id}" if document_id else "")
+            
+            # Create history record with merge statistics
+            fhir_delta = {
+                'resources': resource_summary,  # Sanitized version without PHI
+                'resource_types': resource_type_counts,
+                'total_resources': len(resources),
+            }
+            
+            # Add merge statistics if available (Task 41.6)
+            if added_count > 0 or updated_count > 0:
+                fhir_delta['added_count'] = added_count
+                fhir_delta['updated_count'] = updated_count
+                if document_id:
+                    fhir_delta['document_id'] = document_id
+            
             PatientHistory.objects.create(
                 patient=self,
-                action='fhir_append',
-                fhir_delta=resource_summary,  # Sanitized version without PHI
-                notes=f"Added {len(resources)} FHIR resource(s)" + 
-                      (f" from document {document_id}" if document_id else "")
+                action=action,
+                fhir_delta=fhir_delta,
+                notes=notes
             )
         except Exception as e:
             # Audit logging failure shouldn't stop the main operation
