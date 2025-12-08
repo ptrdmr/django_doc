@@ -29,7 +29,7 @@ SECURITY NOTES:
 
 import uuid
 from datetime import datetime
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.conf import settings
 from django_cryptography.fields import encrypt
@@ -407,6 +407,164 @@ class Patient(MedicalRecord):
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to create audit record for patient {self.mrn}: {str(e)}")
+    
+    def rollback_document_merge(self, document_id):
+        """
+        Surgically remove FHIR resources associated with a specific document.
+        
+        This method enables safe rollback of document processing by removing only
+        the resources from a specific document using source filtering. Resources
+        from other documents remain intact.
+        
+        Uses (meta.source == "document_{document_id}") to identify target resources.
+        This is the inverse operation of add_fhir_resources and completes the
+        optimistic merge system's rollback capability.
+        
+        Args:
+            document_id (int): ID of the document whose resources should be removed
+            
+        Returns:
+            int: Count of resources removed (0 if document not found)
+            
+        Raises:
+            Exception: If bundle is corrupted or operation fails
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Validate input
+        if not document_id:
+            logger.warning(f"rollback_document_merge called with empty document_id for patient {self.mrn}")
+            return 0
+        
+        try:
+            # Use atomic transaction for data integrity
+            with transaction.atomic():
+                # Get current encrypted bundle
+                current_bundle = self.encrypted_fhir_bundle or {"resourceType": "Bundle", "entry": []}
+                
+                # Handle malformed bundle gracefully
+                if "entry" not in current_bundle:
+                    logger.warning(f"Patient {self.mrn} has malformed FHIR bundle - no 'entry' field")
+                    return 0
+                
+                if not isinstance(current_bundle["entry"], list):
+                    logger.error(f"Patient {self.mrn} has corrupted FHIR bundle - 'entry' is not a list")
+                    raise ValueError("FHIR bundle 'entry' field is corrupted")
+                
+                # Build source identifier for filtering
+                source_identifier = f"document_{document_id}"
+                
+                # Track removed resources for audit trail
+                removed_resources = []
+                resource_type_counts = {}
+                
+                # Filter: keep all resources EXCEPT those from target document
+                filtered_entries = []
+                for entry in current_bundle["entry"]:
+                    resource = entry.get("resource", {})
+                    meta = resource.get("meta", {})
+                    source = meta.get("source", "")
+                    
+                    # Check if this resource belongs to the target document
+                    if source == source_identifier:
+                        # This resource should be removed
+                        resource_type = resource.get("resourceType", "Unknown")
+                        resource_type_counts[resource_type] = resource_type_counts.get(resource_type, 0) + 1
+                        
+                        # Store sanitized summary for audit (no PHI)
+                        removed_resources.append({
+                            "resourceType": resource_type,
+                            "id": resource.get("id"),
+                            "source": source
+                        })
+                    else:
+                        # Keep this resource (it's from a different document or has no source)
+                        filtered_entries.append(entry)
+                
+                # Count removed resources
+                removed_count = len(removed_resources)
+                
+                # If no resources found, return 0 (idempotent)
+                if removed_count == 0:
+                    logger.info(f"No resources found for document {document_id} in patient {self.mrn} - idempotent rollback")
+                    return 0
+                
+                # Update bundle with filtered entries
+                current_bundle["entry"] = filtered_entries
+                
+                # Update bundle metadata
+                current_bundle["meta"] = {
+                    "lastUpdated": timezone.now().isoformat(),
+                    "versionId": str(uuid.uuid4())
+                }
+                
+                # Store the updated encrypted bundle
+                self.encrypted_fhir_bundle = current_bundle
+                
+                # Save the patient record
+                self.save()
+                
+                # Create HIPAA-compliant audit trail
+                self._create_rollback_audit_record(
+                    document_id=document_id,
+                    removed_resources=removed_resources,
+                    resource_type_counts=resource_type_counts,
+                    removed_count=removed_count
+                )
+                
+                logger.info(f"Rolled back {removed_count} resource(s) from document {document_id} for patient {self.mrn}")
+                return removed_count
+                
+        except ValueError as ve:
+            # Re-raise validation errors
+            logger.error(f"Validation error during rollback for patient {self.mrn}, document {document_id}: {str(ve)}")
+            raise
+        except Exception as e:
+            # Log unexpected errors
+            logger.error(f"Error rolling back document {document_id} for patient {self.mrn}: {str(e)}")
+            raise
+    
+    def _create_rollback_audit_record(self, document_id, removed_resources, resource_type_counts, removed_count):
+        """
+        Create HIPAA-compliant audit trail for rollback operation.
+        
+        Args:
+            document_id (int): Document ID that was rolled back
+            removed_resources (list): Sanitized summary of removed resources (no PHI)
+            resource_type_counts (dict): Count by resource type
+            removed_count (int): Total count of removed resources
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Create detailed fhir_delta for audit trail
+            fhir_delta = {
+                'operation': 'rollback',
+                'document_id': document_id,
+                'removed_resources': removed_resources,  # Sanitized - no PHI
+                'resource_type_counts': resource_type_counts,
+                'total_removed': removed_count,
+                'timestamp': timezone.now().isoformat()
+            }
+            
+            # Build resource type summary for notes
+            type_summary = ", ".join([f"{count} {rtype}" for rtype, count in resource_type_counts.items()])
+            
+            # Create PatientHistory record
+            PatientHistory.objects.create(
+                patient=self,
+                action='fhir_rollback',
+                fhir_delta=fhir_delta,
+                notes=f"Rolled back {removed_count} resource(s) from document {document_id}: {type_summary}"
+            )
+            
+            logger.info(f"Created audit trail for rollback of document {document_id} for patient {self.mrn}")
+            
+        except Exception as e:
+            # Audit logging failure shouldn't stop the rollback
+            logger.warning(f"Failed to create rollback audit record for patient {self.mrn}, document {document_id}: {str(e)}")
     
     def extract_searchable_metadata(self, fhir_resources):
         """
