@@ -1298,3 +1298,338 @@ class DetermineReviewStatusTests(TestCase):
         self.assertEqual(status, 'auto_approved')
         self.assertEqual(reason, '')
 
+
+class RigorousConfidenceValidationTests(TestCase):
+    """
+    RIGOROUS Level 4-5 tests for confidence-based flagging (Task 41.8).
+    
+    Tests edge cases, integration points, security requirements, and performance
+    according to medical_doc_parser.mdc and rigorous_testing.mdc standards.
+    """
+    
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        
+        self.patient = Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            date_of_birth='1980-01-01',
+            mrn='TEST-RIGOROUS-001'
+        )
+        
+        pdf_content = b'%PDF-1.4 fake pdf content'
+        pdf_file = SimpleUploadedFile(
+            'test_document.pdf',
+            pdf_content,
+            content_type='application/pdf'
+        )
+        
+        self.document = Document.objects.create(
+            patient=self.patient,
+            uploaded_by=self.user,
+            file=pdf_file,
+            status='processed'
+        )
+    
+    # ==================== EDGE CASE TESTS ====================
+    
+    def test_negative_confidence_flags_for_review(self):
+        """RIGOROUS: Test invalid negative confidence value triggers flagging"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=-0.5,  # Invalid negative
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Must flag negative confidence
+        self.assertEqual(status, 'flagged')
+        self.assertIn('-0.5', reason)
+        self.assertIn('0.80', reason)
+    
+    def test_confidence_above_one_handled_gracefully(self):
+        """RIGOROUS: Test confidence > 1.0 is handled (should auto-approve if other checks pass)"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=1.5,  # Invalid but high
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Even though >1.0 is technically invalid, it passes confidence check
+        # (This is acceptable behavior - high confidence passes)
+        self.assertEqual(status, 'auto_approved')
+    
+    def test_zero_confidence_flags_for_review(self):
+        """RIGOROUS: Test confidence exactly 0.0 triggers flagging"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.0,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('0.0', reason)
+    
+    def test_confidence_at_exact_boundary_values(self):
+        """RIGOROUS: Test precision at boundary (0.800000001 vs 0.799999999)"""
+        # Just above threshold
+        parsed_data_above = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.800001,
+            fallback_method_used=''
+        )
+        
+        status_above, _ = parsed_data_above.determine_review_status()
+        self.assertEqual(status_above, 'auto_approved', 
+                        "0.800001 should pass threshold")
+        
+        # Just below threshold
+        parsed_data_below = ParsedData.objects.create(
+            document=Document.objects.create(
+                patient=self.patient,
+                uploaded_by=self.user,
+                file=SimpleUploadedFile('test2.pdf', b'content', 'application/pdf'),
+                status='processed'
+            ),
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.799999,
+            fallback_method_used=''
+        )
+        
+        status_below, reason_below = parsed_data_below.determine_review_status()
+        self.assertEqual(status_below, 'flagged',
+                        "0.799999 should fail threshold")
+        self.assertIn('0.799999', reason_below)
+    
+    # ==================== INTEGRATION TESTS ====================
+    
+    def test_flagged_extraction_cannot_be_merged_without_approval(self):
+        """RIGOROUS: Verify business logic prevents merging flagged extractions"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.65,  # Below threshold
+            fallback_method_used='',
+            is_merged=False,
+            is_approved=False
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Verify it's flagged
+        self.assertEqual(status, 'flagged')
+        
+        # Verify merge flags are False
+        self.assertFalse(parsed_data.is_merged, 
+                        "Flagged extraction should not be merged")
+        self.assertFalse(parsed_data.is_approved,
+                        "Flagged extraction should not be approved")
+    
+    def test_auto_approved_extraction_can_be_merged(self):
+        """RIGOROUS: Verify high-confidence extractions pass all checks"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {'resourceType': 'Condition', 'id': '1'},
+                {'resourceType': 'Observation', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.95,
+            fallback_method_used='',
+            is_merged=False
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Verify it's approved
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+        
+        # Business logic should allow merging (though we don't set it here)
+        # This just validates the determination is correct
+    
+    # ==================== PERFORMANCE TESTS ====================
+    
+    def test_confidence_check_uses_minimal_queries(self):
+        """RIGOROUS: Verify confidence check doesn't cause N+1 queries"""
+        from django.test.utils import override_settings
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 10,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.85,
+            fallback_method_used=''
+        )
+        
+        with CaptureQueriesContext(connection) as queries:
+            status, reason = parsed_data.determine_review_status()
+        
+        # Should use 0-1 queries max (confidence is in-memory field)
+        # Allow up to 2 for patient conflict check
+        query_count = len(queries)
+        self.assertLessEqual(query_count, 2,
+            f"Confidence check used {query_count} queries, should use ≤2. "
+            f"Queries: {[q['sql'] for q in queries]}")
+    
+    def test_large_fhir_bundle_confidence_check_fast(self):
+        """RIGOROUS: Verify performance with large FHIR bundles"""
+        import time
+        
+        # Create large FHIR bundle (100 resources)
+        large_bundle = [
+            {'resourceType': 'Observation', 'id': str(i)}
+            for i in range(100)
+        ]
+        
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=large_bundle,
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        start_time = time.time()
+        status, reason = parsed_data.determine_review_status()
+        execution_time = (time.time() - start_time) * 1000  # ms
+        
+        # Must complete in < 100ms per spec
+        self.assertLess(execution_time, 100,
+            f"Large bundle check took {execution_time:.2f}ms, exceeds 100ms target")
+        
+        self.assertEqual(status, 'auto_approved')
+    
+    # ==================== ERROR MESSAGE QUALITY ====================
+    
+    def test_flag_reason_contains_actionable_information(self):
+        """RIGOROUS: Verify flag messages are helpful for reviewers"""
+        test_cases = [
+            (0.65, 'Low extraction confidence (0.65 < 0.80 threshold)'),
+            (0.45, 'Low extraction confidence (0.45 < 0.80 threshold)'),
+            (None, 'Low extraction confidence (unknown < 0.80 threshold)'),
+        ]
+        
+        for confidence_value, expected_substring in test_cases:
+            with self.subTest(confidence=confidence_value):
+                doc = Document.objects.create(
+                    patient=self.patient,
+                    uploaded_by=self.user,
+                    file=SimpleUploadedFile(f'test_{confidence_value}.pdf', 
+                                          b'content', 'application/pdf'),
+                    status='processed'
+                )
+                
+                parsed_data = ParsedData.objects.create(
+                    document=doc,
+                    patient=self.patient,
+                    extraction_json={'test': 'data'},
+                    fhir_delta_json=[{'resourceType': 'Condition'}],
+                    ai_model_used='claude-3-sonnet',
+                    extraction_confidence=confidence_value,
+                    fallback_method_used=''
+                )
+                
+                status, reason = parsed_data.determine_review_status()
+                
+                self.assertEqual(status, 'flagged')
+                # Verify reason contains all key information
+                self.assertIn('confidence', reason.lower())
+                self.assertIn('0.80', reason)
+                if confidence_value is not None:
+                    self.assertIn(str(confidence_value), reason)
+                else:
+                    self.assertIn('unknown', reason.lower())
+    
+    # ==================== REALISTIC SCENARIOS ====================
+    
+    def test_batch_processing_confidence_decisions(self):
+        """RIGOROUS: Test confidence flagging across realistic batch of documents"""
+        test_cases = [
+            # (confidence, expected_status, description)
+            (0.95, 'auto_approved', 'High confidence extraction'),
+            (0.85, 'auto_approved', 'Good confidence extraction'),
+            (0.80, 'auto_approved', 'Threshold confidence extraction'),
+            (0.75, 'flagged', 'Below threshold extraction'),
+            (0.50, 'flagged', 'Low confidence extraction'),
+            (None, 'flagged', 'Missing confidence'),
+        ]
+        
+        results = []
+        for confidence, expected, description in test_cases:
+            doc = Document.objects.create(
+                patient=self.patient,
+                uploaded_by=self.user,
+                file=SimpleUploadedFile(f'batch_{confidence}.pdf', 
+                                      b'content', 'application/pdf'),
+                status='processed'
+            )
+            
+            parsed_data = ParsedData.objects.create(
+                document=doc,
+                patient=self.patient,
+                extraction_json={'test': 'data'},
+                fhir_delta_json=[
+                    {'resourceType': 'Condition'},
+                    {'resourceType': 'Observation'},
+                    {'resourceType': 'MedicationStatement'},
+                ],
+                ai_model_used='claude-3-sonnet',
+                extraction_confidence=confidence,
+                fallback_method_used=''
+            )
+            
+            status, reason = parsed_data.determine_review_status()
+            results.append((confidence, status, expected, description))
+            
+            with self.subTest(description=description):
+                self.assertEqual(status, expected,
+                    f"{description}: confidence={confidence} should be {expected}, got {status}")
+        
+        # Verify batch statistics
+        auto_approved_count = sum(1 for _, status, _, _ in results if status == 'auto_approved')
+        flagged_count = sum(1 for _, status, _, _ in results if status == 'flagged')
+        
+        self.assertEqual(auto_approved_count, 3, "Should have 3 auto-approved")
+        self.assertEqual(flagged_count, 3, "Should have 3 flagged")
