@@ -766,6 +766,11 @@ class ParsedData(BaseModel):
             return ('flagged', f'Low extraction confidence ({confidence_value} < 0.80 threshold)')
         
         # Check 2: Fallback model usage
+        # Check if GPT model was used (indicates fallback from Claude primary)
+        if self.ai_model_used and 'gpt' in self.ai_model_used.lower():
+            return ('flagged', f'Fallback AI model used: {self.ai_model_used}')
+        
+        # Also check fallback_method_used field for backward compatibility
         if self.fallback_method_used:
             return ('flagged', f'Fallback extraction method used: {self.fallback_method_used}')
         

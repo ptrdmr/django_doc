@@ -1117,7 +1117,8 @@ class DetermineReviewStatusTests(TestCase):
         status, reason = parsed_data.determine_review_status()
         
         self.assertEqual(status, 'flagged')
-        self.assertIn('gpt-fallback', reason)
+        # Should catch the GPT model in ai_model_used field first
+        self.assertIn('gpt-3.5-turbo', reason)
         self.assertIn('fallback', reason.lower())
     
     def test_zero_resources_flags_for_review(self):
@@ -1633,3 +1634,410 @@ class RigorousConfidenceValidationTests(TestCase):
         
         self.assertEqual(auto_approved_count, 3, "Should have 3 auto-approved")
         self.assertEqual(flagged_count, 3, "Should have 3 flagged")
+
+
+class RigorousFallbackModelValidationTests(TestCase):
+    """
+    Rigorous tests for fallback AI model detection (Subtask 41.9).
+    
+    Tests the determine_review_status() method's ability to detect when
+    fallback GPT models were used instead of the primary Claude model.
+    
+    Test Difficulty Level: 4-5/5 (Rigorous)
+    - Tests actual behavior, not framework
+    - Covers edge cases and boundary conditions
+    - Tests integration with approval workflow
+    - Validates error messages and specificity
+    """
+    
+    def setUp(self):
+        """Set up test fixtures for fallback model testing"""
+        self.user = get_user_model().objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        
+        self.patient = Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            date_of_birth='1980-01-01',
+            mrn='TEST-MRN-001'
+        )
+        
+        # Create test document
+        pdf_content = b'%PDF-1.4 fake pdf content'
+        pdf_file = SimpleUploadedFile(
+            'test_document.pdf',
+            pdf_content,
+            content_type='application/pdf'
+        )
+        
+        self.document = Document.objects.create(
+            patient=self.patient,
+            uploaded_by=self.user,
+            filename='test_document.pdf',
+            file=pdf_file,
+            status='completed'
+        )
+    
+    def test_gpt_3_5_turbo_model_triggers_flag(self):
+        """GPT-3.5-turbo model should be flagged as fallback"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='gpt-3.5-turbo',
+            extraction_confidence=0.92,  # High confidence, but fallback model
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('gpt-3.5-turbo', reason)
+        self.assertIn('fallback', reason.lower())
+        self.assertIn('ai model', reason.lower())
+    
+    def test_gpt_4_model_triggers_flag(self):
+        """GPT-4 model should be flagged as fallback"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='gpt-4',
+            extraction_confidence=0.95,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('gpt-4', reason)
+        self.assertIn('fallback', reason.lower())
+    
+    def test_gpt_4o_mini_model_triggers_flag(self):
+        """GPT-4o-mini model should be flagged as fallback"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='gpt-4o-mini',
+            extraction_confidence=0.88,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('gpt-4o-mini', reason)
+        self.assertIn('fallback', reason.lower())
+    
+    def test_claude_sonnet_model_not_flagged(self):
+        """Claude-3-sonnet (primary model) should not be flagged"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-sonnet-20240229',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_claude_opus_model_not_flagged(self):
+        """Claude-3-opus (primary model) should not be flagged"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-opus-20240229',
+            extraction_confidence=0.95,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_claude_sonnet_4_5_model_not_flagged(self):
+        """Claude-sonnet-4-5 (newest primary model) should not be flagged"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-sonnet-4-5-20250929',
+            extraction_confidence=0.96,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_claude_opus_4_5_model_not_flagged(self):
+        """Claude-opus-4-5 (newest primary model) should not be flagged"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-opus-4-5-20251101',
+            extraction_confidence=0.97,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_case_insensitive_gpt_detection(self):
+        """GPT detection should be case-insensitive"""
+        # Test uppercase
+        parsed_data_upper = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='GPT-4',
+            extraction_confidence=0.90,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data_upper.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('GPT-4', reason)
+    
+    def test_empty_ai_model_used_not_flagged(self):
+        """Empty ai_model_used should not trigger fallback flag"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='',  # Empty string
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_unknown_ai_model_not_flagged(self):
+        """Unknown/non-GPT model should not trigger fallback flag"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='unknown',  # Unknown model
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_fallback_method_used_field_still_works(self):
+        """fallback_method_used field should still trigger flagging"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='claude-3-sonnet',  # Primary model
+            extraction_confidence=0.92,
+            fallback_method_used='regex'  # But fallback method was used
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('regex', reason)
+        self.assertIn('fallback', reason.lower())
+    
+    def test_both_gpt_and_fallback_method_flags_gpt_first(self):
+        """When both ai_model_used has GPT AND fallback_method_used is set, GPT check should trigger first"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='gpt-4o-mini',
+            extraction_confidence=0.92,
+            fallback_method_used='gpt-fallback'
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        # Should mention the ai_model_used, not fallback_method_used
+        self.assertIn('gpt-4o-mini', reason)
+        self.assertIn('ai model', reason.lower())
+        # Should NOT mention fallback_method_used since ai_model check triggers first
+        self.assertNotIn('gpt-fallback', reason)
+    
+    def test_gpt_model_with_low_confidence_flags_confidence_first(self):
+        """Low confidence should be checked before fallback model (Check 1 before Check 2)"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='gpt-4',
+            extraction_confidence=0.75,  # Below 0.80 threshold
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        # Should flag for confidence, not fallback model (Check 1 runs before Check 2)
+        self.assertIn('confidence', reason.lower())
+        self.assertIn('0.75', reason)
+        self.assertNotIn('gpt', reason.lower())
+    
+    def test_gpt_model_name_partial_match(self):
+        """Partial GPT matches in model name should be detected"""
+        test_models = [
+            'gpt-3.5-turbo-16k',
+            'gpt-4-turbo-preview',
+            'gpt-4-1106-preview',
+            'gpt-4o'
+        ]
+        
+        for i, model_name in enumerate(test_models):
+            with self.subTest(model=model_name):
+                # Create unique document for each iteration
+                pdf_content = b'%PDF-1.4 fake pdf content'
+                pdf_file = SimpleUploadedFile(
+                    f'test_document_{i}.pdf',
+                    pdf_content,
+                    content_type='application/pdf'
+                )
+                
+                document = Document.objects.create(
+                    patient=self.patient,
+                    uploaded_by=self.user,
+                    filename=f'test_document_{i}.pdf',
+                    file=pdf_file,
+                    status='completed'
+                )
+                
+                parsed_data = ParsedData.objects.create(
+                    document=document,
+                    patient=self.patient,
+                    extraction_json={'test': 'data'},
+                    fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+                    ai_model_used=model_name,
+                    extraction_confidence=0.92,
+                    fallback_method_used=''
+                )
+                
+                status, reason = parsed_data.determine_review_status()
+                
+                self.assertEqual(status, 'flagged', f"{model_name} should be flagged as fallback")
+                self.assertIn(model_name, reason)
+                self.assertIn('fallback', reason.lower())
+    
+    def test_non_gpt_models_not_flagged(self):
+        """Non-GPT, non-Claude models should not be flagged as fallback"""
+        test_models = [
+            'anthropic/claude-3-haiku',
+            'claude-instant-1.2',
+            'mistral-large-latest',
+            'llama-3-70b-instruct'
+        ]
+        
+        for i, model_name in enumerate(test_models):
+            with self.subTest(model=model_name):
+                # Create unique document for each iteration
+                pdf_content = b'%PDF-1.4 fake pdf content'
+                pdf_file = SimpleUploadedFile(
+                    f'test_non_gpt_{i}.pdf',
+                    pdf_content,
+                    content_type='application/pdf'
+                )
+                
+                document = Document.objects.create(
+                    patient=self.patient,
+                    uploaded_by=self.user,
+                    filename=f'test_non_gpt_{i}.pdf',
+                    file=pdf_file,
+                    status='completed'
+                )
+                
+                parsed_data = ParsedData.objects.create(
+                    document=document,
+                    patient=self.patient,
+                    extraction_json={'test': 'data'},
+                    fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+                    ai_model_used=model_name,
+                    extraction_confidence=0.92,
+                    fallback_method_used=''
+                )
+                
+                status, reason = parsed_data.determine_review_status()
+                
+                self.assertEqual(status, 'auto_approved', f"{model_name} should not be flagged")
+                self.assertEqual(reason, '')
+    
+    def test_performance_fallback_check_under_100ms(self):
+        """Fallback model check should complete in under 100ms"""
+        import time
+        
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='gpt-4o-mini',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        start_time = time.time()
+        status, reason = parsed_data.determine_review_status()
+        duration = (time.time() - start_time) * 1000  # Convert to ms
+        
+        self.assertEqual(status, 'flagged')
+        self.assertLess(duration, 100, f"Fallback check took {duration:.2f}ms, should be < 100ms")
+    
+    def test_fallback_flag_integrates_with_approval_workflow(self):
+        """Flagged fallback documents should block auto-approval"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[{'resourceType': 'Condition'}] * 5,
+            ai_model_used='gpt-3.5-turbo',
+            extraction_confidence=0.95,
+            fallback_method_used='',
+            is_approved=False,
+            is_merged=False
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Should be flagged, not auto_approved
+        self.assertEqual(status, 'flagged')
+        self.assertFalse(parsed_data.is_approved)
+        self.assertFalse(parsed_data.is_merged)

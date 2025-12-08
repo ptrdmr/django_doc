@@ -3045,11 +3045,11 @@
             "id": 9,
             "title": "Implement fallback model check in determine_review_status",
             "description": "Add logic to flag documents processed using the fallback AI model.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               3
             ],
-            "details": "In the determine_review_status() method, implement logic to check if the fallback AI model was used for extraction. If so, set the flag_reason accordingly and return 'flagged' status.",
+            "details": "In the determine_review_status() method, implement logic to check if the fallback AI model was used for extraction. If so, set the flag_reason accordingly and return 'flagged' status.\n<info added on 2025-12-08T17:39:15.276Z>\nI've implemented the fallback AI model detection in the determine_review_status() method. The implementation checks if the document was processed using a GPT model by looking for 'gpt' in the ai_model_used field (case-insensitive). If found, it flags the document with a specific message indicating which model was used. For backward compatibility, it also maintains the existing check for the fallback_method_used field.\n\nThe implementation includes:\n- Primary detection of 'gpt' in ai_model_used field\n- Secondary check for fallback_method_used (backward compatibility)\n- Detailed flag reason that includes the specific model name\n- Proper integration with the existing review status determination flow\n\nThe code is thoroughly tested with 17 comprehensive tests covering core functionality, integration, edge cases, and quality aspects. All tests are passing, including verification that Claude models are not flagged while GPT models are correctly identified.\n\nThe implementation maintains the correct priority order of checks and meets performance requirements with execution time under 100ms. It properly integrates with the approval workflow, ensuring documents processed with fallback models are flagged for manual review while still supporting the optimistic concurrency model.\n</info added on 2025-12-08T17:39:15.276Z>",
             "testStrategy": "Create unit tests for both primary and fallback model scenarios to verify correct flagging behavior."
           },
           {
@@ -3338,7 +3338,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-12-08T17:00:52.236Z",
+      "updated": "2025-12-08T17:39:22.687Z",
       "description": "Tasks for master context"
     }
   }
