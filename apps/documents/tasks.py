@@ -786,6 +786,66 @@ def process_document_async(self, document_id: int):
                         action = "Created" if created else "Updated"
                         logger.info(f"{action} ParsedData record {parsed_data.id} for document {document_id}")
                         
+                        # Task 41.13: Determine review status and merge immediately (optimistic concurrency)
+                        try:
+                            logger.info(f"[{task_id}] Determining review status for ParsedData {parsed_data.id}")
+                            
+                            # Determine if data should be auto-approved or flagged
+                            review_status, flag_reason = parsed_data.determine_review_status()
+                            
+                            # Update ParsedData with review status
+                            parsed_data.review_status = review_status
+                            parsed_data.auto_approved = (review_status == 'auto_approved')
+                            parsed_data.flag_reason = flag_reason
+                            parsed_data.save(update_fields=['review_status', 'auto_approved', 'flag_reason'])
+                            
+                            logger.info(
+                                f"[{task_id}] Review status determined: {review_status} "
+                                f"{'(auto-approved)' if parsed_data.auto_approved else f'(flagged: {flag_reason})'}"
+                            )
+                            
+                            # Immediately merge data into patient record regardless of review status
+                            # This is the core of optimistic concurrency: merge now, review later if needed
+                            if serialized_fhir_resources:
+                                logger.info(
+                                    f"[{task_id}] Merging {len(serialized_fhir_resources)} FHIR resources "
+                                    f"into patient {document.patient.mrn} record (optimistic merge)"
+                                )
+                                
+                                # Merge using patient's add_fhir_resources method
+                                merge_success = document.patient.add_fhir_resources(
+                                    serialized_fhir_resources,
+                                    document_id=document.id
+                                )
+                                
+                                if merge_success:
+                                    # Mark ParsedData as merged
+                                    parsed_data.is_merged = True
+                                    parsed_data.merged_at = timezone.now()
+                                    parsed_data.save(update_fields=['is_merged', 'merged_at'])
+                                    
+                                    logger.info(
+                                        f"[{task_id}] Successfully merged {len(serialized_fhir_resources)} "
+                                        f"resources into patient {document.patient.mrn}"
+                                    )
+                                else:
+                                    logger.error(
+                                        f"[{task_id}] Failed to merge FHIR resources into patient record "
+                                        f"for document {document_id}"
+                                    )
+                            else:
+                                logger.warning(
+                                    f"[{task_id}] No FHIR resources to merge for document {document_id}"
+                                )
+                                
+                        except Exception as merge_exc:
+                            logger.error(
+                                f"[{task_id}] Error during review status determination or immediate merge: {merge_exc}",
+                                exc_info=True
+                            )
+                            # Don't fail the entire task - data is still saved in ParsedData
+                            # It can be merged later manually or via retry
+                        
                     except Exception as pd_exc:
                         logger.error(f"Failed to save ParsedData for document {document_id}: {pd_exc}")
                         # Don't fail the task, but log the error
@@ -819,15 +879,40 @@ def process_document_async(self, document_id: int):
                 'error_message': document.error_message
             }
         
-        # Mark document as ready for review (NOT completed yet)
-        # Data should only be marked 'completed' after user review and approval
-        document.status = 'review'
-        document.processing_message = "Ready for review"
+        # Task 41.13: Set document status based on review status (optimistic concurrency)
+        # With optimistic concurrency, data is already merged - status reflects quality
+        try:
+            # Get the ParsedData to check review status
+            from .models import ParsedData
+            parsed_data = ParsedData.objects.filter(document=document).first()
+            
+            if parsed_data and parsed_data.auto_approved:
+                # High quality extraction - mark as completed
+                document.status = 'completed'
+                document.processing_message = "Processing completed - data auto-approved and merged"
+                logger.info(f"[{task_id}] Document {document_id} auto-approved and completed")
+            elif parsed_data and parsed_data.review_status == 'flagged':
+                # Lower quality or conflicts - mark for review but data is already merged
+                document.status = 'review'
+                document.processing_message = f"Merged with flags - review recommended: {parsed_data.flag_reason[:100]}"
+                logger.info(f"[{task_id}] Document {document_id} flagged for review: {parsed_data.flag_reason}")
+            else:
+                # Fallback for unexpected states
+                document.status = 'review'
+                document.processing_message = "Processing completed - review recommended"
+                logger.warning(f"[{task_id}] Document {document_id} in unexpected state, defaulting to review")
+                
+        except Exception as status_exc:
+            logger.error(f"[{task_id}] Error setting document status: {status_exc}")
+            # Fallback to review status on error
+            document.status = 'review'
+            document.processing_message = "Processing completed - review recommended"
+        
         document.processed_at = timezone.now()
         document.error_message = ''
         document.save()
         
-        logger.info(f"Document {document_id} processed successfully and marked for review")
+        logger.info(f"Document {document_id} processed successfully - status: {document.status}")
         
         # Prepare comprehensive result
         result = {

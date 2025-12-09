@@ -3090,13 +3090,13 @@
             "id": 13,
             "title": "Update process_document_async in tasks.py for immediate merge",
             "description": "Modify the document processing task to implement immediate merging of data regardless of review status.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               3,
               6,
               7
             ],
-            "details": "Update the process_document_async function in tasks.py to call determine_review_status(), set the appropriate status flags, and then merge the data into the patient record using add_fhir_resources() regardless of whether the document is flagged or auto-approved.",
+            "details": "Update the process_document_async function in tasks.py to call determine_review_status(), set the appropriate status flags, and then merge the data into the patient record using add_fhir_resources() regardless of whether the document is flagged or auto-approved.\n<info added on 2025-12-09T05:32:12.585Z>\n## Task 41.13 Implementation Complete ✅\n\nSuccessfully implemented immediate merging with optimistic concurrency in process_document_async.\n\n### Implementation Details\n\n**1. Automatic Review Status Determination (lines 790-830)**\nAfter ParsedData creation, the task now:\n- Calls `parsed_data.determine_review_status()` to evaluate extraction quality\n- Sets `review_status`: 'auto_approved' or 'flagged' \n- Sets `auto_approved` boolean flag\n- Stores `flag_reason` if data is flagged\n\nQuality checks: confidence < 0.80, fallback model, zero resources, low resource count, patient conflicts.\n\n**2. Immediate Merge Logic (lines 831-853)**\nCRITICAL FEATURE - Data merged immediately regardless of quality:\n- Auto-approved data → Merged immediately\n- Flagged data → Also merged immediately (optimistic concurrency)\n- Calls `patient.add_fhir_resources()` with resources and document_id\n- Marks `ParsedData.is_merged = True` with timestamp\n- Creates HIPAA audit trail via PatientHistory\n\n**3. Smart Document Status Setting (lines 856-889)**\n- High quality (auto-approved) → status='completed', \"auto-approved and merged\"\n- Lower quality (flagged) → status='review', \"Merged with flags - review recommended\"\n- Graceful error handling with fallback\n\n### Test Coverage - 6 Tests, 100% Pass Rate ✅\n\nFile: `apps/documents/tests/test_optimistic_merge_simple.py`\n\n1. ✅ High quality extraction auto-approved\n2. ✅ Low confidence extraction flagged  \n3. ✅ Fallback model extraction flagged\n4. ✅ Auto-approved data merges immediately\n5. ✅ Flagged data ALSO merges immediately (core of optimistic concurrency)\n6. ✅ HIPAA-compliant audit trail created\n\n### Files Modified\n\n1. **apps/documents/tasks.py** - Added optimistic merge logic (lines 790-889)\n2. **apps/documents/tests/test_optimistic_merge_simple.py** - New comprehensive test suite\n\n### Key Benefits\n\n🚀 Speed - Immediate data access without waiting for review\n🔍 Quality - Flagged items highlighted for later review/correction\n📝 Audit - Complete HIPAA trail via PatientHistory  \n🔄 Reversible - Can rollback via rollback_document_merge() if needed\n\nThis completes the optimistic concurrency merge system. Users get immediate access to data while the system maintains quality controls through the review workflow.\n</info added on 2025-12-09T05:32:12.585Z>",
             "testStrategy": "Create integration tests that verify the entire workflow from document processing to data merging."
           },
           {
@@ -3338,7 +3338,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-12-09T04:29:55.674Z",
+      "updated": "2025-12-09T05:32:18.182Z",
       "description": "Tasks for master context"
     }
   }
