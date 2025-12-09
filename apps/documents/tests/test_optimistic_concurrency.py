@@ -1139,6 +1139,24 @@ class DetermineReviewStatusTests(TestCase):
         self.assertIn('zero', reason.lower())
         self.assertIn('resources', reason.lower())
     
+    def test_zero_resources_empty_dict_flags_for_review(self):
+        """RIGOROUS: Test that empty dict format also triggers zero resource flagging"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json={},  # Empty dict (legacy format)
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('zero', reason.lower())
+        self.assertIn('resources', reason.lower())
+    
     def test_low_resource_count_with_medium_confidence_flags(self):
         """Test that <3 resources with <0.95 confidence triggers flagging"""
         parsed_data = ParsedData.objects.create(

@@ -3056,11 +3056,11 @@
             "id": 10,
             "title": "Implement zero resources check in determine_review_status",
             "description": "Add logic to flag documents with zero extracted FHIR resources.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               3
             ],
-            "details": "In the determine_review_status() method, implement logic to check if no FHIR resources were extracted. If so, set the flag_reason accordingly and return 'flagged' status.",
+            "details": "In the determine_review_status() method, implement logic to check if no FHIR resources were extracted. If so, set the flag_reason accordingly and return 'flagged' status.\n<info added on 2025-12-09T03:46:38.631Z>\nThe zero resources check has been fully implemented in the `determine_review_status()` method (lines 777-780 in apps/documents/models.py):\n\n```python\n# Check 3: Zero resources extracted\nresource_count = self.get_fhir_resource_count()\nif resource_count == 0:\n    return ('flagged', 'Zero FHIR resources extracted from document')\n```\n\nThe implementation correctly:\n- Uses `get_fhir_resource_count()` helper method which handles both list and dict FHIR formats\n- Returns 'flagged' status with clear reason message\n- Integrates into the review status determination flow\n- Is documented in method docstring (line 757: \"Zero resources extracted\")\n\nEnhanced test coverage has been added to verify handling of empty resources in both formats:\n- Test for empty list format `[]` was already passing\n- New test `test_zero_resources_empty_dict_flags_for_review` added to validate empty dict format `{}`\n- All 14 tests in DetermineReviewStatusTests class pass successfully\n\nThis implementation was likely completed as part of subtask 41.3 which built the complete `determine_review_status()` method.\n</info added on 2025-12-09T03:46:38.631Z>",
             "testStrategy": "Create unit tests with empty and non-empty resource sets to verify correct flagging behavior."
           },
           {
@@ -3338,7 +3338,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-12-08T17:39:22.687Z",
+      "updated": "2025-12-09T03:46:43.621Z",
       "description": "Tasks for master context"
     }
   }
