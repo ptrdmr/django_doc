@@ -1,0 +1,10 @@
+{
+  "document_id": 87,
+  "timestamp": "2025-11-28T02:47:16.661651",
+  "stage": "error_structured_extraction",
+  "error_message": "Claude response is not valid JSON: Expecting ',' delimiter: line 676 column 6 (char 19962)",
+  "error_data": {
+    "context": null,
+    "text_length": 2272
+  }
+}

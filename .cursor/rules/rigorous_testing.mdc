@@ -10,7 +10,131 @@ alwaysApply: true
 
 Tests exist to catch bugs, validate business logic, and prevent regressions. Weak tests are worse than no tests because they provide false confidence.
 
-### **Core Testing Principles**
+**MINIMUM TEST DIFFICULTY: Level 4/5** (see self-assessment scale below)
+
+---
+
+## **Test Quality Requirements - No Exceptions**
+
+Every test must satisfy ALL of the following criteria:
+
+### **1. Must Test Actual Failure Modes**
+- ✅ Test with invalid data that should be rejected
+- ✅ Test boundary conditions (empty, null, max values, negatives)
+- ✅ Test concurrent access scenarios (race conditions, locks)
+- ✅ Test database constraint violations
+- ❌ Don't just test the happy path
+
+### **2. Must Validate Security/HIPAA Requirements**
+- ✅ Verify unauthorized access is blocked (403/404, not 200)
+- ✅ Confirm PHI is encrypted in database (raw SQL check)
+- ✅ Ensure audit logs are created for every PHI access
+- ✅ Test permission boundaries between organizations
+- ❌ Don't assume security works without proving it
+
+### **3. Must Be Able to Fail**
+- ✅ Test must catch real bugs if introduced
+- ✅ Assertions must be specific (not just `assertIsNotNone`)
+- ✅ Use `assertRaises` for expected errors
+- ✅ Verify exact error messages/types
+- ❌ Don't write tests that always pass
+
+### **4. Must Test Integration Points**
+- ✅ Test database constraints are enforced
+- ✅ Test Celery tasks execute correctly
+- ✅ Test API responses match contracts
+- ✅ Test file upload/processing end-to-end
+- ❌ Don't mock away the functionality being tested
+
+### **5. Must Include Performance Validation**
+- ✅ Use `assertNumQueries` to prevent N+1 problems
+- ✅ Test with realistic data volumes (100+ records)
+- ✅ Verify operations complete within time limits
+- ❌ Don't test with trivial datasets
+
+---
+
+## **Test Review Checklist**
+
+Before marking a test complete, answer YES to all:
+
+- [ ] Would this test catch a bug if I broke the feature?
+- [ ] Does this test validate a security/compliance requirement?
+- [ ] Does this test check error handling, not just success?
+- [ ] Would this test fail if I removed key business logic?
+- [ ] Does this test verify data integrity (constraints, encryption)?
+- [ ] Does this test check performance (query count, timing)?
+
+**If you can't answer YES to all questions, the test is insufficient.**
+
+---
+
+## **Test Difficulty Self-Assessment**
+
+Rate your test honestly (1-5 scale):
+
+**Level 1 (Trivial)** - Tests that objects can be created, fields exist
+**Level 2 (Basic)** - Tests happy path with valid data
+**Level 3 (Adequate)** - Tests some error cases and validation
+**Level 4 (Rigorous)** - Tests security, constraints, edge cases, performance
+**Level 5 (Comprehensive)** - Tests failure modes, concurrency, integration, compliance
+
+**Minimum acceptable: Level 4**
+**Target for critical features: Level 5**
+
+---
+
+## **Examples of Insufficient Tests (DO NOT WRITE THESE)**
+
+```python
+# ❌ TOO EASY - Just tests Django works
+def test_patient_creation(self):
+    patient = Patient.objects.create(first_name='John')
+    self.assertIsNotNone(patient)
+
+# ❌ TOO EASY - Doesn't verify actual behavior
+def test_patient_has_mrn(self):
+    patient = Patient(mrn='TEST-001')
+    self.assertTrue(hasattr(patient, 'mrn'))
+
+# ❌ TOO EASY - Mocks away the real functionality
+@patch('apps.documents.services.process_document')
+def test_upload(self, mock_process):
+    mock_process.return_value = {'status': 'success'}
+    # This doesn't test if processing actually works!
+```
+
+---
+
+## **Examples of Rigorous Tests (WRITE THESE)**
+
+```python
+# ✅ RIGOROUS - Tests actual constraint enforcement
+def test_duplicate_mrn_rejected_at_db_level(self):
+    Patient.objects.create(mrn='TEST-001', ...)
+    with self.assertRaises(IntegrityError):
+        Patient.objects.create(mrn='TEST-001', ...)
+
+# ✅ RIGOROUS - Tests security boundary
+def test_user_cannot_access_other_org_patient(self):
+    other_org_patient = self.create_patient(org=self.other_org)
+    self.client.force_login(self.user)  # user in self.org
+    response = self.client.get(f'/patients/{other_org_patient.id}/')
+    self.assertEqual(response.status_code, 403)
+
+# ✅ RIGOROUS - Tests encryption actually happens
+def test_ssn_encrypted_in_database(self):
+    patient = Patient.objects.create(ssn='123-45-6789', ...)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT ssn FROM patients WHERE id = %s", [patient.id])
+        raw_value = cursor.fetchone()[0]
+    self.assertNotEqual(raw_value, '123-45-6789')
+    self.assertNotIn('123-45-6789', str(raw_value))
+```
+
+---
+
+## **Core Testing Principles**
 
 **✅ DO: Write Tests That Can Fail**
 ```python
@@ -432,9 +556,9 @@ def test_patient_name_property(self):
 
 ---
 
-## **Test Quality Checklist**
+## **Additional Test Quality Checklist**
 
-Before submitting a test, verify:
+Before submitting a test, also verify:
 
 - [ ] **Can this test actually fail?** If not, delete it.
 - [ ] **Does it test business logic?** Not framework/library behavior.
@@ -511,6 +635,16 @@ def test_patient_search_performance(self):
     self.assertLess(duration, 0.2, 
                    f"Search took {duration:.3f}s, exceeds 200ms limit")
 ```
+
+---
+
+## **Enforcement**
+
+- Code reviews must verify all tests meet these standards
+- Tests that don't meet Level 4 criteria must be rewritten
+- No PRs merged with insufficient test coverage
+- When in doubt, write a harder test
+- AI assistants must flag tests below Level 4 and suggest improvements
 
 ---
 
