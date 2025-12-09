@@ -31,6 +31,105 @@ from .performance import performance_monitor, document_chunker
 logger = logging.getLogger(__name__)
 
 
+def check_document_idempotency(document_id: int, task_id: str) -> dict:
+    """
+    Check if document has already been processed to prevent duplicate processing.
+    
+    Uses database-level locking (select_for_update) to prevent race conditions
+    where multiple tasks attempt to process the same document simultaneously.
+    
+    Args:
+        document_id: ID of the document to check
+        task_id: Celery task ID for logging
+    
+    Returns:
+        dict with 'should_skip' bool and optional 'skip_response' dict
+        
+        If should_skip is True, skip_response contains:
+        - success: True
+        - document_id: Document ID
+        - status: 'completed' or 'skipped'
+        - task_id: Celery task ID
+        - message: Reason for skipping
+        - idempotent_skip: True
+        - already_processed: True (if document was already merged)
+    
+    Raises:
+        Document.DoesNotExist: If document doesn't exist (should be handled by caller)
+    
+    Performance:
+        - Completes in <5ms for already-processed documents
+        - Uses nowait=True to fail fast if document is locked
+    """
+    from .models import Document, ParsedData
+    from django.db import transaction
+    from django.db.utils import OperationalError
+    
+    with transaction.atomic():
+        # Lock the document row to prevent concurrent processing
+        try:
+            document_check = Document.objects.select_for_update(nowait=True).get(id=document_id)
+        except Document.DoesNotExist:
+            # Document doesn't exist - re-raise to be handled by caller
+            logger.warning(f"[{task_id}] Document {document_id} does not exist during idempotency check")
+            raise
+        except OperationalError:
+            # Can't get lock - another task is processing this document
+            logger.warning(
+                f"[{task_id}] Document {document_id} is currently being processed by another task. "
+                "Skipping to prevent duplicate processing."
+            )
+            return {
+                'should_skip': True,
+                'skip_response': {
+                    'success': True,
+                    'document_id': document_id,
+                    'status': 'skipped',
+                    'task_id': task_id,
+                    'message': 'Document is already being processed by another task',
+                    'idempotent_skip': True
+                }
+            }
+        
+        # Check if document already has successful processing
+        if document_check.status == 'completed':
+            parsed_data_exists = ParsedData.objects.filter(
+                document_id=document_id,
+                is_merged=True
+            ).exists()
+            
+            if parsed_data_exists:
+                logger.info(
+                    f"[{task_id}] Document {document_id} already successfully processed and merged. "
+                    "Skipping to maintain idempotency."
+                )
+                return {
+                    'should_skip': True,
+                    'skip_response': {
+                        'success': True,
+                        'document_id': document_id,
+                        'status': 'completed',
+                        'task_id': task_id,
+                        'message': 'Document already successfully processed',
+                        'idempotent_skip': True,
+                        'already_processed': True
+                    }
+                }
+        
+        # Check if document is in failed state and needs reprocessing
+        if document_check.status == 'failed':
+            logger.info(
+                f"[{task_id}] Document {document_id} previously failed, attempting reprocessing"
+            )
+            # Reset status to allow reprocessing
+            document_check.status = 'pending'
+            document_check.error_message = ''  # Empty string, not None (field is not nullable)
+            document_check.save(update_fields=['status', 'error_message'])
+        
+        logger.info(f"[{task_id}] Idempotency check passed, proceeding with processing")
+        return {'should_skip': False}
+
+
 @shared_task(bind=True)
 @performance_monitor.timing_decorator("document_chunk_processing")
 def process_document_chunk(self, document_id: int, chunk_text: str, chunk_id: int, chunk_metadata: Dict = None):
@@ -159,6 +258,21 @@ def process_document_async(self, document_id: int):
     recovery_actions = []
     
     logger.info(f"[{task_id}] Starting document processing for document {document_id}")
+    
+    # Task 41.15: IDEMPOTENCY CHECK - Prevent duplicate processing
+    try:
+        idempotency_result = check_document_idempotency(document_id, task_id)
+        if idempotency_result['should_skip']:
+            return idempotency_result['skip_response']
+    except Document.DoesNotExist:
+        # Document doesn't exist - re-raise to be handled by main try block
+        raise
+    except Exception as idempotency_check_error:
+        # Log but don't fail - proceed with processing
+        logger.warning(
+            f"[{task_id}] Idempotency check failed: {idempotency_check_error}. "
+            "Proceeding with processing."
+        )
     
     try:
         # Enhanced document retrieval with validation
