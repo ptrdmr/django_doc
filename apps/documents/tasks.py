@@ -838,28 +838,142 @@ def process_document_async(self, document_id: int):
                                     f"[{task_id}] No FHIR resources to merge for document {document_id}"
                                 )
                                 
-                        except Exception as merge_exc:
+                        except FHIRConversionError as fhir_merge_error:
+                            # Specific handling for FHIR conversion errors during merge
+                            error_info = fhir_merge_error.to_dict()
+                            processing_errors.append(str(fhir_merge_error))
+                            recovery_actions.append(get_recovery_strategy(fhir_merge_error.error_code))
+                            
                             logger.error(
-                                f"[{task_id}] Error during review status determination or immediate merge: {merge_exc}",
-                                exc_info=True
+                                f"[{task_id}] FHIR conversion error during merge: {fhir_merge_error}",
+                                extra={
+                                    'document_id': document_id,
+                                    'parsed_data_id': parsed_data.id,
+                                    'error_code': fhir_merge_error.error_code,
+                                    'error_details': fhir_merge_error.details
+                                }
+                            )
+                            # Don't fail the entire task - data is still saved in ParsedData
+                            # It can be merged later manually or via retry
+                            
+                        except DataValidationError as validation_error:
+                            # Specific handling for data validation errors during merge
+                            error_info = validation_error.to_dict()
+                            processing_errors.append(str(validation_error))
+                            recovery_actions.append(get_recovery_strategy(validation_error.error_code))
+                            
+                            logger.error(
+                                f"[{task_id}] Data validation error during merge: {validation_error}",
+                                extra={
+                                    'document_id': document_id,
+                                    'parsed_data_id': parsed_data.id,
+                                    'error_code': validation_error.error_code,
+                                    'error_details': validation_error.details
+                                }
+                            )
+                            # Don't fail the entire task - data is still saved in ParsedData
+                            # It can be merged later manually or via retry
+                            
+                        except Exception as merge_exc:
+                            # Categorize unexpected errors
+                            error_info = categorize_exception(merge_exc)
+                            processing_errors.append(str(merge_exc))
+                            recovery_actions.append(get_recovery_strategy(error_info['error_code']))
+                            
+                            logger.error(
+                                f"[{task_id}] Unexpected error during review status determination or immediate merge: {merge_exc}",
+                                exc_info=True,
+                                extra={
+                                    'document_id': document_id,
+                                    'parsed_data_id': parsed_data.id if parsed_data else None,
+                                    'error_category': error_info['error_code'],
+                                    'recovery_strategy': error_info.get('recovery_strategy')
+                                }
                             )
                             # Don't fail the entire task - data is still saved in ParsedData
                             # It can be merged later manually or via retry
                         
+                    except DataValidationError as validation_exc:
+                        # Specific handling for data validation errors during ParsedData creation
+                        error_info = validation_exc.to_dict()
+                        processing_errors.append(f"ParsedData validation error: {str(validation_exc)}")
+                        recovery_actions.append(get_recovery_strategy(validation_exc.error_code))
+                        
+                        logger.error(
+                            f"[{task_id}] Data validation error creating ParsedData for document {document_id}: {validation_exc}",
+                            extra={
+                                'document_id': document_id,
+                                'error_code': validation_exc.error_code,
+                                'error_details': validation_exc.details
+                            }
+                        )
+                        # Don't fail the task - processing was successful, just data storage failed
+                        
                     except Exception as pd_exc:
-                        logger.error(f"Failed to save ParsedData for document {document_id}: {pd_exc}")
-                        # Don't fail the task, but log the error
+                        # Categorize unexpected ParsedData errors
+                        error_info = categorize_exception(pd_exc)
+                        processing_errors.append(f"ParsedData creation error: {str(pd_exc)}")
+                        recovery_actions.append(get_recovery_strategy(error_info['error_code']))
+                        
+                        logger.error(
+                            f"[{task_id}] Failed to save ParsedData for document {document_id}: {pd_exc}",
+                            exc_info=True,
+                            extra={
+                                'document_id': document_id,
+                                'error_category': error_info['error_code'],
+                                'error_details': error_info.get('details', {})
+                            }
+                        )
+                        # Don't fail the task - processing was successful, just data storage failed
                     
                 else:
                     logger.warning(f"AI analysis failed for document {document_id}: {ai_result.get('error', 'Unknown error')}")
                     # Don't fail the entire task if AI fails - PDF extraction was successful
                     
-            except Exception as ai_exc:
-                logger.warning(f"AI analysis error for document {document_id}: {ai_exc}")
+            except AIExtractionError as ai_exc:
+                # Specific handling for AI extraction errors
+                error_info = ai_exc.to_dict()
+                processing_errors.append(str(ai_exc))
+                recovery_actions.append(get_recovery_strategy(ai_exc.error_code))
+                
+                logger.warning(
+                    f"[{task_id}] AI extraction error for document {document_id}: {ai_exc}",
+                    extra={
+                        'document_id': document_id,
+                        'error_code': ai_exc.error_code,
+                        'error_details': ai_exc.details
+                    }
+                )
+                
                 # Continue processing even if AI fails - we still have the extracted text
                 ai_result = {
                     'success': False,
                     'error': str(ai_exc),
+                    'error_code': ai_exc.error_code,
+                    'fields': []
+                }
+                
+            except Exception as ai_exc:
+                # Categorize unexpected AI errors
+                error_info = categorize_exception(ai_exc)
+                processing_errors.append(f"AI analysis error: {str(ai_exc)}")
+                recovery_actions.append(get_recovery_strategy(error_info['error_code']))
+                
+                logger.warning(
+                    f"[{task_id}] Unexpected AI analysis error for document {document_id}: {ai_exc}",
+                    exc_info=True,
+                    extra={
+                        'document_id': document_id,
+                        'error_category': error_info['error_code'],
+                        'error_details': error_info.get('details', {})
+                    }
+                )
+                
+                # Continue processing even if AI fails - we still have the extracted text
+                ai_result = {
+                    'success': False,
+                    'error': str(ai_exc),
+                    'error_code': error_info['error_code'],
                     'fields': []
                 }
         
@@ -903,10 +1017,28 @@ def process_document_async(self, document_id: int):
                 logger.warning(f"[{task_id}] Document {document_id} in unexpected state, defaulting to review")
                 
         except Exception as status_exc:
-            logger.error(f"[{task_id}] Error setting document status: {status_exc}")
+            # Categorize status update error
+            error_info = categorize_exception(status_exc)
+            processing_errors.append(f"Status update error: {str(status_exc)}")
+            
+            logger.error(
+                f"[{task_id}] Error setting document status: {status_exc}",
+                extra={
+                    'document_id': document_id,
+                    'error_category': error_info['error_code'],
+                    'error_details': error_info.get('details', {})
+                }
+            )
+            
             # Fallback to review status on error
-            document.status = 'review'
-            document.processing_message = "Processing completed - review recommended"
+            try:
+                document.status = 'review'
+                document.processing_message = "Processing completed - review recommended (status update failed)"
+                document.save(update_fields=['status', 'processing_message'])
+            except Exception as fallback_error:
+                logger.critical(
+                    f"[{task_id}] Critical: Failed to set fallback status for document {document_id}: {fallback_error}"
+                )
         
         document.processed_at = timezone.now()
         document.error_message = ''
@@ -958,32 +1090,107 @@ def process_document_async(self, document_id: int):
         raise self.retry(exc=exc, countdown=60, max_retries=5) # Retry after 60s
         
     except Exception as exc:
-        # Handle unexpected errors
-        logger.error(f"Document processing failed for {document_id}: {exc}")
+        # Categorize the error for better handling
+        error_info = categorize_exception(exc)
+        error_code = error_info.get('error_code', 'UNKNOWN_ERROR')
+        recovery_strategy = get_recovery_strategy(error_code)
         
+        # Calculate total processing time
+        total_time = time.time() - start_time
+        
+        # Enhanced error logging with structured data
+        logger.error(
+            f"[{task_id}] Document processing failed for {document_id}: {exc}",
+            exc_info=True,
+            extra={
+                'document_id': document_id,
+                'task_id': task_id,
+                'error_category': error_code,
+                'error_type': error_info.get('error_type'),
+                'recovery_strategy': recovery_strategy,
+                'processing_time': total_time,
+                'processing_errors': processing_errors,
+                'recovery_actions': recovery_actions
+            }
+        )
+        
+        # Attempt to update document status with detailed error information
         try:
-            # Try to update document status
             document = Document.objects.get(id=document_id)
             document.status = 'failed'
-            document.error_message = f"Processing error: {str(exc)}"
+            document.error_message = f"[{error_code}] {str(exc)[:500]}"  # Truncate long messages
             document.processed_at = timezone.now()
             document.save()
-        except:
-            # If we can't even update the document, log it
-            logger.error(f"Failed to update document {document_id} status after error")
+            
+            logger.info(f"[{task_id}] Updated document {document_id} status to 'failed'")
+            
+        except Exception as status_update_error:
+            # Critical: If we can't even update the document, log it with high severity
+            logger.critical(
+                f"[{task_id}] CRITICAL: Failed to update document {document_id} status after error: {status_update_error}",
+                extra={
+                    'document_id': document_id,
+                    'original_error': str(exc),
+                    'status_update_error': str(status_update_error)
+                }
+            )
         
-        # Retry the task if it's a retryable error
-        if document.can_retry_processing():
-            logger.info(f"Retrying document {document_id} processing (attempt {document.processing_attempts})")
-            raise self.retry(exc=exc, countdown=300, max_retries=3)  # 5 minute retry delay
+        # Determine if error is retryable based on error category
+        retryable_errors = [
+            'AI_SERVICE_TIMEOUT',
+            'AI_SERVICE_RATE_LIMIT', 
+            'EXTERNAL_SERVICE_ERROR',
+            'AI_EXTRACTION_ERROR'
+        ]
+        
+        is_retryable = error_code in retryable_errors
+        
+        # Check if we can retry the processing
+        try:
+            can_retry = document.can_retry_processing() if hasattr(document, 'can_retry_processing') else False
+        except:
+            can_retry = False
+        
+        # Retry logic with categorization
+        if is_retryable and can_retry:
+            # Determine retry delay based on error type
+            retry_delays = {
+                'AI_SERVICE_RATE_LIMIT': 120,  # 2 minutes
+                'AI_SERVICE_TIMEOUT': 60,       # 1 minute
+                'EXTERNAL_SERVICE_ERROR': 180,  # 3 minutes
+                'AI_EXTRACTION_ERROR': 300      # 5 minutes
+            }
+            retry_delay = retry_delays.get(error_code, 300)
+            
+            logger.info(
+                f"[{task_id}] Retrying document {document_id} processing "
+                f"(attempt {document.processing_attempts}, delay: {retry_delay}s, reason: {error_code})"
+            )
+            
+            raise self.retry(exc=exc, countdown=retry_delay, max_retries=3)
         else:
-            logger.error(f"Max retries exceeded for document {document_id}")
+            # Log why we're not retrying
+            retry_reason = "not retryable" if not is_retryable else "max retries exceeded"
+            logger.error(
+                f"[{task_id}] Document {document_id} processing failed permanently ({retry_reason})"
+            )
+            
+            # Return detailed failure information
             return {
                 'success': False,
                 'document_id': document_id,
                 'status': 'failed',
-                'error_message': f"Processing failed after max retries: {str(exc)}",
-                'message': 'Document processing failed permanently'
+                'task_id': task_id,
+                'error_type': error_info.get('error_type'),
+                'error_code': error_code,
+                'error_message': str(exc),
+                'error_details': error_info.get('details', {}),
+                'recovery_strategy': recovery_strategy,
+                'processing_time': total_time,
+                'processing_errors': processing_errors,
+                'recovery_actions': recovery_actions,
+                'retry_reason': retry_reason,
+                'message': f'Document processing failed permanently: {str(exc)[:200]}'
             }
 
 
