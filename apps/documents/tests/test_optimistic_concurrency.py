@@ -514,6 +514,373 @@ class CheckQuickConflictsTests(TestCase):
         self.assertIn('DOB mismatch', reason)
 
 
+class PatientConflictIntegrationTests(TestCase):
+    """
+    RIGOROUS tests for Task 41.12: Integration of patient data conflict check 
+    into determine_review_status() method.
+    
+    Tests the complete integration of check_quick_conflicts() as Check #5 in the
+    5-check validation sequence, including priority ordering, edge cases, and
+    comprehensive conflict scenarios.
+    
+    Test Difficulty Level: 4-5/5 (Rigorous)
+    """
+    
+    def setUp(self):
+        """Set up test data"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            password='testpass123'
+        )
+        
+        self.patient = Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            date_of_birth='1980-01-01',
+            mrn='TEST-CONFLICT-001'
+        )
+        
+        pdf_file = SimpleUploadedFile(
+            'test_document.pdf',
+            b'PDF content here',
+            content_type='application/pdf'
+        )
+        
+        self.document = Document.objects.create(
+            patient=self.patient,
+            uploaded_by=self.user,
+            filename='test_document.pdf',
+            file=pdf_file,
+            status='completed'
+        )
+    
+    def test_conflict_check_runs_after_all_other_checks(self):
+        """RIGOROUS: Verify conflict check is Check #5, runs only if checks 1-4 pass"""
+        # Create document that would fail Check #1 (low confidence) AND has conflict
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['Jane'], 'family': 'Smith'}],  # Name conflict
+                    'birthDate': '1985-05-15'  # DOB conflict
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.70,  # FAILS Check #1 (< 0.80)
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Should fail on Check #1 (confidence), NOT Check #5 (conflict)
+        self.assertEqual(status, 'flagged')
+        self.assertIn('confidence', reason.lower())
+        self.assertNotIn('conflict', reason.lower())  # Conflict check never runs
+    
+    def test_dob_conflict_flags_when_all_other_checks_pass(self):
+        """RIGOROUS: DOB mismatch triggers flagging when checks 1-4 pass"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['John'], 'family': 'Doe'}],  # Name matches
+                    'birthDate': '1975-06-20'  # DOB mismatch
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+                {'resourceType': 'Procedure', 'id': '4'},
+            ],  # 5 resources - passes Check #4
+            ai_model_used='claude-3-sonnet',  # Passes Check #2
+            extraction_confidence=0.96,  # Passes Check #1 and Check #4
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('Patient data conflict', reason)
+        self.assertIn('DOB mismatch', reason)
+        self.assertIn('1975-06-20', reason)  # Extracted DOB
+        self.assertIn('1980-01-01', reason)  # Patient record DOB
+    
+    def test_name_conflict_flags_when_all_other_checks_pass(self):
+        """RIGOROUS: Name mismatch triggers flagging when checks 1-4 pass"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['Robert'], 'family': 'Johnson'}],  # Name mismatch
+                    'birthDate': '1980-01-01'  # DOB matches
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.95,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('Patient data conflict', reason)
+        self.assertIn('Name mismatch', reason)
+        self.assertIn('Robert Johnson', reason)
+        self.assertIn('John Doe', reason)
+    
+    def test_multiple_conflicts_reported_in_flag_reason(self):
+        """RIGOROUS: Both DOB and name conflicts reported together"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['Alice'], 'family': 'Williams'}],  # Name mismatch
+                    'birthDate': '1990-12-25'  # DOB mismatch
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('Patient data conflict', reason)
+        # Both conflicts should be mentioned
+        self.assertIn('DOB mismatch', reason)
+        self.assertIn('Name mismatch', reason)
+        self.assertIn(';', reason)  # Multiple conflicts separated
+    
+    def test_no_conflict_with_matching_patient_data(self):
+        """RIGOROUS: Auto-approves when patient data matches and all checks pass"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['John'], 'family': 'Doe'}],  # Exact match
+                    'birthDate': '1980-01-01'  # Exact match
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')  # No flag reason
+    
+    def test_partial_name_match_does_not_conflict(self):
+        """RIGOROUS: Smart matching allows middle names and variations"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['John', 'Michael'], 'family': 'Doe'}],  # Middle name added
+                    'birthDate': '1980-01-01'
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.90,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')  # No conflict detected
+    
+    def test_missing_patient_resource_does_not_conflict(self):
+        """RIGOROUS: No conflict when FHIR has no Patient resource"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],  # No Patient resource
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Should auto-approve since conflict check can't run
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+    
+    def test_empty_fhir_data_triggers_zero_resources_check_not_conflict(self):
+        """RIGOROUS: Empty FHIR fails Check #3 (zero resources), not Check #5"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[],  # Empty
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Should fail on Check #3 (zero resources)
+        self.assertEqual(status, 'flagged')
+        self.assertIn('Zero', reason)
+        self.assertIn('resources', reason.lower())
+        self.assertNotIn('conflict', reason.lower())
+    
+    def test_conflict_check_with_dict_format_fhir(self):
+        """RIGOROUS: Conflict detection works with legacy dict format FHIR"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json={
+                'Patient': [{
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['Wrong'], 'family': 'Person'}],
+                    'birthDate': '1995-01-01'
+                }],
+                'Observation': [{'resourceType': 'Observation', 'id': '1'}],
+                'Condition': [{'resourceType': 'Condition', 'id': '2'}],
+                'MedicationStatement': [{'resourceType': 'MedicationStatement', 'id': '3'}],
+            },  # Dict format
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        self.assertEqual(status, 'flagged')
+        self.assertIn('Patient data conflict', reason)
+    
+    def test_performance_with_conflict_check_enabled(self):
+        """RIGOROUS: Full determine_review_status with conflict check < 100ms"""
+        import time
+        
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['John'], 'family': 'Doe'}],
+                    'birthDate': '1980-01-01'
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        start_time = time.time()
+        status, reason = parsed_data.determine_review_status()
+        execution_time = (time.time() - start_time) * 1000
+        
+        self.assertLess(execution_time, 100,
+                       f"determine_review_status with conflict check took {execution_time:.2f}ms")
+        self.assertEqual(status, 'auto_approved')
+    
+    def test_conflict_overrides_borderline_checks(self):
+        """RIGOROUS: Conflict flags even when borderline on other checks"""
+        # Borderline case: exactly 3 resources with exactly 0.95 confidence
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['Different'], 'family': 'Person'}],
+                    'birthDate': '1985-06-15'  # Conflict
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+            ],  # Exactly 3 resources (passes Check #4)
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.95,  # Exactly 0.95 (passes Check #4)
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Even though it passes checks 1-4, conflict should flag it
+        self.assertEqual(status, 'flagged')
+        self.assertIn('Patient data conflict', reason)
+    
+    def test_case_insensitive_conflict_detection(self):
+        """RIGOROUS: Name comparison is case-insensitive"""
+        parsed_data = ParsedData.objects.create(
+            document=self.document,
+            patient=self.patient,
+            extraction_json={'test': 'data'},
+            fhir_delta_json=[
+                {
+                    'resourceType': 'Patient',
+                    'name': [{'given': ['JOHN'], 'family': 'DOE'}],  # All caps
+                    'birthDate': '1980-01-01'
+                },
+                {'resourceType': 'Observation', 'id': '1'},
+                {'resourceType': 'Condition', 'id': '2'},
+                {'resourceType': 'MedicationStatement', 'id': '3'},
+            ],
+            ai_model_used='claude-3-sonnet',
+            extraction_confidence=0.92,
+            fallback_method_used=''
+        )
+        
+        status, reason = parsed_data.determine_review_status()
+        
+        # Should auto-approve (case-insensitive match)
+        self.assertEqual(status, 'auto_approved')
+        self.assertEqual(reason, '')
+
+
 class DatabaseIndexTests(TestCase):
     """
     Tests for database indexes on optimistic concurrency fields (Task 41.5).

@@ -783,14 +783,7 @@ class ParsedData(BaseModel):
         if resource_count < 3 and self.extraction_confidence < 0.95:
             return ('flagged', f'Low resource count ({resource_count} resources) with insufficient confidence ({self.extraction_confidence})')
         
-        # Check 5: Patient data conflicts (implemented in subtask 41.4)
-        # This will be added after check_quick_conflicts() method is implemented
-        # For now, we'll add a placeholder that can be uncommented later
-        # has_conflict, conflict_reason = self.check_quick_conflicts()
-        # if has_conflict:
-        #     return ('flagged', f'Patient data conflict: {conflict_reason}')
-        
-        # Check 5: Patient data conflicts (implemented in subtask 41.4)
+        # Check 5: Patient data conflicts (DOB/name mismatch)
         has_conflict, conflict_reason = self.check_quick_conflicts()
         if has_conflict:
             return ('flagged', f'Patient data conflict: {conflict_reason}')
