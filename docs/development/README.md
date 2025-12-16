@@ -2631,126 +2631,37 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 50  # Restart workers to prevent memory leak
 
 **Quick Test Execution:**
 ```bash
-# ✅ DO: Run comprehensive test suite with custom runner
-python run_comprehensive_tests.py --all
+# ✅ DO: Run all Django tests
+python manage.py test
 
-# ✅ DO: Run specific test categories
-python run_comprehensive_tests.py --unit
-python run_comprehensive_tests.py --integration --performance
+# ✅ DO: Run tests with pytest
+pytest
+
+# ✅ DO: Run tests for specific apps
+python manage.py test apps.patients
+python manage.py test apps.documents
+python manage.py test apps.fhir
 
 # ✅ DO: Run with coverage reporting  
-python run_comprehensive_tests.py --coverage --verbose
-
-# ✅ DO: Run in parallel for speed
-python run_comprehensive_tests.py --parallel --fast
+pytest --cov=apps/ --cov-report=html --cov-report=term
 ```
 
-**Production CI/CD Testing:**
-```yaml
-# ✅ GitHub Actions workflow for automated testing
-name: Comprehensive Pipeline Tests
-jobs:
-  test-matrix:
-    strategy:
-      matrix:
-        python-version: [3.9, 3.10, 3.11]
-        test-category: [unit, integration, security]
-    steps:
-      - name: Run Category Tests
-        run: pytest -m ${{ matrix.test-category }} --cov=apps/
-      - name: Security Validation  
-        run: bandit -r apps/ && safety check
-```
+**Test Organization:**
+Tests are organized by app in their respective `tests/` directories:
+- `apps/patients/tests/` - Patient model and view tests
+- `apps/documents/tests/` - Document processing tests
+- `apps/fhir/tests/` - FHIR resource conversion tests
+- `apps/reports/tests/` - Report generation tests
 
-### 🎯 Test Categories Implementation
+**Running Specific Test Categories:**
+```bash
+# Run specific test files
+pytest apps/documents/tests/test_models.py
+pytest apps/fhir/tests/test_fhir_processor.py
 
-**1. Unit Tests - Component Isolation**
-```python
-# ✅ apps/documents/test_comprehensive_pipeline.py
-class AIExtractionUnitTests(TestCase):
-    """Test AI extraction service components in isolation."""
-    
-    @patch('apps.documents.services.ai_extraction.anthropic.Anthropic')
-    def test_claude_extraction_success(self):
-        """Test successful Claude extraction with Pydantic validation."""
-        
-    @patch('instructor.from_openai')  
-    def test_openai_fallback_extraction(self):
-        """Test OpenAI instructor fallback when Claude fails."""
-        
-    def test_pydantic_model_validation(self):
-        """Test all medical data Pydantic models with various input."""
-
-class FHIRConversionUnitTests(TestCase):
-    """Test FHIR conversion bridge components."""
-    
-    def test_structured_data_converter(self):
-        """Test StructuredDataConverter with all resource types."""
-        
-    def test_fhir_resource_validation(self):
-        """Test FHIR resource creation and validation."""
-```
-
-**2. Integration Tests - Full Pipeline**
-```python
-class DocumentPipelineIntegrationTests(TestCase):
-    """Test complete document processing pipeline integration."""
-    
-    def test_end_to_end_processing(self):
-        """Test full pipeline from upload to FHIR bundle creation."""
-        
-    def test_error_recovery_integration(self):
-        """Test integrated error handling across all pipeline components."""
-        
-    def test_performance_benchmarks(self):
-        """Test processing time requirements across document sizes."""
-```
-
-**3. UI Tests - Frontend Validation**
-```python
-class ReviewInterfaceUITests(StaticLiveServerTestCase):
-    """Test review interface user interactions."""
-    
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.selenium = WebDriver()
-        
-    def test_structured_data_display(self):
-        """Test structured data rendering in review interface."""
-        
-    def test_individual_field_actions(self):
-        """Test approve/edit/flag actions on medical data fields."""
-```
-
-**4. Performance Tests - Benchmarking**
-```python
-class PerformanceTests(TestCase):
-    """Test processing performance requirements."""
-    
-    def test_large_document_processing_time(self):
-        """Test processing time for documents up to 10MB."""
-        
-    def test_concurrent_processing(self):
-        """Test multiple document processing performance."""
-        
-    def test_database_query_performance(self):
-        """Test sub-15ms query performance requirements."""
-```
-
-**5. Security Tests - HIPAA Compliance**
-```python
-class SecurityComplianceTests(TestCase):
-    """Test HIPAA compliance and security requirements."""
-    
-    def test_phi_encryption_validation(self):
-        """Test PHI data is properly encrypted at rest."""
-        
-    def test_audit_logging_completeness(self):
-        """Test comprehensive audit logging for all medical data access."""
-        
-    def test_error_log_phi_scrubbing(self):
-        """Test error logs contain no PHI data."""
+# Run tests matching a pattern
+pytest -k "test_patient"
+pytest -k "test_fhir_conversion"
 ```
 
 ### 🔧 Test Fixtures and Utilities
@@ -2818,19 +2729,16 @@ coverage html  # Generate HTML report at htmlcov/index.html
 **Pre-Deployment Testing:**
 ```bash
 # ✅ Complete validation suite
-python run_comprehensive_tests.py --all --coverage --security
+pytest --cov=apps/ --cov-report=html --cov-report=term
 bandit -r apps/  # Security analysis
 safety check     # Dependency security check
 ```
 
-**Continuous Integration:**
-- **Automated Testing**: All 7 categories on Python 3.9-3.11
-- **Security Scanning**: Bandit and safety integration
-- **Performance Monitoring**: Benchmark regression detection
-- **HIPAA Compliance**: Automated PHI exposure detection
-
-🎉 **COMPREHENSIVE TESTING FRAMEWORK: 100% COMPLETE!** 🎉
-Enterprise-grade test coverage ensuring medical-grade reliability and HIPAA compliance!
+**Test Best Practices:**
+- Write tests for all new features
+- Maintain high coverage for critical medical data handling code
+- Test error conditions and edge cases
+- Ensure HIPAA compliance in all PHI handling tests
 
 ## Testing Guidelines
 
