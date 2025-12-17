@@ -30,6 +30,7 @@ SECURITY NOTES:
 import uuid
 from datetime import datetime
 from django.db import models, transaction
+from django.contrib.postgres.indexes import GinIndex
 from django.utils import timezone
 from django.conf import settings
 from django_cryptography.fields import encrypt
@@ -140,10 +141,11 @@ class Patient(MedicalRecord):
             models.Index(fields=['mrn']),
             models.Index(fields=['date_of_birth']),
             models.Index(fields=['created_at']),
-            # Indexes for hybrid encryption searchable fields
-            models.Index(fields=['searchable_medical_codes'], name='idx_medical_codes'),
-            models.Index(fields=['encounter_dates'], name='idx_encounter_dates'),
-            models.Index(fields=['provider_references'], name='idx_provider_refs'),
+            # GIN indexes for JSONB fields - better than B-tree for large JSON
+            # B-tree has a ~2704 byte row limit; GIN has no such limitation
+            GinIndex(fields=['searchable_medical_codes'], name='idx_medical_codes_gin'),
+            GinIndex(fields=['encounter_dates'], name='idx_encounter_dates_gin'),
+            GinIndex(fields=['provider_references'], name='idx_provider_refs_gin'),
         ]
         verbose_name = "Patient"
         verbose_name_plural = "Patients"

@@ -1107,22 +1107,40 @@ def process_document_async(self, document_id: int):
                 'error_message': document.error_message
             }
         
-        # Task 41.13: Set document status based on review status (optimistic concurrency)
-        # With optimistic concurrency, data is already merged - status reflects quality
+        # Task 41.13: Set document status based on review status AND merge status
+        # Critical: A document is only truly "completed" if the merge succeeded
         try:
-            # Get the ParsedData to check review status
+            # Get the ParsedData to check review status and merge status
             from .models import ParsedData
             parsed_data = ParsedData.objects.filter(document=document).first()
             
-            if parsed_data and parsed_data.auto_approved:
-                # High quality extraction - mark as completed
+            if not parsed_data:
+                # No ParsedData at all - something went wrong
+                document.status = 'failed'
+                document.processing_message = "Processing failed - no parsed data created"
+                logger.error(f"[{task_id}] Document {document_id} has no ParsedData record")
+            elif not parsed_data.is_merged:
+                # CRITICAL: Data was extracted but NOT merged into patient record
+                # This is a partial failure - data exists but isn't in the patient's bundle
+                document.status = 'failed'
+                document.processing_message = (
+                    f"Merge failed - data extracted but not merged to patient record. "
+                    f"Review status: {parsed_data.review_status}. "
+                    f"ParsedData ID: {parsed_data.id} contains the extracted data."
+                )
+                logger.error(
+                    f"[{task_id}] Document {document_id} MERGE FAILED - is_merged=False. "
+                    f"ParsedData {parsed_data.id} has {len(parsed_data.fhir_delta_json or [])} resources waiting to merge."
+                )
+            elif parsed_data.auto_approved:
+                # High quality extraction AND successfully merged - mark as completed
                 document.status = 'completed'
                 document.processing_message = "Processing completed - data auto-approved and merged"
                 logger.info(f"[{task_id}] Document {document_id} auto-approved and completed")
-            elif parsed_data and parsed_data.review_status == 'flagged':
-                # Lower quality or conflicts - mark for review but data is already merged
+            elif parsed_data.review_status == 'flagged':
+                # Lower quality or conflicts - but data IS merged, just needs review
                 document.status = 'review'
-                document.processing_message = f"Merged with flags - review recommended: {parsed_data.flag_reason[:100]}"
+                document.processing_message = f"Merged with flags - review recommended: {parsed_data.flag_reason[:100] if parsed_data.flag_reason else 'Unknown'}"
                 logger.info(f"[{task_id}] Document {document_id} flagged for review: {parsed_data.flag_reason}")
             else:
                 # Fallback for unexpected states
