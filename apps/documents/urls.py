@@ -38,4 +38,7 @@ urlpatterns = [
     # Clinical date management endpoints (Task 35.5)
     path('clinical-date/save/', views.save_clinical_date, name='save-clinical-date'),
     path('clinical-date/verify/', views.verify_clinical_date, name='verify-clinical-date'),
+    
+    # Flagged documents list view (Task 41.24)
+    path('flagged/', views.FlaggedDocumentsListView.as_view(), name='flagged-list'),
 ] 

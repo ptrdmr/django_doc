@@ -3226,11 +3226,11 @@
             "id": 24,
             "title": "Build flagged items list view",
             "description": "Develop a list view showing all flagged documents requiring review.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               23
             ],
-            "details": "Create a Django view and template for listing flagged documents. Include filtering options by date, flag reason, and patient. Display key information including document type, patient name, flag reason, and timestamp.",
+            "details": "Create a Django view and template for listing flagged documents. Include filtering options by date, flag reason, and patient. Display key information including document type, patient name, flag reason, and timestamp.\n<info added on 2025-12-25T04:36:09.110Z>\nI've implemented a comprehensive flagged documents list view with the following features:\n\n1. Django View (FlaggedDocumentsListView):\n   - Displays ParsedData items with review_status='flagged'\n   - Query optimization with select_related()\n   - Permission-controlled access (documents.view_parseddata)\n   - Pagination with 20 items per page\n\n2. Advanced Filtering:\n   - Date range filtering (start_date/end_date)\n   - Flag reason text search (case-insensitive)\n   - Patient dropdown filter\n   - Combined filtering with AND logic\n\n3. Professional UI:\n   - Warning-themed design with consistent styling\n   - Statistics showing total and filtered counts\n   - Intuitive filter panel with quick filters\n   - Detailed item cards showing document info, patient details, flag reasons\n   - Action buttons for review and viewing\n   - Pagination with filter state preservation\n   - Appropriate empty states\n\n4. Integration:\n   - Connected dashboard \"Needs Review\" card to this view\n   - Added route in documents/urls.py\n   - Compatible with existing permission system\n\n5. Testing:\n   - 25 comprehensive tests covering all functionality\n   - Tests for filtering, permissions, edge cases, and performance\n   - All tests passing\n\nPerformance optimizations include select_related(), pagination, and database indexes. Security is ensured through permission checks and input validation with graceful error handling.\n</info added on 2025-12-25T04:36:09.110Z>",
             "testStrategy": "Create unit tests for the view logic and filtering. Manually test the UI with various filter combinations."
           },
           {
@@ -3338,7 +3338,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-12-25T04:21:24.663Z",
+      "updated": "2025-12-25T04:46:46.365Z",
       "description": "Tasks for master context"
     }
   }

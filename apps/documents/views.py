@@ -2914,3 +2914,114 @@ def verify_clinical_date(request):
             'success': False,
             'error': 'An unexpected error occurred'
         }, status=500)
+
+
+@method_decorator(has_permission('documents.view_parseddata'), name='dispatch')
+class FlaggedDocumentsListView(LoginRequiredMixin, ListView):
+    """
+    Display list of flagged documents requiring manual review.
+    
+    Shows ParsedData items with review_status='flagged', allowing users to filter
+    by date range, flag reason, and patient. This helps reviewers prioritize and
+    manage documents that need human attention before merging.
+    """
+    model = ParsedData
+    template_name = 'documents/flagged_documents_list.html'
+    context_object_name = 'flagged_items'
+    paginate_by = 20
+    
+    def get_queryset(self):
+        """
+        Get flagged ParsedData items with filtering.
+        
+        Filters:
+        - Date range: created_at (start_date, end_date)
+        - Flag reason: text search in flag_reason field
+        - Patient: patient ID
+        
+        Returns:
+            QuerySet: Filtered flagged documents
+        """
+        try:
+            # Base queryset: only flagged items
+            queryset = ParsedData.objects.filter(
+                review_status='flagged'
+            ).select_related(
+                'document',
+                'patient',
+                'document__uploaded_by'
+            ).order_by('-created_at')
+            
+            # Filter by date range (created_at)
+            start_date = self.request.GET.get('start_date')
+            if start_date:
+                try:
+                    queryset = queryset.filter(created_at__date__gte=start_date)
+                except (ValueError, ValidationError):
+                    logger.warning(f"Invalid start_date format: {start_date}")
+            
+            end_date = self.request.GET.get('end_date')
+            if end_date:
+                try:
+                    queryset = queryset.filter(created_at__date__lte=end_date)
+                except (ValueError, ValidationError):
+                    logger.warning(f"Invalid end_date format: {end_date}")
+            
+            # Filter by flag reason (text search)
+            flag_reason = self.request.GET.get('flag_reason', '').strip()
+            if flag_reason:
+                queryset = queryset.filter(flag_reason__icontains=flag_reason)
+            
+            # Filter by patient
+            patient_id = self.request.GET.get('patient')
+            if patient_id:
+                try:
+                    queryset = queryset.filter(patient__id=patient_id)
+                except (ValueError, ValidationError):
+                    logger.warning(f"Invalid patient_id: {patient_id}")
+            
+            return queryset
+            
+        except (DatabaseError, OperationalError) as db_error:
+            logger.error(f"Database error in flagged documents list: {db_error}")
+            messages.error(self.request, "There was an error loading flagged documents.")
+            return ParsedData.objects.none()
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add filter context and statistics.
+        
+        Returns:
+            dict: Enhanced context data
+        """
+        context = super().get_context_data(**kwargs)
+        
+        try:
+            # Add current filter values for form state
+            context.update({
+                'start_date': self.request.GET.get('start_date', ''),
+                'end_date': self.request.GET.get('end_date', ''),
+                'flag_reason': self.request.GET.get('flag_reason', ''),
+                'patient_filter': self.request.GET.get('patient', ''),
+                'patients': Patient.objects.order_by('last_name', 'first_name'),
+            })
+            
+            # Add statistics about flagged items
+            all_flagged = ParsedData.objects.filter(review_status='flagged')
+            context['total_flagged'] = all_flagged.count()
+            context['filtered_count'] = self.get_queryset().count()
+            
+            # Common flag reasons for quick filtering
+            flag_reasons = all_flagged.values_list('flag_reason', flat=True).distinct()[:10]
+            context['common_flag_reasons'] = [reason for reason in flag_reasons if reason]
+            
+        except (DatabaseError, OperationalError) as db_error:
+            logger.error(f"Error building flagged documents context: {db_error}")
+            context.update({
+                'patients': Patient.objects.none(),
+                'total_flagged': 0,
+                'filtered_count': 0,
+                'common_flag_reasons': [],
+            })
+        
+        return context
