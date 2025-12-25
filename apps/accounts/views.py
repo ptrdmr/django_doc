@@ -23,7 +23,8 @@ import random
 # Import our custom utilities
 from apps.core.utils import (
     log_user_activity, 
-    get_model_count, 
+    get_model_count,
+    get_model_count_with_filter,
     ActivityTypes
 )
 from apps.core.models import AuditLog
@@ -77,6 +78,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             'provider_count': get_model_count('providers', 'Provider'),
             'document_count': get_model_count('documents', 'Document'),
             'active_users_count': self._get_active_users_count(),
+            'flagged_extractions_count': get_model_count_with_filter('documents', 'ParsedData', review_status='flagged'),
         }
         
         logger.debug(f"Dashboard stats: {stats}")

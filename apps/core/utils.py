@@ -78,6 +78,31 @@ def get_model_count(app_name, model_name):
         return 0
 
 
+def get_model_count_with_filter(app_name, model_name, **filters):
+    """
+    Safely get count of objects from a model with filters.
+    
+    Args:
+        app_name (str): Name of the Django app
+        model_name (str): Name of the model
+        **filters: Keyword arguments for filtering (e.g., status='active')
+    
+    Returns:
+        int: Count of filtered objects, 0 if model doesn't exist or has no matching objects
+    """
+    try:
+        Model = apps.get_model(app_name, model_name)
+        count = Model.objects.filter(**filters).count()
+        logger.debug(f"Found {count} {model_name} objects in {app_name} with filters {filters}")
+        return count
+    except (LookupError, AttributeError):
+        logger.debug(f"{model_name} model not found in {app_name}, returning 0")
+        return 0
+    except Exception as e:
+        logger.error(f"Error counting {model_name} objects with filters: {e}")
+        return 0
+
+
 def get_client_ip(request):
     """
     Extract client IP address from request, handling proxies.

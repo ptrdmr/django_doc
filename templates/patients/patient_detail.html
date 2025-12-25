@@ -319,6 +319,31 @@
                     </a>
                 </div>
                 
+                {% if flagged_extractions_count > 0 %}
+                <div class="mb-4 p-3 bg-amber-50 border-l-4 border-amber-500 rounded-r-lg">
+                    <div class="flex items-center">
+                        <svg class="w-5 h-5 text-amber-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"></path>
+                        </svg>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-amber-900">
+                                {% if flagged_extractions_count == 1 %}
+                                    1 extraction needs manual review
+                                {% else %}
+                                    {{ flagged_extractions_count }} extractions need manual review
+                                {% endif %}
+                            </p>
+                            <p class="text-xs text-amber-700 mt-1">
+                                These documents have been flagged for quality review before merging.
+                            </p>
+                        </div>
+                        <a href="#" class="ml-4 text-sm font-medium text-amber-700 hover:text-amber-900 underline">
+                            Review Now →
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+                
                 {% if patient_documents %}
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">

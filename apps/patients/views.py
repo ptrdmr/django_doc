@@ -377,6 +377,24 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
         except (ImportError, DatabaseError, OperationalError) as e:
             logger.error(f"Error loading reports for patient {self.object.id}: {e}")
             return []
+    
+    def get_flagged_extractions_count(self):
+        """
+        Get count of flagged extractions for this patient.
+        
+        Returns:
+            int: Number of documents with flagged ParsedData for this patient
+        """
+        try:
+            from apps.documents.models import ParsedData
+            # Count distinct documents that have flagged parsed data for this patient
+            return ParsedData.objects.filter(
+                document__patient=self.object,
+                review_status='flagged'
+            ).values('document').distinct().count()
+        except (DatabaseError, OperationalError, ImportError) as flagged_error:
+            logger.error(f"Error counting flagged extractions for patient {self.object.id}: {flagged_error}")
+            return 0
 
     def get_context_data(self, **kwargs):
         """
@@ -402,6 +420,9 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             
             # Add patient's generated reports
             context['patient_reports'] = self.get_patient_reports()
+            
+            # Add count of flagged extractions for this patient
+            context['flagged_extractions_count'] = self.get_flagged_extractions_count()
             
             # Add breadcrumb data
             context['breadcrumbs'] = [
