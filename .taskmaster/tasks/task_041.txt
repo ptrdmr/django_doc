@@ -2226,11 +2226,42 @@ I've implemented a comprehensive flagged documents list view with the following 
 Performance optimizations include select_related(), pagination, and database indexes. Security is ensured through permission checks and input validation with graceful error handling.
 </info added on 2025-12-25T04:36:09.110Z>
 
-## 25. Build flagged item detail and verification view [pending]
+## 25. Build flagged item detail and verification view [done]
 ### Dependencies: 41.24
 ### Description: Develop a detailed view for reviewing and verifying flagged documents.
 ### Details:
 Create a Django view and template for displaying detailed information about a flagged document. Show the extracted data, flag reason, and original document for comparison. Implement forms for verification actions.
+<info added on 2025-12-25T05:49:54.957Z>
+Create a Django view and template for displaying detailed information about a flagged document. Implement FlaggedDocumentDetailView as a DetailView for ParsedData with review_status='flagged'. Include comprehensive context building with error handling and performance optimization using select_related/prefetch_related.
+
+Implement helper methods for data organization and analysis:
+- Methods to categorize FHIR resources (supporting both list and dict structures)
+- Flag reason analysis with severity detection (high/medium/low)
+- Resource counting by type
+- Confidence mapping for extractions
+- Organization of extraction data by medical category
+- Confidence score attachment to FHIR resources
+
+Design a professional medical-themed UI template with:
+- Three-column layout showing patient/document info and extracted data
+- Confidence score legend explaining green/yellow/red badges
+- Prominent flag reason display with severity color-coding
+- Extraction data sections organized by category (Diagnoses, Medications, etc.)
+- Confidence badges for every extracted field (green ≥90%, yellow 80-89%, red <80%)
+- Source text snippets showing extraction origins
+- Patient information section with links to full patient record
+- Document metadata section
+- Extraction statistics
+- Verification action buttons (to be implemented in task 41.26)
+
+Add URL routing at '/documents/flagged/<int:pk>/' and update the flagged_documents_list to link properly to the detail view.
+
+Create testing utilities (management commands):
+- flag_document_for_testing.py - For artificially flagging documents
+- list_flaggable_documents.py - For listing documents available for flagging
+
+Implement comprehensive test coverage for all functionality including URL accessibility, permission controls, FHIR resource handling, confidence scoring, and template rendering.
+</info added on 2025-12-25T05:49:54.957Z>
 
 ## 26. Implement verification actions for flagged items [pending]
 ### Dependencies: 41.25, 41.7

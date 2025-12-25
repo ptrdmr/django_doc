@@ -3025,3 +3025,462 @@ class FlaggedDocumentsListView(LoginRequiredMixin, ListView):
             })
         
         return context
+
+
+class FlaggedDocumentDetailView(LoginRequiredMixin, DetailView):
+    """
+    Detailed view for reviewing a specific flagged ParsedData item.
+    
+    Displays comprehensive information about a flagged document including:
+    - Flag reason and metadata
+    - Extracted FHIR data
+    - Original document reference
+    - Patient information
+    - Verification action options
+    
+    This view is specific to the optimistic concurrency merge system and
+    provides a foundation for verification actions (task 41.26).
+    """
+    model = ParsedData
+    template_name = 'documents/flagged_document_detail.html'
+    context_object_name = 'flagged_item'
+    
+    def get_queryset(self):
+        """
+        Filter to only flagged ParsedData items with necessary relationships.
+        
+        Returns:
+            QuerySet: Optimized queryset with related objects
+        """
+        return ParsedData.objects.filter(
+            review_status='flagged'
+        ).select_related(
+            'document',
+            'patient',
+            'document__uploaded_by'
+        ).prefetch_related(
+            'document__providers'
+        )
+    
+    def get_context_data(self, **kwargs):
+        """
+        Add comprehensive context for the flagged document detail view.
+        
+        Returns:
+            dict: Enhanced context with extracted data, flag analysis, and metadata
+        """
+        context = super().get_context_data(**kwargs)
+        
+        try:
+            flagged_item = self.object
+            
+            # Parse and organize FHIR data for display
+            fhir_data = flagged_item.fhir_delta_json or {}
+            
+            # Build confidence map from extraction_json to link back to FHIR
+            extraction_confidence_lookup = self._build_extraction_confidence_lookup(
+                flagged_item.extraction_json
+            )
+            
+            # Categorize FHIR resources for organized display
+            categorized_resources = self._categorize_fhir_resources(
+                fhir_data, 
+                extraction_confidence_lookup
+            )
+            
+            # Analyze flag reasons
+            flag_analysis = self._analyze_flag_reasons(flagged_item.flag_reason)
+            
+            # Get document metadata
+            document_info = {
+                'filename': flagged_item.document.filename if flagged_item.document else 'Unknown',
+                'uploaded_at': flagged_item.document.created_at if flagged_item.document else None,
+                'uploaded_by': flagged_item.document.uploaded_by if flagged_item.document else None,
+                'status': flagged_item.document.status if flagged_item.document else 'Unknown',
+            }
+            
+            # Convert extraction_confidence (0.0-1.0) to percentage
+            extraction_confidence_percent = None
+            if flagged_item.extraction_confidence is not None:
+                extraction_confidence_percent = round(flagged_item.extraction_confidence * 100)
+            
+            # Build confidence map from extraction_json
+            confidence_map = self._build_confidence_map(flagged_item.extraction_json)
+            
+            # Organize extraction_json by category for display
+            extraction_by_category = self._organize_extraction_by_category(
+                flagged_item.extraction_json
+            )
+            
+            context.update({
+                'extraction_by_category': extraction_by_category,
+                'categorized_resources': categorized_resources,
+                'flag_analysis': flag_analysis,
+                'document_info': document_info,
+                'resource_counts': self._get_resource_counts(fhir_data),
+                'extraction_confidence_percent': extraction_confidence_percent,
+                'confidence_map': confidence_map,
+                'has_conflicts': 'conflict' in (flagged_item.flag_reason or '').lower(),
+                'has_low_confidence': 'confidence' in (flagged_item.flag_reason or '').lower(),
+            })
+            
+        except Exception as e:
+            logger.error(f"Error building flagged document detail context: {e}")
+            messages.error(
+                self.request,
+                "There was an error loading the flagged document details."
+            )
+            context.update({
+                'categorized_resources': {},
+                'flag_analysis': {},
+                'document_info': {},
+                'resource_counts': {},
+            })
+        
+        return context
+    
+    def _categorize_fhir_resources(self, fhir_data, confidence_lookup=None):
+        """
+        Organize FHIR resources by type for display with confidence scores.
+        
+        Args:
+            fhir_data: List or dictionary of extracted FHIR data
+            confidence_lookup: Dict mapping values to confidence scores
+            
+        Returns:
+            dict: Resources organized by category with confidence attached
+        """
+        if confidence_lookup is None:
+            confidence_lookup = {}
+        categories = {
+            'Demographics': ['Patient'],
+            'Clinical': ['Condition', 'Observation', 'AllergyIntolerance'],
+            'Medications': ['MedicationStatement', 'MedicationRequest'],
+            'Procedures': ['Procedure', 'ServiceRequest'],
+            'Providers': ['Practitioner', 'Organization'],
+            'Documents': ['DocumentReference'],
+            'Other': []
+        }
+        
+        categorized = {cat: [] for cat in categories.keys()}
+        
+        # Handle both list and dict structures
+        if isinstance(fhir_data, list):
+            # Flat list of resources (most common format)
+            for resource in fhir_data:
+                if not isinstance(resource, dict):
+                    continue
+                
+                resource_type = resource.get('resourceType')
+                if not resource_type:
+                    continue
+                
+                # Attach confidence score if available
+                resource_with_confidence = self._attach_confidence_to_resource(
+                    resource, 
+                    confidence_lookup
+                )
+                
+                # Determine category for this resource type
+                found_category = False
+                for category, types in categories.items():
+                    if resource_type in types:
+                        categorized[category].append(resource_with_confidence)
+                        found_category = True
+                        break
+                
+                # If no category matched, add to Other
+                if not found_category:
+                    categorized['Other'].append(resource_with_confidence)
+        
+        elif isinstance(fhir_data, dict):
+            # Dictionary organized by resource type
+            for resource_type, resources in fhir_data.items():
+                if resource_type == 'resourceType':
+                    continue
+                    
+                # Determine category for this resource type
+                found_category = False
+                for category, types in categories.items():
+                    if resource_type in types:
+                        if isinstance(resources, list):
+                            categorized[category].extend(resources)
+                        else:
+                            categorized[category].append(resources)
+                        found_category = True
+                        break
+                
+                # If no category matched, add to Other
+                if not found_category:
+                    if isinstance(resources, list):
+                        categorized['Other'].extend(resources)
+                    else:
+                        categorized['Other'].append(resources)
+        
+        # Remove empty categories
+        return {k: v for k, v in categorized.items() if v}
+    
+    def _analyze_flag_reasons(self, flag_reason):
+        """
+        Parse flag_reason text into structured analysis.
+        
+        Args:
+            flag_reason: Text describing why the item was flagged
+            
+        Returns:
+            dict: Structured flag analysis
+        """
+        if not flag_reason:
+            return {
+                'summary': 'No flag reason provided',
+                'issues': [],
+                'severity': 'unknown'
+            }
+        
+        # Parse flag reasons (typically newline or semicolon separated)
+        issues = []
+        for line in flag_reason.split('\n'):
+            line = line.strip()
+            if line and line not in issues:
+                issues.append(line)
+        
+        # Determine severity based on keywords
+        severity = 'medium'
+        flag_lower = flag_reason.lower()
+        
+        if any(keyword in flag_lower for keyword in ['critical', 'error', 'failed', 'missing required']):
+            severity = 'high'
+        elif any(keyword in flag_lower for keyword in ['warning', 'low confidence', 'uncertain']):
+            severity = 'medium'
+        elif any(keyword in flag_lower for keyword in ['info', 'notice', 'review recommended']):
+            severity = 'low'
+        
+        return {
+            'summary': issues[0] if issues else flag_reason[:100],
+            'issues': issues,
+            'severity': severity,
+            'full_text': flag_reason
+        }
+    
+    def _attach_confidence_to_resource(self, resource, confidence_lookup):
+        """
+        Attach confidence score from extraction_json to a FHIR resource.
+        
+        Uses fuzzy matching to link FHIR resources back to extraction confidence.
+        
+        Args:
+            resource: FHIR resource dict
+            confidence_lookup: Dict mapping values to confidence info
+            
+        Returns:
+            dict: Resource with 'confidence' and 'confidence_percent' added
+        """
+        # Extract display name from resource for lookup
+        display_name = None
+        
+        # Try to get display name from various FHIR structures
+        if resource.get('code', {}).get('coding'):
+            display_name = resource['code']['coding'][0].get('display', '')
+        elif resource.get('code', {}).get('text'):
+            display_name = resource['code']['text']
+        elif resource.get('medication', {}).get('concept', {}).get('coding'):
+            display_name = resource['medication']['concept']['coding'][0].get('display', '')
+        elif resource.get('medicationCodeableConcept', {}).get('coding'):
+            display_name = resource['medicationCodeableConcept']['coding'][0].get('display', '')
+        elif resource.get('name'):
+            # For Practitioner
+            name_obj = resource['name'][0] if isinstance(resource['name'], list) else resource['name']
+            given = name_obj.get('given', [''])[0] if isinstance(name_obj.get('given'), list) else name_obj.get('given', '')
+            family = name_obj.get('family', '')
+            display_name = f"{given} {family}".strip()
+        
+        # Look up confidence with fuzzy matching
+        confidence_info = None
+        if display_name:
+            display_lower = display_name.strip().lower()
+            
+            # Try exact match first
+            confidence_info = confidence_lookup.get(display_lower)
+            
+            # If no exact match, try partial matching
+            if not confidence_info:
+                for key, info in confidence_lookup.items():
+                    # Check if the key is contained in display or vice versa
+                    if key in display_lower or display_lower in key:
+                        confidence_info = info
+                        break
+                    
+                    # For medications, try matching just the drug name (before dosage)
+                    if resource.get('resourceType') == 'MedicationStatement':
+                        # Extract first few words of medication name
+                        display_words = display_lower.split()[:3]
+                        key_words = key.split()[:3]
+                        if display_words and key_words and display_words[0] == key_words[0]:
+                            confidence_info = info
+                            break
+        
+        # Attach confidence to resource (non-destructive)
+        resource_copy = resource.copy()
+        if confidence_info:
+            resource_copy['confidence'] = confidence_info['confidence']
+            resource_copy['confidence_percent'] = round(confidence_info['confidence'] * 100)
+        else:
+            resource_copy['confidence'] = None
+            resource_copy['confidence_percent'] = None
+        
+        return resource_copy
+    
+    def _organize_extraction_by_category(self, extraction_json):
+        """
+        Organize extraction_json fields by category with all confidence scores.
+        
+        Args:
+            extraction_json: List of extracted fields with confidence scores
+            
+        Returns:
+            dict: Fields organized by category
+        """
+        categories = {
+            'Diagnoses': [],
+            'Medications': [],
+            'Vital Signs': [],
+            'Lab Results': [],
+            'Procedures': [],
+            'Other': []
+        }
+        
+        if not extraction_json or not isinstance(extraction_json, list):
+            return categories
+        
+        for field in extraction_json:
+            if not isinstance(field, dict):
+                continue
+            
+            label = field.get('label', '').lower()
+            item = {
+                'label': field.get('label', 'Unknown'),
+                'value': field.get('value', ''),
+                'confidence': field.get('confidence', 1.0),
+                'confidence_percent': round(field.get('confidence', 1.0) * 100),
+                'source_text': field.get('source_text', '')[:150]
+            }
+            
+            # Categorize by label prefix
+            if 'diagnosis' in label or 'condition' in label:
+                categories['Diagnoses'].append(item)
+            elif 'medication' in label or 'drug' in label:
+                categories['Medications'].append(item)
+            elif 'vital' in label or 'pain' in label or 'sedation' in label:
+                categories['Vital Signs'].append(item)
+            elif 'lab' in label or 'test' in label:
+                categories['Lab Results'].append(item)
+            elif 'procedure' in label or 'surgery' in label:
+                categories['Procedures'].append(item)
+            else:
+                categories['Other'].append(item)
+        
+        # Remove empty categories
+        return {k: v for k, v in categories.items() if v}
+    
+    def _build_extraction_confidence_lookup(self, extraction_json):
+        """
+        Build a lookup dictionary to map FHIR resource values back to confidence scores.
+        
+        Args:
+            extraction_json: List of extracted fields with confidence scores
+            
+        Returns:
+            dict: Lookup by value to find confidence scores
+        """
+        lookup = {}
+        
+        if not extraction_json or not isinstance(extraction_json, list):
+            return lookup
+        
+        for field in extraction_json:
+            if not isinstance(field, dict):
+                continue
+            
+            value = field.get('value', '').strip().lower()
+            confidence = field.get('confidence', 1.0)
+            label = field.get('label', '')
+            
+            if value:
+                # Store confidence by value (for matching FHIR display names)
+                lookup[value] = {
+                    'confidence': confidence,
+                    'label': label,
+                    'source_text': field.get('source_text', '')[:100]
+                }
+        
+        return lookup
+    
+    def _build_confidence_map(self, extraction_json):
+        """
+        Build a map of low-confidence extractions from raw extraction data.
+        
+        Args:
+            extraction_json: List of extracted fields with confidence scores
+            
+        Returns:
+            dict: Map with low confidence fields and overall stats
+        """
+        if not extraction_json or not isinstance(extraction_json, list):
+            return {'low_confidence_fields': [], 'has_low_confidence': False}
+        
+        low_confidence_threshold = 0.80
+        low_confidence_fields = []
+        
+        for field in extraction_json:
+            if not isinstance(field, dict):
+                continue
+                
+            confidence = field.get('confidence', 1.0)
+            if confidence < low_confidence_threshold:
+                low_confidence_fields.append({
+                    'label': field.get('label', 'Unknown'),
+                    'value': field.get('value', ''),
+                    'confidence': confidence,
+                    'confidence_percent': round(confidence * 100)
+                })
+        
+        return {
+            'low_confidence_fields': low_confidence_fields,
+            'has_low_confidence': len(low_confidence_fields) > 0,
+            'count': len(low_confidence_fields)
+        }
+    
+    def _get_resource_counts(self, fhir_data):
+        """
+        Count resources by type.
+        
+        Args:
+            fhir_data: List or dictionary of extracted FHIR data
+            
+        Returns:
+            dict: Resource type counts
+        """
+        counts = {}
+        
+        # Handle list structure (flat list of resources)
+        if isinstance(fhir_data, list):
+            for resource in fhir_data:
+                if not isinstance(resource, dict):
+                    continue
+                
+                resource_type = resource.get('resourceType')
+                if resource_type:
+                    counts[resource_type] = counts.get(resource_type, 0) + 1
+        
+        # Handle dict structure (organized by type)
+        elif isinstance(fhir_data, dict):
+            for resource_type, resources in fhir_data.items():
+                if resource_type == 'resourceType':
+                    continue
+                
+                if isinstance(resources, list):
+                    counts[resource_type] = len(resources)
+                else:
+                    counts[resource_type] = 1
+        
+        return counts

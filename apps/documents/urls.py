@@ -41,4 +41,7 @@ urlpatterns = [
     
     # Flagged documents list view (Task 41.24)
     path('flagged/', views.FlaggedDocumentsListView.as_view(), name='flagged-list'),
+    
+    # Flagged document detail view (Task 41.25)
+    path('flagged/<int:pk>/', views.FlaggedDocumentDetailView.as_view(), name='flagged-detail'),
 ] 

@@ -3237,11 +3237,11 @@
             "id": 25,
             "title": "Build flagged item detail and verification view",
             "description": "Develop a detailed view for reviewing and verifying flagged documents.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               24
             ],
-            "details": "Create a Django view and template for displaying detailed information about a flagged document. Show the extracted data, flag reason, and original document for comparison. Implement forms for verification actions.",
+            "details": "Create a Django view and template for displaying detailed information about a flagged document. Show the extracted data, flag reason, and original document for comparison. Implement forms for verification actions.\n<info added on 2025-12-25T05:49:54.957Z>\nCreate a Django view and template for displaying detailed information about a flagged document. Implement FlaggedDocumentDetailView as a DetailView for ParsedData with review_status='flagged'. Include comprehensive context building with error handling and performance optimization using select_related/prefetch_related.\n\nImplement helper methods for data organization and analysis:\n- Methods to categorize FHIR resources (supporting both list and dict structures)\n- Flag reason analysis with severity detection (high/medium/low)\n- Resource counting by type\n- Confidence mapping for extractions\n- Organization of extraction data by medical category\n- Confidence score attachment to FHIR resources\n\nDesign a professional medical-themed UI template with:\n- Three-column layout showing patient/document info and extracted data\n- Confidence score legend explaining green/yellow/red badges\n- Prominent flag reason display with severity color-coding\n- Extraction data sections organized by category (Diagnoses, Medications, etc.)\n- Confidence badges for every extracted field (green ≥90%, yellow 80-89%, red <80%)\n- Source text snippets showing extraction origins\n- Patient information section with links to full patient record\n- Document metadata section\n- Extraction statistics\n- Verification action buttons (to be implemented in task 41.26)\n\nAdd URL routing at '/documents/flagged/<int:pk>/' and update the flagged_documents_list to link properly to the detail view.\n\nCreate testing utilities (management commands):\n- flag_document_for_testing.py - For artificially flagging documents\n- list_flaggable_documents.py - For listing documents available for flagging\n\nImplement comprehensive test coverage for all functionality including URL accessibility, permission controls, FHIR resource handling, confidence scoring, and template rendering.\n</info added on 2025-12-25T05:49:54.957Z>",
             "testStrategy": "Create unit tests for the view logic and form processing. Manually test the UI with various document types."
           },
           {
@@ -3338,7 +3338,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2025-12-25T04:46:46.365Z",
+      "updated": "2025-12-25T05:50:06.391Z",
       "description": "Tasks for master context"
     }
   }
