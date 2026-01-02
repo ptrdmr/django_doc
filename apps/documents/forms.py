@@ -9,7 +9,7 @@ from django.core.files.uploadedfile import InMemoryUploadedFile, TemporaryUpload
 from django.forms.widgets import Select, FileInput
 from django.utils.html import format_html
 
-from .models import Document
+from .models import Document, ParsedData
 from apps.patients.models import Patient
 from apps.providers.models import Provider
 
@@ -254,4 +254,65 @@ class DocumentUploadForm(forms.ModelForm):
             if self.cleaned_data.get('providers'):
                 document.providers.set(self.cleaned_data['providers'])
         
-        return document 
+        return document
+
+
+class CorrectDataForm(forms.Form):
+    """
+    Form for manually correcting extracted FHIR data in flagged documents.
+    
+    Allows reviewers to edit JSON data before marking as reviewed.
+    Validates JSON structure and provides user-friendly error messages.
+    """
+    
+    fhir_data = forms.JSONField(
+        required=True,
+        widget=forms.Textarea(attrs={
+            'class': 'w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm',
+            'rows': 20,
+            'placeholder': '{"resourceType": "Patient", ...}'
+        }),
+        help_text="Edit the FHIR JSON data. Must be valid JSON format."
+    )
+    
+    review_notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'class': 'w-full px-3 py-2 border border-gray-300 rounded-lg',
+            'rows': 3,
+            'placeholder': 'Optional: Add notes about what was corrected and why...'
+        }),
+        help_text="Document what changes were made and the reason"
+    )
+    
+    def clean_fhir_data(self):
+        """
+        Validate FHIR data structure.
+        
+        Returns:
+            dict or list: Validated FHIR data
+            
+        Raises:
+            ValidationError: If JSON is invalid or missing required fields
+        """
+        fhir_data = self.cleaned_data.get('fhir_data')
+        
+        if not fhir_data:
+            raise ValidationError("FHIR data cannot be empty")
+        
+        # Validate it's either a list of resources or a single resource
+        if isinstance(fhir_data, list):
+            # List of resources - validate each has resourceType
+            for idx, resource in enumerate(fhir_data):
+                if not isinstance(resource, dict):
+                    raise ValidationError(f"Resource at index {idx} must be a JSON object")
+                if 'resourceType' not in resource:
+                    raise ValidationError(f"Resource at index {idx} missing 'resourceType' field")
+        elif isinstance(fhir_data, dict):
+            # Single resource - validate has resourceType
+            if 'resourceType' not in fhir_data:
+                raise ValidationError("FHIR resource must have 'resourceType' field")
+        else:
+            raise ValidationError("FHIR data must be a JSON object or array")
+        
+        return fhir_data 

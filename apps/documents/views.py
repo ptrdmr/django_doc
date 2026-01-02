@@ -12,8 +12,9 @@ from django.http import JsonResponse, HttpResponse, Http404
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.template.loader import render_to_string
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 
 from .models import Document, ParsedData
@@ -3484,3 +3485,275 @@ class FlaggedDocumentDetailView(LoginRequiredMixin, DetailView):
                     counts[resource_type] = 1
         
         return counts
+
+
+# ============================================================================
+# Verification Action Handlers (Task 41.26)
+# ============================================================================
+
+@login_required
+@require_http_methods(["POST"])
+def mark_as_correct(request, pk):
+    """
+    Mark a flagged ParsedData item as correct without changes.
+    
+    Changes review_status from 'flagged' to 'reviewed' and records
+    the reviewer's approval. This indicates the extracted data is
+    acceptable as-is despite being flagged.
+    
+    Args:
+        request: HTTP request with authenticated user
+        pk: Primary key of ParsedData to mark as correct
+        
+    Returns:
+        HttpResponseRedirect: Back to flagged list or detail view
+    """
+    try:
+        parsed_data = get_object_or_404(
+            ParsedData.objects.select_related('document', 'patient'),
+            pk=pk,
+            review_status='flagged'
+        )
+        
+        # Use existing approve_extraction method to set status to 'reviewed'
+        parsed_data.approve_extraction(
+            user=request.user,
+            notes="Marked as correct by reviewer - no changes needed"
+        )
+        
+        logger.info(
+            f"ParsedData {pk} marked as correct by user {request.user.id} "
+            f"for document {parsed_data.document_id}"
+        )
+        
+        messages.success(
+            request,
+            f"Document '{parsed_data.document.filename}' marked as correct. "
+            f"Data has been approved without changes."
+        )
+        
+        # Redirect to flagged list view
+        return redirect('documents:flagged-list')
+        
+    except ParsedData.DoesNotExist:
+        messages.error(
+            request,
+            "Flagged document not found or already processed."
+        )
+        return redirect('documents:flagged-list')
+        
+    except Exception as e:
+        logger.error(f"Error marking ParsedData {pk} as correct: {e}")
+        messages.error(
+            request,
+            "An error occurred while marking the document as correct. Please try again."
+        )
+        return redirect('documents:flagged-detail', pk=pk)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def correct_data(request, pk):
+    """
+    Allow manual correction of FHIR data before marking as reviewed.
+    
+    Displays a form with the current FHIR data in JSON format,
+    allows editing, validates the structure, and updates the
+    ParsedData record before marking as reviewed.
+    
+    Args:
+        request: HTTP request with authenticated user
+        pk: Primary key of ParsedData to correct
+        
+    Returns:
+        HttpResponse: Form page or redirect after successful correction
+    """
+    from .forms import CorrectDataForm
+    
+    try:
+        parsed_data = get_object_or_404(
+            ParsedData.objects.select_related('document', 'patient'),
+            pk=pk,
+            review_status='flagged'
+        )
+        
+        if request.method == 'POST':
+            form = CorrectDataForm(request.POST)
+            
+            if form.is_valid():
+                try:
+                    # Update FHIR data with corrected version
+                    corrected_fhir = form.cleaned_data['fhir_data']
+                    review_notes = form.cleaned_data.get('review_notes', '')
+                    
+                    # Store corrected data in fhir_delta_json first
+                    parsed_data.fhir_delta_json = corrected_fhir
+                    parsed_data.save(update_fields=['fhir_delta_json'])
+                    
+                    # Then mark as reviewed with notes about correction
+                    notes = f"Data manually corrected by reviewer. {review_notes}".strip()
+                    parsed_data.approve_extraction(
+                        user=request.user,
+                        notes=notes
+                    )
+                    
+                    logger.info(
+                        f"ParsedData {pk} corrected by user {request.user.id} "
+                        f"for document {parsed_data.document_id}"
+                    )
+                    
+                    messages.success(
+                        request,
+                        f"Document '{parsed_data.document.filename}' data corrected and approved."
+                    )
+                    
+                    return redirect('documents:flagged-list')
+                    
+                except Exception as update_error:
+                    logger.error(f"Error updating corrected data for ParsedData {pk}: {update_error}")
+                    messages.error(
+                        request,
+                        "Failed to save corrected data. Please try again."
+                    )
+        else:
+            # Pre-populate form with current FHIR data
+            initial_data = {
+                'fhir_data': parsed_data.fhir_delta_json or []
+            }
+            form = CorrectDataForm(initial=initial_data)
+        
+        context = {
+            'form': form,
+            'parsed_data': parsed_data,
+            'document': parsed_data.document,
+            'patient': parsed_data.patient,
+            'flag_reason': parsed_data.flag_reason,
+        }
+        
+        return render(request, 'documents/correct_data.html', context)
+        
+    except ParsedData.DoesNotExist:
+        messages.error(
+            request,
+            "Flagged document not found or already processed."
+        )
+        return redirect('documents:flagged-list')
+        
+    except Exception as e:
+        logger.error(f"Error in correct_data view for ParsedData {pk}: {e}")
+        messages.error(
+            request,
+            "An error occurred while loading the correction form. Please try again."
+        )
+        return redirect('documents:flagged-list')
+
+
+@login_required
+@require_http_methods(["POST"])
+def rollback_merge(request, pk):
+    """
+    Rollback an optimistic merge by removing FHIR data from patient record.
+    
+    This reverses the automatic merge that occurred during document processing.
+    The ParsedData status is reset to 'pending' and the FHIR data is removed
+    from the patient's cumulative record.
+    
+    Args:
+        request: HTTP request with authenticated user
+        pk: Primary key of ParsedData to rollback
+        
+    Returns:
+        HttpResponseRedirect: Back to flagged list view
+    """
+    try:
+        parsed_data = get_object_or_404(
+            ParsedData.objects.select_related('document', 'patient'),
+            pk=pk,
+            review_status='flagged'
+        )
+        
+        patient = parsed_data.patient
+        
+        if not patient:
+            messages.error(
+                request,
+                "Cannot rollback: No patient associated with this document."
+            )
+            return redirect('documents:flagged-detail', pk=pk)
+        
+        try:
+            with transaction.atomic():
+                # Remove FHIR data from patient's cumulative record
+                if parsed_data.fhir_delta_json:
+                    # Get current patient FHIR bundle
+                    patient_fhir = patient.cumulative_fhir_json or {}
+                    
+                    # Remove resources that were added by this document
+                    # This is a simplified rollback - in production, you'd want
+                    # more sophisticated tracking of which resources came from which document
+                    rollback_count = 0
+                    
+                    if isinstance(parsed_data.fhir_delta_json, list):
+                        for resource in parsed_data.fhir_delta_json:
+                            resource_type = resource.get('resourceType')
+                            if resource_type and resource_type in patient_fhir:
+                                # Remove matching resources (by ID if present)
+                                resource_id = resource.get('id')
+                                if resource_id and isinstance(patient_fhir[resource_type], list):
+                                    patient_fhir[resource_type] = [
+                                        r for r in patient_fhir[resource_type]
+                                        if r.get('id') != resource_id
+                                    ]
+                                    rollback_count += 1
+                    
+                    # Save updated patient record
+                    patient.cumulative_fhir_json = patient_fhir
+                    patient.updated_by = request.user
+                    patient.save()
+                
+                # Reset ParsedData status to pending
+                parsed_data.review_status = 'pending'
+                parsed_data.is_merged = False
+                parsed_data.merged_at = None
+                parsed_data.auto_approved = False
+                parsed_data.flag_reason = f"Rollback by {request.user.get_full_name() or request.user.username}: {parsed_data.flag_reason}"
+                parsed_data.save(update_fields=[
+                    'review_status', 'is_merged', 'merged_at', 
+                    'auto_approved', 'flag_reason', 'updated_at'
+                ])
+                
+                logger.info(
+                    f"ParsedData {pk} rolled back by user {request.user.id} "
+                    f"for document {parsed_data.document_id}, patient {patient.id}"
+                )
+                
+                messages.success(
+                    request,
+                    f"Document '{parsed_data.document.filename}' merge rolled back successfully. "
+                    f"Data has been removed from patient record."
+                )
+                
+        except Exception as rollback_error:
+            logger.error(f"Error during rollback transaction for ParsedData {pk}: {rollback_error}")
+            messages.error(
+                request,
+                "Failed to rollback merge. The operation was not completed."
+            )
+            return redirect('documents:flagged-detail', pk=pk)
+        
+        return redirect('documents:flagged-list')
+        
+    except ParsedData.DoesNotExist:
+        messages.error(
+            request,
+            "Flagged document not found or already processed."
+        )
+        return redirect('documents:flagged-list')
+        
+    except Exception as e:
+        logger.error(f"Error in rollback_merge view for ParsedData {pk}: {e}")
+        messages.error(
+            request,
+            "An error occurred during rollback. Please try again."
+        )
+        return redirect('documents:flagged-list')

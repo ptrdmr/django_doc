@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Correct Data - {{ document.filename }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-6">
+        <div class="flex items-center mb-2">
+            <a href="{% url 'documents:flagged-detail' parsed_data.pk %}" class="text-blue-600 hover:text-blue-800 mr-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+            </a>
+            <h1 class="text-3xl font-bold text-gray-900">Correct Extracted Data</h1>
+        </div>
+        <p class="text-gray-600">
+            Manually edit the FHIR data before marking as reviewed
+        </p>
+    </div>
+
+    <!-- Document Info Card -->
+    <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <p class="text-sm text-gray-500">Document</p>
+                <p class="font-medium text-gray-900">{{ document.filename }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500">Patient</p>
+                <p class="font-medium text-gray-900">{{ patient.get_full_name }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500">Flag Reason</p>
+                <p class="font-medium text-red-600">{{ flag_reason|default:"Not specified" }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Correction Form -->
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+        
+        <!-- FHIR Data Editor -->
+        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+            <label for="{{ form.fhir_data.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                FHIR Data (JSON)
+            </label>
+            <p class="text-sm text-gray-500 mb-3">
+                Edit the JSON data below. Ensure it remains valid JSON format.
+            </p>
+            
+            {% if form.fhir_data.errors %}
+                <div class="mb-3 p-3 bg-red-50 border border-red-200 rounded-md">
+                    <p class="text-sm text-red-800">
+                        <svg class="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                        </svg>
+                        {{ form.fhir_data.errors.0 }}
+                    </p>
+                </div>
+            {% endif %}
+            
+            {{ form.fhir_data }}
+            
+            <p class="mt-2 text-xs text-gray-500">
+                {{ form.fhir_data.help_text }}
+            </p>
+        </div>
+
+        <!-- Review Notes -->
+        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+            <label for="{{ form.review_notes.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                Review Notes
+            </label>
+            
+            {% if form.review_notes.errors %}
+                <div class="mb-3 p-3 bg-red-50 border border-red-200 rounded-md">
+                    <p class="text-sm text-red-800">{{ form.review_notes.errors.0 }}</p>
+                </div>
+            {% endif %}
+            
+            {{ form.review_notes }}
+            
+            <p class="mt-2 text-xs text-gray-500">
+                {{ form.review_notes.help_text }}
+            </p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex justify-end space-x-3">
+            <a href="{% url 'documents:flagged-detail' parsed_data.pk %}" 
+               class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                Cancel
+            </a>
+            <button type="submit" 
+                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Save Corrections & Approve
+            </button>
+        </div>
+    </form>
+
+    <!-- Help Section -->
+    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div class="flex">
+            <svg class="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+            </svg>
+            <div>
+                <h4 class="text-sm font-medium text-blue-900 mb-1">Data Correction Tips</h4>
+                <ul class="text-sm text-blue-800 space-y-1">
+                    <li>• Ensure JSON remains valid (use a JSON validator if needed)</li>
+                    <li>• Each resource must have a "resourceType" field</li>
+                    <li>• Document your changes in the review notes for audit trail</li>
+                    <li>• After saving, the data will be marked as reviewed and approved</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

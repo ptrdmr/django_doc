@@ -44,4 +44,9 @@ urlpatterns = [
     
     # Flagged document detail view (Task 41.25)
     path('flagged/<int:pk>/', views.FlaggedDocumentDetailView.as_view(), name='flagged-detail'),
+    
+    # Verification action handlers (Task 41.26)
+    path('flagged/<int:pk>/mark-correct/', views.mark_as_correct, name='mark-as-correct'),
+    path('flagged/<int:pk>/correct-data/', views.correct_data, name='correct-data'),
+    path('flagged/<int:pk>/rollback/', views.rollback_merge, name='rollback-merge'),
 ] 
