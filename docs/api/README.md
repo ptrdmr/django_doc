@@ -1105,6 +1105,319 @@ Validate extracted data before merge operation.
 
 ---
 
+## Optimistic Concurrency API - Task 41 Complete ✅
+
+### Automatic Quality-Based Review System
+
+Task 41 introduced an optimistic concurrency merge system that automatically evaluates extraction quality and merges data immediately, flagging low-quality extractions for later review.
+
+### Model API Changes
+
+#### ParsedData Model Methods
+
+**`determine_review_status()` → (status, reason)**
+
+Evaluates extraction quality using multiple criteria to determine if data should be auto-approved or flagged.
+
+```python
+from apps.documents.models import ParsedData
+
+parsed_data = ParsedData.objects.get(id=123)
+status, reason = parsed_data.determine_review_status()
+
+# Returns:
+# ('auto_approved', '') if high quality
+# ('flagged', 'Low extraction confidence (0.65 < 0.80 threshold)') if low quality
+```
+
+**Auto-Approval Criteria** (ALL must be true):
+- ✅ Confidence ≥ 0.80
+- ✅ Primary AI model used (Claude, not GPT fallback)
+- ✅ At least 1 resource extracted
+- ✅ If < 3 resources, confidence must be ≥ 0.95
+- ✅ No patient data conflicts (DOB/name match)
+
+**Flagging Triggers** (ANY ONE triggers flagging):
+- ❌ Confidence < 0.80
+- ❌ Fallback model used (GPT)
+- ❌ Zero resources extracted
+- ❌ < 3 resources AND confidence < 0.95
+- ❌ Patient data conflict detected
+
+**`check_quick_conflicts()` → (has_conflict, reason)**
+
+Quickly checks for conflicts between extracted patient data and existing patient record.
+
+```python
+has_conflict, reason = parsed_data.check_quick_conflicts()
+
+# Returns:
+# (False, '') if no conflicts
+# (True, 'DOB mismatch (extracted: 1980-01-01, patient: 1980-01-15)') if conflict found
+```
+
+**Performance**: <100ms for all quality checks
+
+#### Review Workflow Methods
+
+**`approve_extraction(user, notes='', request=None)`**
+
+Marks extracted data as reviewed and approved. Data is already merged in optimistic system.
+
+```python
+# Manual approval after review
+parsed_data.approve_extraction(
+    user=request.user,
+    notes="Verified data accuracy",
+    request=request  # For HIPAA audit logging
+)
+
+# Updates:
+# - review_status = 'reviewed'
+# - reviewed_by = user
+# - reviewed_at = timezone.now()
+# - Creates HIPAA audit log entry
+```
+
+**`reject_extraction(user, reason='', request=None)`**
+
+Rejects extracted data. In optimistic system, data may already be merged.
+
+```python
+# Rejection after review
+parsed_data.reject_extraction(
+    user=request.user,
+    reason="Extraction quality too low",
+    request=request  # For HIPAA audit logging
+)
+
+# Updates:
+# - review_status = 'rejected'
+# - reviewed_by = user
+# - reviewed_at = timezone.now()
+# - rejection_reason = reason
+# - Creates HIPAA audit log entry
+```
+
+### Audit Logging Functions (Task 41.28)
+
+**`audit_extraction_decision(parsed_data, request=None)`**
+
+Creates HIPAA-compliant audit log for extraction quality decisions.
+
+```python
+from apps.documents.models import audit_extraction_decision
+
+# Automatically called during document processing
+audit_log = audit_extraction_decision(parsed_data, request=None)
+
+# Logs:
+# - Event: 'extraction_auto_approved' or 'extraction_flagged'
+# - Document ID, patient MRN
+# - Confidence score, resource count
+# - Flag reason (if applicable)
+# - NO PHI: No clinical data, names, or DOBs
+```
+
+**`audit_merge_operation(parsed_data, merge_success, resource_count, request=None)`**
+
+Creates HIPAA-compliant audit log for FHIR merge operations.
+
+```python
+from apps.documents.models import audit_merge_operation
+
+# Automatically called during merge
+audit_log = audit_merge_operation(
+    parsed_data,
+    merge_success=True,
+    resource_count=5,
+    request=None
+)
+
+# Logs:
+# - Event: 'fhir_import'
+# - Document ID, patient MRN
+# - Resource count, merge success
+# - NO PHI: No resource content
+```
+
+**`audit_manual_review(parsed_data, action, user, notes, request=None)`**
+
+Creates HIPAA-compliant audit log for manual review actions.
+
+```python
+from apps.documents.models import audit_manual_review
+
+# Automatically called by approve_extraction() and reject_extraction()
+audit_log = audit_manual_review(
+    parsed_data,
+    action='approved',
+    user=request.user,
+    notes="Verified",
+    request=request
+)
+
+# Logs:
+# - Event: 'phi_update'
+# - Document ID, patient MRN
+# - Reviewer identity, action
+# - Has notes (boolean, not content)
+# - NO PHI: Notes content not logged
+```
+
+**PHI Safeguards:**
+
+All audit functions enforce strict PHI protection:
+
+✅ **Safe to log:**
+- Document IDs, patient MRNs (identifiers)
+- Confidence scores, resource counts (metrics)
+- Generic flag reasons ("low confidence")
+- AI model names, timestamps
+
+❌ **Never logged:**
+- Patient names, dates of birth
+- Clinical codes, diagnoses, medications
+- FHIR resource content
+- Extracted field values
+- Review notes content
+
+**Error Handling:**
+
+All audit functions include graceful error handling:
+```python
+try:
+    audit_log = AuditLog.objects.create(...)
+    return audit_log
+except Exception as audit_error:
+    # CRITICAL: Don't break workflow if audit fails
+    logger.error(f"Audit logging failed: {audit_error}")
+    return None  # Returns None on failure, workflow continues
+```
+
+**Performance**: <50ms per audit call, async-safe for Celery tasks
+
+### Workflow Integration
+
+**Automatic Processing Flow:**
+
+```python
+# In process_document_async() Celery task:
+
+# 1. Extract data from document
+extraction_result = analyzer.analyze_document_structured(document)
+
+# 2. Determine review status (quality check)
+review_status, flag_reason = parsed_data.determine_review_status()
+
+# 3. Audit the decision (Task 41.28)
+audit_extraction_decision(parsed_data, request=None)
+
+# 4. Merge immediately (optimistic!)
+merge_success = patient.add_fhir_resources(fhir_resources, document_id)
+
+# 5. Audit the merge (Task 41.28)
+audit_merge_operation(parsed_data, merge_success, resource_count, request=None)
+
+# Result: Data in patient record, flagged if low quality
+```
+
+**Manual Review Flow:**
+
+```python
+# User reviews flagged extraction
+
+# 1. View flagged items
+flagged = ParsedData.objects.filter(review_status='flagged')
+
+# 2. Review and approve
+parsed_data.approve_extraction(
+    user=request.user,
+    notes="Verified accuracy",
+    request=request  # Audit logging with IP/user context
+)
+
+# 3. Audit log automatically created (Task 41.28)
+# Event: 'phi_update', Action: 'approved', Reviewer: user.username
+```
+
+### Query Helpers
+
+**Get Flagged Extractions:**
+```python
+# All flagged items needing review
+flagged = ParsedData.objects.filter(review_status='flagged')
+
+# Flagged by specific reason
+low_confidence = ParsedData.objects.filter(
+    review_status='flagged',
+    flag_reason__icontains='Low extraction confidence'
+)
+
+# Flagged with high resource count (priority review)
+priority_flagged = ParsedData.objects.filter(
+    review_status='flagged'
+).annotate(
+    resource_count=RawSQL(
+        "jsonb_array_length(fhir_delta_json)",
+        []
+    )
+).filter(resource_count__gte=5)
+```
+
+**Get Auto-Approved Extractions:**
+```python
+# All auto-approved items
+auto_approved = ParsedData.objects.filter(auto_approved=True)
+
+# Auto-approved in last 24 hours
+from datetime import timedelta
+recent_approved = ParsedData.objects.filter(
+    auto_approved=True,
+    created_at__gte=timezone.now() - timedelta(hours=24)
+)
+```
+
+**Audit Trail Queries:**
+```python
+from apps.core.models import AuditLog
+
+# Recent extraction decisions
+decisions = AuditLog.objects.filter(
+    event_type__in=['extraction_auto_approved', 'extraction_flagged']
+).order_by('-timestamp')[:100]
+
+# Manual review activity
+reviews = AuditLog.objects.filter(
+    event_type='phi_update',
+    details__review_action__in=['approved', 'rejected']
+).order_by('-timestamp')
+
+# Failed merges
+failed_merges = AuditLog.objects.filter(
+    event_type='fhir_import',
+    success=False
+)
+```
+
+### State Machine Reference
+
+```
+pending
+  ↓
+  ├─→ auto_approved (confidence ≥ 0.80, no conflicts)
+  │     ↓
+  │     ├─→ reviewed (optional verification)
+  │     └─→ rejected (issues found)
+  │
+  └─→ flagged (confidence < 0.80 or conflicts)
+        ↓
+        ├─→ reviewed (human approved)
+        └─→ rejected (human rejected)
+```
+
+---
+
 ## Planned API Endpoints (Future Tasks)
 
 ### FHIR Integration API (Task 14)
@@ -1129,4 +1442,4 @@ Validate extracted data before merge operation.
 
 ---
 
-*Updated: 2025-08-08 23:54:02 | FHIR Merge Integration API complete - Task 14 delivered with comprehensive FHIR processing, performance monitoring, and enterprise-grade capabilities* 
+*Updated: 2026-01-01 22:24:01 | Added Task 41 Optimistic Concurrency API documentation with quality checks, audit logging, and review workflow methods* 

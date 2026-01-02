@@ -1763,7 +1763,8 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                 # Don't fail the review completion, just log the error
             
             # Mark parsed data as reviewed (data already merged in optimistic system)
-            parsed_data.approve_extraction(request.user)
+            # Task 41.28: Pass request for HIPAA audit logging
+            parsed_data.approve_extraction(request.user, request=request)
             
             # Update document status to completed
             self.object.status = 'completed'
@@ -1803,7 +1804,8 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
             
             parsed_data = self.object.parsed_data
             # Use new rejection method that sets status and reason
-            parsed_data.reject_extraction(request.user, reason=notes)
+            # Task 41.28: Pass request for HIPAA audit logging
+            parsed_data.reject_extraction(request.user, reason=notes, request=request)
             
             # Update document status to failed (rejected)
             self.object.status = 'failed'
@@ -3481,9 +3483,11 @@ def mark_as_correct(request, pk):
         )
         
         # Use existing approve_extraction method to set status to 'reviewed'
+        # Task 41.28: Pass request for HIPAA audit logging
         parsed_data.approve_extraction(
             user=request.user,
-            notes="Marked as correct by reviewer - no changes needed"
+            notes="Marked as correct by reviewer - no changes needed",
+            request=request
         )
         
         logger.info(
@@ -3557,9 +3561,11 @@ def correct_data(request, pk):
                     
                     # Then mark as reviewed with notes about correction
                     notes = f"Data manually corrected by reviewer. {review_notes}".strip()
+                    # Task 41.28: Pass request for HIPAA audit logging
                     parsed_data.approve_extraction(
                         user=request.user,
-                        notes=notes
+                        notes=notes,
+                        request=request
                     )
                     
                     logger.info(

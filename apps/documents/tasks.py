@@ -918,6 +918,10 @@ def process_document_async(self, document_id: int):
                                 f"{'(auto-approved)' if parsed_data.auto_approved else f'(flagged: {flag_reason})'}"
                             )
                             
+                            # Task 41.28: HIPAA audit logging for review decision
+                            from apps.documents.models import audit_extraction_decision
+                            audit_extraction_decision(parsed_data, request=None)
+                            
                             # Immediately merge data into patient record regardless of review status
                             # This is the core of optimistic concurrency: merge now, review later if needed
                             if serialized_fhir_resources:
@@ -930,6 +934,15 @@ def process_document_async(self, document_id: int):
                                 merge_success = document.patient.add_fhir_resources(
                                     serialized_fhir_resources,
                                     document_id=document.id
+                                )
+                                
+                                # Task 41.28: HIPAA audit logging for merge operation
+                                from apps.documents.models import audit_merge_operation
+                                audit_merge_operation(
+                                    parsed_data, 
+                                    merge_success=merge_success,
+                                    resource_count=len(serialized_fhir_resources),
+                                    request=None
                                 )
                                 
                                 if merge_success:

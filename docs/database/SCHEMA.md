@@ -212,7 +212,7 @@ This document provides a comprehensive overview of all database tables in the Me
 
 ### 9. parsed_data
 
-**Purpose**: AI-extracted data from documents with review workflow.
+**Purpose**: AI-extracted data from documents with optimistic concurrency review workflow.
 
 | Field | Type | Encryption | Description | Indexes |
 |-------|------|------------|-------------|---------|
@@ -228,11 +228,42 @@ This document provides a comprehensive overview of all database tables in the Me
 | `is_merged` | BooleanField | No | Merge status flag | ✓ |
 | `reviewed_by` | ForeignKey(User) | No | Reviewing user | |
 | `reviewed_at` | DateTimeField | No | Review timestamp | |
-| `is_approved` | BooleanField | No | Approval status | ✓ |
+| `is_approved` | BooleanField | No | **DEPRECATED** - Use `review_status` instead | ✓ |
+| **`review_status`** | **CharField(20)** | **No** | **5-state review machine (Task 41)** | **✓** |
+| **`auto_approved`** | **BooleanField** | **No** | **Auto-approved for immediate merge (Task 41)** | **✓** |
+| **`flag_reason`** | **TextField** | **No** | **Reason for flagging (Task 41)** | |
 | `extraction_quality_score` | FloatField | No | Quality assessment (0.0-1.0) | |
 | `review_notes` | TextField | **Encrypted** | Review comments (PHI) | |
 | `corrections` | JSONField | No | Manual data corrections | |
+| `clinical_date` | DateField | No | Clinical date for medical event (Task 35) | ✓ |
+| `date_source` | CharField(20) | No | Date source: extracted/manual (Task 35) | |
+| `date_status` | CharField(20) | No | Date verification status (Task 35) | |
 | *(inherits BaseModel fields)* | | | |
+
+**Task 41 - Optimistic Concurrency Fields:**
+
+**`review_status` Choices (5-State Machine)**:
+- `pending`: Initial state, not yet evaluated
+- `auto_approved`: High quality, merged immediately, no review needed
+- `flagged`: Low quality, merged but needs human review
+- `reviewed`: Human verified and approved
+- `rejected`: Human rejected, may need rollback
+
+**Auto-Approval Criteria** (ALL must be true):
+1. ✅ Confidence ≥ 0.80
+2. ✅ Primary AI model used (Claude, not GPT fallback)
+3. ✅ At least 1 resource extracted
+4. ✅ If < 3 resources, confidence must be ≥ 0.95
+5. ✅ No patient data conflicts (DOB/name match)
+
+**Flagging Triggers** (ANY ONE triggers flagging):
+1. ❌ Confidence < 0.80
+2. ❌ Fallback model used (GPT)
+3. ❌ Zero resources extracted
+4. ❌ < 3 resources AND confidence < 0.95
+5. ❌ Patient data conflict detected
+
+**Migration**: `0013_add_optimistic_concurrency_fields.py`
 
 ---
 
@@ -308,12 +339,13 @@ This document provides a comprehensive overview of all database tables in the Me
 | `success` | BooleanField | Operation success status | |
 | `error_message` | TextField | Error details (if failed) | |
 
-**Event Types** (18 total):
+**Event Types** (21 total):
 - Authentication: `login`, `logout`, `login_failed`, `password_change`, `password_reset`, `account_locked`, `account_unlocked`
 - PHI Access: `phi_access`, `phi_create`, `phi_update`, `phi_delete`, `phi_export`
 - Documents: `document_upload`, `document_download`, `document_view`, `document_delete`
 - Patients: `patient_create`, `patient_update`, `patient_view`, `patient_search`
 - FHIR: `fhir_export`, `fhir_import`
+- **Optimistic Concurrency (Task 41.28)**: **`extraction_auto_approved`**, **`extraction_flagged`**
 - System: `system_backup`, `system_restore`, `admin_access`, `config_change`
 - Security: `security_violation`, `data_breach`, `unauthorized_access`
 
@@ -612,4 +644,4 @@ This document provides a comprehensive overview of all database tables in the Me
 
 ---
 
-*Updated: 2025-08-27 13:19:02 | Comprehensive database schema documentation with encryption and audit details*
+*Updated: 2026-01-01 22:24:01 | Added Task 41 optimistic concurrency fields and Task 41.28 audit event types*
