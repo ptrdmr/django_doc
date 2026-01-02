@@ -1,0 +1,133 @@
+refactor(documents): remove obsolete pessimistic review workflow code (Task 41.27)
+
+Cleaned up obsolete code from the old pessimistic locking review workflow and
+updated templates/messaging to reflect the optimistic concurrency model where
+documents merge automatically without requiring manual approval.
+
+## Phase 1: Removed Obsolete Celery Task
+
+### Deleted merge_to_patient_record Task
+- Removed entire task from apps/documents/tasks.py (~234 lines)
+- Task waited for manual approval before merging - completely redundant
+- New system merges automatically in process_document_async (lines 921-953)
+- Replaced with comment explaining removal
+
+### Updated Management Command
+- apps/documents/management/commands/migrate_fhir_data.py
+- Removed obsolete task import
+- Replaced task.delay() call with inline merge logic
+- Now uses patient.add_fhir_resources() directly
+- Updated display: "Approved: True/False" → "Review Status: <status>"
+- Simplified migration detection (removed approval checks)
+
+### Updated Admin View
+- apps/documents/views.py - MigrateFHIRDataView
+- Removed obsolete task import
+- Removed auto-approval code (lines 2055-2060)
+- Already had inline merge logic, just cleaned up
+
+## Phase 2: Simplified DocumentReviewView
+
+### Streamlined handle_approval() Method
+- Removed ~50 lines of redundant FHIR merge logic (lines 1768-1798)
+- Data already merged automatically during document processing
+- Kept patient comparison resolution logic (Task 13 - still needed)
+- Updated docstring: "approval and merge" → "mark review as complete"
+- Updated success message to reflect data already in patient record
+
+### Updated Review Template
+- templates/documents/review.html
+- Button text: "Complete Review & Approve" → "Complete Review"
+- Added note: "Data already merged to patient record"
+- Confirmation dialog: "will be permanently added" → "mark review as complete"
+- Status badge: "Approved" → "Reviewed"
+- Success message: "approved and committed" → "reviewed and is in"
+- Comment: "approval workflow" → "review workflow"
+
+## Phase 3: Deprecated is_approved Field
+
+### Added Deprecation Warnings
+- apps/documents/models.py
+- Enhanced field comment with clear deprecation notice
+- Explained review_status is now authoritative
+- Updated approve_extraction() docstring
+- Updated reject_extraction() docstring
+- Field kept for backward compatibility (no schema change)
+
+### Removed Obsolete Checks
+- migrate_fhir_data.py: Removed approval check logic
+- MigrateFHIRDataView: Removed auto-approval before merge
+- Both now only check is_merged status
+
+## Files Modified
+
+- apps/documents/tasks.py (-234 lines)
+  * Deleted merge_to_patient_record task
+  
+- apps/documents/views.py (-56 lines)
+  * Simplified handle_approval() method
+  * Removed obsolete imports
+  * Removed auto-approval from MigrateFHIRDataView
+  
+- apps/documents/models.py (+8 lines)
+  * Added deprecation comments for is_approved field
+  * Updated method docstrings
+  
+- apps/documents/management/commands/migrate_fhir_data.py (-8 lines, +15 lines)
+  * Replaced task call with inline merge
+  * Updated display fields
+  * Simplified logic
+  
+- templates/documents/review.html (~8 lines modified)
+  * Updated button text and messaging
+  * Changed confirmation dialog
+  * Updated status badge
+  * Changed "approval" → "review" terminology
+
+## System Impact
+
+**Before (Pessimistic):**
+Upload → Extract → Hold → Manual Approve → merge_to_patient_record → Merge
+
+**After (Optimistic):**
+Upload → Extract → Auto-merge → Flag if needed → Review later
+
+**User Experience:**
+- Data appears immediately in patient records (no bottleneck)
+- Only flagged documents need review
+- Review interface clarifies data already merged
+- Terminology: "approval" → "review/verification"
+
+## Testing & Verification
+
+- ✅ Django system check: No issues
+- ✅ Verification actions tests: 18/18 passing
+- ✅ Optimistic concurrency tests: All passing
+- ✅ Full document app tests: 121/121 passing (1 skipped)
+- ✅ 0 linter errors in all modified files
+
+## What Was NOT Done (Intentional)
+
+**Documentation updates postponed:**
+- Task 41.28 (HIPAA audit logging) not yet complete
+- Will update docs after 41.28 to reflect complete system
+
+**Database schema unchanged:**
+- is_approved field kept for backward compatibility
+- Marked as deprecated in code
+- Future migration task will remove column
+
+## Breaking Changes
+
+None. All changes maintain backward compatibility.
+
+## Migration Required
+
+None. No database schema changes.
+
+---
+Task-Master: Task 41.27 (Subtask of Task 41: Optimistic Concurrency Merge System)
+Completed: 2025-01-02
+Test Results: 121/121 passing
+Lines Removed: ~298 lines of obsolete code
+

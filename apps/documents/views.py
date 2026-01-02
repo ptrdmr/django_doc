@@ -1719,7 +1719,11 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
     
     def handle_approval(self, request):
         """
-        Handle document approval and merge data into patient record.
+        Mark document as reviewed after patient data comparison resolution.
+        
+        Note: In the optimistic concurrency system, FHIR data is already merged
+        automatically during document processing. This method now only handles
+        patient data comparison resolutions and marks the review as complete.
         
         Args:
             request: HTTP request
@@ -1756,58 +1760,26 @@ class DocumentReviewView(LoginRequiredMixin, DetailView):
                         
             except Exception as comparison_error:
                 logger.error(f"Error applying patient data comparisons: {comparison_error}")
-                # Don't fail the approval, just log the error
+                # Don't fail the review completion, just log the error
             
-            # Mark parsed data as approved using the model method
+            # Mark parsed data as reviewed (data already merged in optimistic system)
             parsed_data.approve_extraction(request.user)
             
             # Update document status to completed
             self.object.status = 'completed'
             self.object.save()
             
-            # Merge FHIR data to patient record immediately (synchronous)
-            try:
-                fhir_data = parsed_data.fhir_delta_json
-                if fhir_data:
-                    # Convert FHIR data to list format if needed
-                    fhir_resources = []
-                    if isinstance(fhir_data, dict):
-                        if fhir_data.get('resourceType') == 'Bundle' and 'entry' in fhir_data:
-                            fhir_resources = [entry['resource'] for entry in fhir_data['entry'] if 'resource' in entry]
-                        else:
-                            fhir_resources = [fhir_data]
-                    elif isinstance(fhir_data, list):
-                        fhir_resources = fhir_data
-                    
-                    # Merge directly to patient record
-                    if fhir_resources:
-                        success = self.object.patient.add_fhir_resources(fhir_resources, document_id=self.object.id)
-                        
-                        if success:
-                            # Mark as merged
-                            parsed_data.is_merged = True
-                            parsed_data.merged_at = timezone.now()
-                            parsed_data.save()
-                            
-                            logger.info(f"Successfully merged {len(fhir_resources)} FHIR resources from document {self.object.id} to patient {self.object.patient.mrn}")
-                        else:
-                            logger.error(f"Failed to merge FHIR resources from document {self.object.id}")
-                            
-            except Exception as merge_error:
-                logger.error(f"Error merging FHIR data for document {self.object.id}: {merge_error}")
-                # Don't fail the approval, just log the error
-            
             messages.success(
                 request,
-                f"Document '{self.object.filename}' approved successfully. "
-                f"Data is being merged into {self.object.patient.first_name} {self.object.patient.last_name}'s record."
+                f"Document '{self.object.filename}' review completed. "
+                f"Patient data comparisons have been applied to {self.object.patient.first_name} {self.object.patient.last_name}'s record."
             )
             
-            logger.info(f"Document {self.object.id} approved by user {request.user.id}")
+            logger.info(f"Document {self.object.id} review completed by user {request.user.id}")
             
         except Exception as approval_error:
-            logger.error(f"Error approving document {self.object.id}: {approval_error}")
-            messages.error(request, "Failed to approve document. Please try again.")
+            logger.error(f"Error completing document review {self.object.id}: {approval_error}")
+            messages.error(request, "Failed to complete review. Please try again.")
             return redirect('documents:review', pk=self.object.pk)
         
         return redirect('documents:detail', pk=self.object.pk)
@@ -2036,7 +2008,6 @@ class MigrateFHIRDataView(LoginRequiredMixin, View):
     
     def post(self, request):
         """Trigger FHIR data migration for selected documents."""
-        from .tasks import merge_to_patient_record
         from .models import ParsedData
         
         doc_ids = request.POST.getlist('document_ids')
@@ -2052,14 +2023,8 @@ class MigrateFHIRDataView(LoginRequiredMixin, View):
                 document = Document.objects.get(id=doc_id, status='completed')
                 parsed_data = document.parsed_data
                 
-                # Auto-approve if not already approved
-                if not parsed_data.is_approved:
-                    parsed_data.is_approved = True
-                    parsed_data.reviewed_by = request.user
-                    parsed_data.reviewed_at = timezone.now()
-                    parsed_data.save()
-                
                 # Merge FHIR data immediately (synchronous)
+                # Note: In optimistic system, data may already be merged
                 if not parsed_data.is_merged and parsed_data.fhir_delta_json:
                     try:
                         fhir_data = parsed_data.fhir_delta_json

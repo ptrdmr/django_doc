@@ -540,10 +540,13 @@ class ParsedData(BaseModel):
         help_text="Reason for rejection if status is rejected"
     )
     
-    # Deprecated: Use review_status instead
+    # DEPRECATED (Task 41.27): Use review_status instead
+    # This field is kept for backward compatibility but is no longer authoritative.
+    # In the optimistic concurrency system, review_status is the source of truth.
+    # Future: Remove this field in a separate data migration task.
     is_approved = models.BooleanField(
         default=False,
-        help_text="DEPRECATED: Whether extracted data is approved for merging"
+        help_text="DEPRECATED: Use review_status field instead. Kept for backward compatibility only."
     )
     
     # Quality metrics
@@ -597,8 +600,14 @@ class ParsedData(BaseModel):
         self.save(update_fields=['is_merged', 'merged_at', 'updated_by', 'updated_at'])
     
     def approve_extraction(self, user, notes=""):
-        """Manually approve the extracted data for merging (sets status to 'reviewed')."""
-        self.is_approved = True
+        """
+        Mark extracted data as reviewed (optimistic concurrency system).
+        
+        Note: Data is already merged to patient record. This method marks
+        the review as complete and records the reviewer's approval.
+        """
+        # DEPRECATED: is_approved field - use review_status instead
+        self.is_approved = True  # Keep for backward compatibility, but review_status is authoritative
         self.review_status = 'reviewed'
         self.reviewed_by = user
         self.reviewed_at = timezone.now()
@@ -607,8 +616,14 @@ class ParsedData(BaseModel):
         self.save(update_fields=['is_approved', 'review_status', 'reviewed_by', 'reviewed_at', 'review_notes'])
 
     def reject_extraction(self, user, reason=""):
-        """Reject the extracted data."""
-        self.is_approved = False
+        """
+        Reject the extracted data.
+        
+        Note: In optimistic system, data may already be merged. Consider using
+        rollback_merge() to remove data from patient record.
+        """
+        # DEPRECATED: is_approved field - use review_status instead
+        self.is_approved = False  # Keep for backward compatibility, but review_status is authoritative
         self.review_status = 'rejected'
         self.reviewed_by = user
         self.reviewed_at = timezone.now()

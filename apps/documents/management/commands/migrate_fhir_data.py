@@ -8,7 +8,6 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta
 from apps.documents.models import Document, ParsedData
-from apps.documents.tasks import merge_to_patient_record
 import logging
 
 logger = logging.getLogger(__name__)
@@ -70,7 +69,7 @@ class Command(BaseCommand):
             try:
                 parsed_data = doc.parsed_data
                 self.stdout.write(f"  ParsedData: ID {parsed_data.id}")
-                self.stdout.write(f"    Approved: {parsed_data.is_approved}")
+                self.stdout.write(f"    Review Status: {parsed_data.review_status}")
                 self.stdout.write(f"    Merged: {parsed_data.is_merged}")
                 
                 # Count FHIR resources
@@ -91,14 +90,9 @@ class Command(BaseCommand):
                     # Check if this needs migration
                     needs_migration = False
                     if not parsed_data.is_merged and fhir_count > 0:
-                        if not parsed_data.is_approved:
-                            # Auto-approve for migration
-                            needs_migration = True
-                            self.stdout.write(self.style.WARNING("    → Needs approval and merge"))
-                        else:
-                            # Just needs merge
-                            needs_migration = True
-                            self.stdout.write(self.style.WARNING("    → Approved but not merged"))
+                        # Needs merge (approval not required in optimistic system)
+                        needs_migration = True
+                        self.stdout.write(self.style.WARNING("    → Needs merge"))
                     elif parsed_data.is_merged and options['force']:
                         needs_migration = True
                         self.stdout.write(self.style.WARNING("    → Already merged but --force specified"))
@@ -141,31 +135,42 @@ class Command(BaseCommand):
                     try:
                         self.stdout.write(f"Migrating Document {doc.id}...")
                         
-                        # Auto-approve if not already approved
-                        if not parsed_data.is_approved:
-                            parsed_data.is_approved = True
-                            parsed_data.reviewed_at = timezone.now()
-                            # Set reviewed_by to the document uploader if available
-                            if hasattr(doc, 'uploaded_by') and doc.uploaded_by:
-                                parsed_data.reviewed_by = doc.uploaded_by
-                            parsed_data.save()
-                            self.stdout.write("  ✓ Auto-approved ParsedData")
+                        # Get FHIR data to merge
+                        fhir_data = parsed_data.fhir_delta_json
+                        if not fhir_data:
+                            self.stdout.write(self.style.WARNING("  ~ No FHIR data to merge"))
+                            continue
                         
-                        # Trigger merge task
-                        task = merge_to_patient_record.delay(parsed_data.id)
-                        self.stdout.write(f"  ✓ Started merge task {task.id}")
-                        
-                        # Wait a moment for the task to complete (synchronous for this command)
-                        try:
-                            result = task.get(timeout=30)  # Wait up to 30 seconds
-                            if result.get('success'):
-                                self.stdout.write(self.style.SUCCESS(f"  ✓ Successfully merged {result.get('resources_merged', 0)} resources"))
-                                success_count += 1
+                        # Convert FHIR data to list format if needed
+                        fhir_resources = []
+                        if isinstance(fhir_data, dict):
+                            if fhir_data.get('resourceType') == 'Bundle' and 'entry' in fhir_data:
+                                fhir_resources = [entry['resource'] for entry in fhir_data['entry'] if 'resource' in entry]
                             else:
-                                self.stdout.write(self.style.ERROR(f"  ✗ Merge failed: {result.get('error_message')}"))
-                        except Exception as task_error:
-                            self.stdout.write(self.style.WARNING(f"  ~ Merge task started but couldn't wait for completion: {task_error}"))
-                            success_count += 1  # Count as success since task was started
+                                fhir_resources = [fhir_data]
+                        elif isinstance(fhir_data, list):
+                            fhir_resources = fhir_data
+                        
+                        if not fhir_resources:
+                            self.stdout.write(self.style.WARNING("  ~ No FHIR resources to merge"))
+                            continue
+                        
+                        # Merge directly to patient record (inline, no task)
+                        merge_success = doc.patient.add_fhir_resources(
+                            fhir_resources,
+                            document_id=doc.id
+                        )
+                        
+                        if merge_success:
+                            # Mark as merged
+                            parsed_data.is_merged = True
+                            parsed_data.merged_at = timezone.now()
+                            parsed_data.save(update_fields=['is_merged', 'merged_at'])
+                            
+                            self.stdout.write(self.style.SUCCESS(f"  ✓ Successfully merged {len(fhir_resources)} resources"))
+                            success_count += 1
+                        else:
+                            self.stdout.write(self.style.ERROR("  ✗ Merge failed"))
                             
                     except Exception as migration_error:
                         self.stdout.write(self.style.ERROR(f"  ✗ Migration failed: {migration_error}"))
