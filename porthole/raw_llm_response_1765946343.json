@@ -1,0 +1,9 @@
+{
+  "document_id": "1765946343",
+  "timestamp": "2025-12-16T20:39:13.327244",
+  "stage": "raw_llm_response",
+  "llm_type": "claude_manual_json",
+  "parsing_successful": false,
+  "response_length": 1289,
+  "raw_response": "```json\n{\n  \"conditions\": [\n    {\n      \"name\": \"Hypertension\",\n      \"status\": \"active\",\n      \"confidence\": 0.95,\n      \"onset_date\": null,\n      \"icd_code\": null,\n      \"source\": {\n        \"text\": \"Test Condition: Hypertension\",\n        \"start_index\": 47,\n        \"end_index\": 75\n      }\n    }\n  ],\n  \"medications\": [\n    {\n      \"name\": \"Lisinopril\",\n      \"dosage\": null,\n      \"route\": null,\n      \"frequency\": null,\n      \"status\": \"active\",\n      \"confidence\": 0.95,\n      \"start_date\": null,\n      \"stop_date\": null,\n      \"source\": {\n        \"text\": \"Test Medication: Lisinopril\",\n        \"start_index\": 104,\n        \"end_index\": 131\n      }\n    }\n  ],\n  \"vital_signs\": [\n    {\n      \"measurement\": \"Blood Pressure\",\n      \"value\": \"130/85\",\n      \"unit\": \"mmHg\",\n      \"timestamp\": null,\n      \"confidence\": 0.95,\n      \"source\": {\n        \"text\": \"Test Observation: BP 130/85\",\n        \"start_index\": 76,\n        \"end_index\": 103\n      }\n    }\n  ],\n  \"lab_results\": [],\n  \"procedures\": [],\n  \"providers\": [],\n  \"encounters\": [],\n  \"service_requests\": [],\n  \"diagnostic_reports\": [],\n  \"allergies\": [],\n  \"care_plans\": [],\n  \"organizations\": [],\n  \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n  \"document_type\": \"General clinical document\",\n  \"confidence_average\": 0.95\n}\n```"
+}

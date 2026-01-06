@@ -1,0 +1,10 @@
+{
+  "document_id": 5,
+  "timestamp": "2025-12-16T09:47:01.372750",
+  "stage": "error_structured_extraction",
+  "error_message": "'MockStructuredExtraction' object has no attribute 'conditions'",
+  "error_data": {
+    "context": null,
+    "text_length": 179
+  }
+}

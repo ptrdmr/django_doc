@@ -1,0 +1,59 @@
+552c06de76d7be14f7f05922875775de9cd08373|2025-06-24 21:20:39 -0700|Initial commit: Django medical document parser project with patient models
+38bee09363b83d5f05a47ddc47571ea748ce6099|2025-06-24 21:50:22 -0700|docs: Update documentation for Patient models completion (Task 3.1)
+911ab6a656ea0e43ce779d069e78b5393d7e6947|2025-07-21 09:43:10 -0700|Initial Django medical document parser implementation
+eff8ab838d2ffffe76729bbf9973b0edfe4d83ef|2025-07-23 19:42:52 -0700|updated documentation and tasmkaster tasks
+21075947605b5ee7435e64d7773d4f14786a0ab3|2025-07-26 18:54:46 -0700|docs: Complete Task 6.9 - Enhanced Claude/GPT API Integration
+faf81e307a77914781054ccf0849851deea2db59|2025-07-26 19:03:50 -0700|task: Update Task 6.9 with comprehensive implementation details
+ea68e650d50f3b89b19659401d8c28401b20982a|2025-08-01 08:55:53 -0700|feat: Add AI assistant context automation and database documentation updates
+685118cea07e0f01919b5be77212ae1377176405|2025-08-09 00:01:46 -0700|feat(fhir): Complete comprehensive FHIR Data Integration and Merging System - Task 14
+90ab61f9f2a6dfc108f24bb73fe9084fb2c62f53|2025-08-30 14:49:30 -0700|feat: Complete FHIR extraction system overhaul and HIPAA compliance implementation
+d3c244ecbbe8dded910c898c082af6432f3ab506|2025-09-02 07:39:22 -0700|fix(fhir): resolve critical condition duplicate detection bug causing 80% data loss
+a6651e1cfa278a5b858f9055bc3f3ff1e65de57f|2025-09-06 15:24:36 -0700|feat: Complete RBAC, Provider Invitations, PHI Verification + FHIR Improvements
+97840ae973913423e5d6f13bdd4ba47d1f4cb30a|2025-09-06 15:37:47 -0700|feat(fhir): Implement comprehensive FHIR processing pipeline integration (Task 27.4)
+66d8d1710fe1b41c2a5c7428d83bddb89216243e|2025-09-06 17:14:17 -0700|feat(documents): implement document review template structure (subtask 13.1)
+5317a7844ece0f89edee7ba5994b12532ecf7264|2025-09-06 17:20:12 -0700|feat(documents): implement PDF.js document preview panel (subtask 13.2)
+2bedae048d32ac46d1971926e4daac3fb3f3faaa|2025-09-06 17:28:19 -0700|fix(documents): implement proper review workflow - CRITICAL FIX
+0dca1ba5c600bda886cd7e47bd7e053fc8760791|2025-09-06 17:30:30 -0700|fix(documents): resolve FHIR data format compatibility issue
+ec1cb4c03b0e0f90d76a535328d66ada1939d023|2025-09-06 17:32:03 -0700|fix(templates): add missing static template tag in review.html
+24ce79e53f5eb2da91920d0c48a75a5bd158b431|2025-09-06 17:33:41 -0700|fix(templates): resolve field.name template variable error
+5df9a16a5c9ae9f155c52aeae4a5fa16c491ce10|2025-09-06 17:36:17 -0700|fix(pdf-viewer): improve PDF.js loading reliability
+4c7aec49460afe74cfb0e80b7bda9b76fd467887|2025-09-06 17:39:02 -0700|feat(documents): add review button and testing utility
+05ac38be1af779ee64cc1362c24f4acd0fdfc4f6|2025-09-06 17:45:52 -0700|fix(deps): update to django-cryptography-5 for Django 5.x compatibility
+f7d0154c31cd5663fb3965ad6182ab8fef11a806|2025-09-07 23:01:44 -0700|fix: Implement missing FHIR data merge functionality
+0f9169097efc85282215cc7a4399c5b5d706863d|2025-09-07 23:16:49 -0700|fix: Resolve FHIR data display issues after validation step
+6e97359e7e49189d4e8ca4fcefdf78daec4a8e88|2025-09-07 23:36:08 -0700|fix: Replace async merge with synchronous FHIR data merge
+04cb6458509cc73331d546c39411b092c63354e4|2025-09-07 23:41:15 -0700|fix: Complete FHIR data display and export functionality
+78d74d0af2d70650bbfcbff59afee78f719c87d9|2025-09-07 23:49:29 -0700|feat: Add Review buttons for documents needing validation
+f37306bf1edac30063f929473443266926a0970b|2025-09-08 00:03:44 -0700|fix: Simplify Review button text in document detail
+08263bdd823fef0d07c1e4d8c6c010e91b306a9e|2025-09-08 00:08:15 -0700|fix: Make Review Document button visible with proper contrast
+256d938c261e72de825b1717c64786496398f968|2025-09-08 00:09:39 -0700|fix: Connect View Patient Profile link to actual patient detail page
+70a8c74a9d51b6fb7128526b21801c1e0b4d4263|2025-09-11 20:00:01 -0700|feat(documents): Add source_snippets support for text snippet review system
+840520a2c4e5524a7590f36556eacdc5f7862744|2025-09-11 20:09:44 -0700|feat(documents): Complete AI prompt and response parsing updates for snippet system
+f1cd9460556435f007722870c349726bf1a116c8|2025-09-11 20:11:53 -0700|feat(documents): Add snippet extraction utility functions
+af287bfce4db3c1dbadff4417faff158a2b90118|2025-09-11 20:14:11 -0700|feat(documents): Add parsed data API endpoint with snippet support
+165739cc3cd9c1f903ab1cef7290d05f41625b11|2025-09-11 20:17:17 -0700|feat(documents): Complete comprehensive snippet functionality test suite
+acb1376554d3855826bea9092153baa3569642cd|2025-09-11 20:23:08 -0700|docs: Update documentation for snippet-based review system
+5125e9f8b6e051251b0ded8012738bf3420a8a67|2025-09-11 20:33:34 -0700|feat(documents): Remove PDF.js dependencies for snippet-based review
+5c6cb8bee1d0cf6fb3282d2f59a8b4fba88b11bc|2025-09-12 07:53:09 -0700|feat(documents): Update DocumentReviewView for snippet-based review (Subtask 31.2)
+383f0dc9967dfef01c9c736d323aa0bfd32bca30|2025-09-12 07:56:19 -0700|feat(documents): Create single-column layout structure for snippet-based review (Subtask 31.3)
+9f157942da2a370e15c36c27304b807d372e0ec3|2025-09-12 08:19:04 -0700|fix(ai): Upgrade from Claude Haiku to Claude Sonnet 4 for robust medical processing
+5cc910cf1581568b0bb2ad3d434d079d02d239a5|2025-09-12 08:32:19 -0700|fix(documents): Fix database save bug in document processing task
+c0e3a99429dd12cc36a3a820dac548c9a8f1a321|2025-09-12 08:38:24 -0700|feat(documents): Implement professional review header and progress indicator (Subtask 31.4)
+1ff1e0c0a17b9e24667bdb4e2d06185bead5ad6a|2025-09-12 08:40:29 -0700|feat(documents): Implement professional missing data alert component (Subtask 31.5)
+39e0d389c14dab14f11390368e16b95f83c08f60|2025-09-12 08:43:10 -0700|feat(documents): Implement professional category section components (Subtask 31.6)
+4d3129b4778b24f8775a33295ab802945ec56873|2025-09-12 08:45:18 -0700|feat(documents): Implement professional field review card components (Subtask 31.7)
+ae75a6ce2ee581b31b668e641dfa4aae852b0cac|2025-09-12 08:48:43 -0700|feat(documents): Implement field review endpoints and partial template (Subtasks 31.8-31.13)
+369094ba68d88fa4e656dd04ac83ef8937611da6|2025-09-12 08:49:54 -0700|feat(documents): Complete snippet-based review interface JavaScript (Subtasks 31.14-31.18)
+fadbd14a1c73f33214540ab16c4e19461464037f|2025-09-12 19:32:56 -0700|fix(documents): Fix field mapping bug in DocumentReviewView (CRITICAL)
+184231bb25feb2ded0f546fcddb19c174c5a33f2|2025-09-13 16:07:11 -0700|fix(documents): Add source snippet generation for medical review validation
+e9547e1e180b2ec962a51a830885cc46387fc6c8|2025-09-13 16:30:13 -0700|feat(documents): Complete snippet-based review interface with working source context
+5b77a8960a07a5ba9779da0173d11ac4dde3b045|2025-09-13 17:13:58 -0700|fix(documents): Resolve complex medical document processing failures
+53e460651d5b99aea7f5b0dd61ae5ffb5539aa98|2025-09-13 18:54:54 -0700|fix: resolve document review interface issues and restore field-level approval functionality
+5e1c0204c13c73db46b7b0369fd67e14337ea224|2025-09-13 20:21:29 -0700|feat(dev): Add development-only delete functionality for patients and documents
+d41d74a02994d2c203e349b20671e9f7f8152482|2025-09-13 21:03:46 -0700|fix(dev): Fix delete functionality to bypass soft delete and add cleanup utility
+f989ac5061f27de09ff09d1abcf7f17f64affc9c|2025-09-13 21:05:21 -0700|fix(dev): Properly handle PROTECT constraints in delete functionality
+176ea3a98397a937d4def9c89ca4ae9e93ae7219|2025-09-14 11:38:14 -0700|fix(documents): Fix extracted data display showing FHIR structures instead of clean values
+c14cf54ec3528cbd9a0e0ed79ecf3fe2778a8fac|2025-09-14 12:54:09 -0700|feat(fhir): Implement FHIR Bundle Structure Improvements with Individual Resource Extraction
+ed55c264dd3892b436d1ede098ee081dbfae998c|2025-09-16 06:33:04 -0700|feat(documents): Implement Patient Data Comparison Model (Task 13.15)
+53aa9e828a07947f718c69f395134f1b1c92c43a|2025-09-16 07:07:51 -0700|feat(documents): Implement Patient Data Comparison Service (Task 13.16)
+43e6c36bf0ee32d523bdbfd8290ce48caa83bb97|2025-09-16 07:11:16 -0700|feat(documents): Create Patient Comparison

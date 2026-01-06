@@ -1,0 +1,66 @@
+{
+  "document_id": 3,
+  "timestamp": "2025-12-16T20:39:13.328244",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Hypertension",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Test Condition: Hypertension",
+          "start_index": 47,
+          "end_index": 75
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Lisinopril",
+        "dosage": null,
+        "route": null,
+        "frequency": null,
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Test Medication: Lisinopril",
+          "start_index": 104,
+          "end_index": 131
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Blood Pressure",
+        "value": "130/85",
+        "unit": "mmHg",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Test Observation: BP 130/85",
+          "start_index": 76,
+          "end_index": 103
+        }
+      }
+    ],
+    "lab_results": [],
+    "procedures": [],
+    "providers": [],
+    "encounters": [],
+    "service_requests": [],
+    "diagnostic_reports": [],
+    "allergies": [],
+    "care_plans": [],
+    "organizations": [],
+    "extraction_timestamp": "2025-12-16T20:39:13.327244",
+    "document_type": null,
+    "confidence_average": 0.95
+  }
+}

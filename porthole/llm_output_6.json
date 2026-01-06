@@ -1,0 +1,128 @@
+{
+  "document_id": 6,
+  "timestamp": "2025-12-16T20:10:31.607909",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Hypertension",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "I10",
+        "source": {
+          "text": "Extracted from medical record",
+          "start_index": 0,
+          "end_index": 100
+        }
+      },
+      {
+        "name": "Hypertension",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "I10",
+        "source": {
+          "text": "Extracted from medical record",
+          "start_index": 0,
+          "end_index": 100
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Lisinopril",
+        "dosage": "10mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Extracted from medical record",
+          "start_index": 0,
+          "end_index": 100
+        }
+      },
+      {
+        "name": "Lisinopril",
+        "dosage": "10mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Extracted from medical record",
+          "start_index": 0,
+          "end_index": 100
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Blood Pressure",
+        "value": "138/88",
+        "unit": "mmHg",
+        "timestamp": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Extracted from medical record",
+          "start_index": 0,
+          "end_index": 100
+        }
+      }
+    ],
+    "lab_results": [],
+    "procedures": [],
+    "providers": [],
+    "encounters": [],
+    "extraction_data": {
+      "patient_name": "John Doe",
+      "dob": "1980-01-01"
+    },
+    "fhir_resources": [
+      {
+        "resourceType": "Patient",
+        "name": [
+          {
+            "given": [
+              "John"
+            ],
+            "family": "Doe"
+          }
+        ],
+        "birthDate": "1980-01-01"
+      },
+      {
+        "resourceType": "Condition",
+        "code": {
+          "text": "Hypertension"
+        }
+      },
+      {
+        "resourceType": "Observation",
+        "code": {
+          "text": "Blood Pressure"
+        }
+      },
+      {
+        "resourceType": "MedicationStatement",
+        "code": {
+          "text": "Lisinopril"
+        }
+      }
+    ],
+    "extraction_confidence": 0.95,
+    "confidence_average": 0.95,
+    "model_used": "claude-3-sonnet",
+    "fallback_method": "",
+    "extraction_timestamp": "2025-12-17T04:10:31.587589+00:00",
+    "document_type": "clinical_note",
+    "extraction_method": "structured_ai"
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "document_id": 2,
+  "timestamp": "2025-12-16T20:39:03.414119",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Unknown diagnosis",
+        "status": "unknown",
+        "confidence": 0.2,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Some diagnosis mentioned - unclear",
+          "start_index": 60,
+          "end_index": 92
+        }
+      }
+    ],
+    "medications": [],
+    "vital_signs": [
+      {
+        "measurement": "Unknown vital signs",
+        "value": "unreadable",
+        "unit": null,
+        "timestamp": null,
+        "confidence": 0.1,
+        "source": {
+          "text": "Vitals recorded but smudged",
+          "start_index": 93,
+          "end_index": 120
+        }
+      }
+    ],
+    "lab_results": [],
+    "procedures": [],
+    "providers": [],
+    "encounters": [
+      {
+        "encounter_id": null,
+        "encounter_type": "general clinical visit",
+        "encounter_date": null,
+        "encounter_end_date": null,
+        "location": null,
+        "reason": null,
+        "participants": [],
+        "status": null,
+        "confidence": 0.3,
+        "source": {
+          "text": "Document context: General clinical document",
+          "start_index": 122,
+          "end_index": 165
+        }
+      }
+    ],
+    "service_requests": [],
+    "diagnostic_reports": [],
+    "allergies": [],
+    "care_plans": [],
+    "organizations": [],
+    "extraction_timestamp": "2025-12-16T20:39:03.413119",
+    "document_type": null,
+    "confidence_average": 0.2
+  }
+}

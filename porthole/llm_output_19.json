@@ -1,0 +1,7 @@
+{
+  "document_id": 19,
+  "timestamp": "2025-12-09T08:40:18.347725",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": 

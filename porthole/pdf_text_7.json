@@ -1,0 +1,12 @@
+{
+  "document_id": 7,
+  "timestamp": "2025-12-09T08:40:17.875989",
+  "stage": "pdf_extraction",
+  "text_length": 61,
+  "text_content": "Patient John Doe, DOB 1988-08-08. Diagnosis: Type 2 Diabetes.",
+  "metadata": {
+    "page_count": 1,
+    "file_size_mb": 0.1,
+    "pdf_metadata": {}
+  }
+}

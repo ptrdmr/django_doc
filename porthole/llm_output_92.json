@@ -1,0 +1,721 @@
+{
+  "document_id": 92,
+  "timestamp": "2025-12-24T22:34:15.996414",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Atrial Fibrillation",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": "2024-07-22",
+        "icd_code": null,
+        "source": {
+          "text": "Atrial Fibrillation, new onset vs paroxysmal",
+          "start_index": 2850,
+          "end_index": 2895
+        }
+      },
+      {
+        "name": "Hypertension",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": "2012",
+        "icd_code": null,
+        "source": {
+          "text": "HTN (diagnosed 2012)",
+          "start_index": 520,
+          "end_index": 540
+        }
+      },
+      {
+        "name": "Type II Diabetes Mellitus",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": "2018",
+        "icd_code": null,
+        "source": {
+          "text": "Type II DM (diagnosed 2018, Hb A1c last 8.7%)",
+          "start_index": 543,
+          "end_index": 588
+        }
+      },
+      {
+        "name": "Hyperlipidemia",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hyperlipidemia",
+          "start_index": 591,
+          "end_index": 605
+        }
+      },
+      {
+        "name": "Obesity",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Obesity (BMI 32.1)",
+          "start_index": 2975,
+          "end_index": 2993
+        }
+      },
+      {
+        "name": "Uncontrolled Hypertension",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": "2024-07-22",
+        "icd_code": null,
+        "source": {
+          "text": "Uncontrolled HTN",
+          "start_index": 2900,
+          "end_index": 2916
+        }
+      },
+      {
+        "name": "Type II Diabetes - poorly controlled",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": "2024-07-22",
+        "icd_code": null,
+        "source": {
+          "text": "Type II DM – poorly controlled",
+          "start_index": 2920,
+          "end_index": 2950
+        }
+      },
+      {
+        "name": "Hyperlipidemia - poor medication adherence",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hyperlipidemia – poor medication adherence",
+          "start_index": 2954,
+          "end_index": 2996
+        }
+      },
+      {
+        "name": "Chest discomfort",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": "2024-07-19",
+        "icd_code": null,
+        "source": {
+          "text": "chest discomfort described as \"pressure-like\" x3 days",
+          "start_index": 230,
+          "end_index": 283
+        }
+      },
+      {
+        "name": "Shortness of breath",
+        "status": "active",
+        "confidence": 0.85,
+        "onset_date": "2024-07-19",
+        "icd_code": null,
+        "source": {
+          "text": "associated with mild SOB",
+          "start_index": 285,
+          "end_index": 309
+        }
+      },
+      {
+        "name": "Palpitations",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": "2024-07-19",
+        "icd_code": null,
+        "source": {
+          "text": "intermittent palpitations",
+          "start_index": 311,
+          "end_index": 336
+        }
+      },
+      {
+        "name": "Dizziness",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": "2024-07-19",
+        "icd_code": null,
+        "source": {
+          "text": "dizziness",
+          "start_index": 342,
+          "end_index": 351
+        }
+      },
+      {
+        "name": "Mild cardiomegaly",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": "2024-07-22",
+        "icd_code": null,
+        "source": {
+          "text": "Chest X-ray: Mild cardiomegaly",
+          "start_index": 2620,
+          "end_index": 2650
+        }
+      },
+      {
+        "name": "Mild leukocytosis",
+        "status": "active",
+        "confidence": 0.85,
+        "onset_date": "2024-07-22",
+        "icd_code": null,
+        "source": {
+          "text": "CBC: WNL except mild leukocytosis (WBC 11.2k)",
+          "start_index": 2685,
+          "end_index": 2730
+        }
+      },
+      {
+        "name": "Elevated creatinine",
+        "status": "active",
+        "confidence": 0.85,
+        "onset_date": "2024-07-22",
+        "icd_code": null,
+        "source": {
+          "text": "Cr 1.3 mg/d L (mildly ›)",
+          "start_index": 2760,
+          "end_index": 2784
+        }
+      },
+      {
+        "name": "Elevated ALT",
+        "status": "active",
+        "confidence": 0.85,
+        "onset_date": "2024-07-22",
+        "icd_code": null,
+        "source": {
+          "text": "ALT 52 (›)",
+          "start_index": 2786,
+          "end_index": 2796
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Lisinopril",
+        "dosage": "20mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Lisinopril 20mg PO daily BP control",
+          "start_index": 750,
+          "end_index": 785
+        }
+      },
+      {
+        "name": "Metformin",
+        "dosage": "1000mg",
+        "route": "PO",
+        "frequency": "BID",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Metformin 1000mg PO BID Last refill 07/01/2024",
+          "start_index": 786,
+          "end_index": 832
+        }
+      },
+      {
+        "name": "Atorvastatin",
+        "dosage": "40mg",
+        "route": "PO",
+        "frequency": "nightly",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Atorvastatin 40mg PO nightly Non-adherent past 3 months",
+          "start_index": 833,
+          "end_index": 889
+        }
+      },
+      {
+        "name": "Ibuprofen",
+        "dosage": "400mg",
+        "route": "PO",
+        "frequency": "PRN (3-4x/week)",
+        "status": "active",
+        "confidence": 0.9,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "OTC Ibuprofen 400mg PRN (3-4x/week) For headaches",
+          "start_index": 890,
+          "end_index": 940
+        }
+      },
+      {
+        "name": "Energy Supplements",
+        "dosage": "Unknown",
+        "route": null,
+        "frequency": null,
+        "status": "active",
+        "confidence": 0.75,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Energy Supplements Unknown Purchased online, unverified",
+          "start_index": 941,
+          "end_index": 996
+        }
+      },
+      {
+        "name": "Metoprolol tartrate",
+        "dosage": "25mg",
+        "route": "PO",
+        "frequency": "q6h",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": "2024-07-22",
+        "stop_date": null,
+        "source": {
+          "text": "Start Metoprolol tartrate 25mg PO q6h (hold if HR <60)",
+          "start_index": 3050,
+          "end_index": 3105
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Blood Pressure",
+        "value": "162/98",
+        "unit": "mm Hg",
+        "timestamp": "2024-07-22T09:45:00",
+        "confidence": 0.95,
+        "source": {
+          "text": "BP: 162/98 mm Hg (sitting, R arm)",
+          "start_index": 1020,
+          "end_index": 1054
+        }
+      },
+      {
+        "measurement": "Heart Rate",
+        "value": "108",
+        "unit": "bpm",
+        "timestamp": "2024-07-22T09:45:00",
+        "confidence": 0.95,
+        "source": {
+          "text": "HR: 108 bpm, irregular",
+          "start_index": 1057,
+          "end_index": 1079
+        }
+      },
+      {
+        "measurement": "Temperature",
+        "value": "98.4",
+        "unit": "°F",
+        "timestamp": "2024-07-22T09:45:00",
+        "confidence": 0.95,
+        "source": {
+          "text": "Temp: 98.4°F",
+          "start_index": 1082,
+          "end_index": 1094
+        }
+      },
+      {
+        "measurement": "Oxygen Saturation",
+        "value": "95",
+        "unit": "%",
+        "timestamp": "2024-07-22T09:45:00",
+        "confidence": 0.95,
+        "source": {
+          "text": "Sp On: 95% RA",
+          "start_index": 1097,
+          "end_index": 1110
+        }
+      },
+      {
+        "measurement": "Weight",
+        "value": "98.4",
+        "unit": "kg",
+        "timestamp": "2024-07-22T09:45:00",
+        "confidence": 0.95,
+        "source": {
+          "text": "Weight: 98.4 kg",
+          "start_index": 1113,
+          "end_index": 1128
+        }
+      },
+      {
+        "measurement": "Height",
+        "value": "175",
+        "unit": "cm",
+        "timestamp": "2024-07-22T09:45:00",
+        "confidence": 0.95,
+        "source": {
+          "text": "Height: 175 cm",
+          "start_index": 1131,
+          "end_index": 1145
+        }
+      },
+      {
+        "measurement": "BMI",
+        "value": "32.1",
+        "unit": "kg/m2",
+        "timestamp": "2024-07-22T09:45:00",
+        "confidence": 0.95,
+        "source": {
+          "text": "BMI 32.1, obese class I",
+          "start_index": 1147,
+          "end_index": 1170
+        }
+      }
+    ],
+    "lab_results": [
+      {
+        "test_name": "WBC",
+        "value": "11.2",
+        "unit": "k",
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2024-07-22",
+        "confidence": 0.95,
+        "source": {
+          "text": "CBC: WNL except mild leukocytosis (WBC 11.2k)",
+          "start_index": 2685,
+          "end_index": 2730
+        }
+      },
+      {
+        "test_name": "Glucose",
+        "value": "198",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2024-07-22",
+        "confidence": 0.95,
+        "source": {
+          "text": "CMP: Glucose 198 mg/d L (H)",
+          "start_index": 2733,
+          "end_index": 2760
+        }
+      },
+      {
+        "test_name": "Creatinine",
+        "value": "1.3",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2024-07-22",
+        "confidence": 0.95,
+        "source": {
+          "text": "Cr 1.3 mg/d L (mildly ›)",
+          "start_index": 2762,
+          "end_index": 2786
+        }
+      },
+      {
+        "test_name": "ALT",
+        "value": "52",
+        "unit": null,
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2024-07-22",
+        "confidence": 0.95,
+        "source": {
+          "text": "ALT 52 (›)",
+          "start_index": 2788,
+          "end_index": 2798
+        }
+      },
+      {
+        "test_name": "Troponin I",
+        "value": "0.03",
+        "unit": "ng/mL",
+        "reference_range": "upper limit normal 0.04",
+        "status": "final",
+        "test_date": "2024-07-22",
+        "confidence": 0.95,
+        "source": {
+          "text": "Troponin I: 0.03 ng/m L (upper limit normal 0.04)",
+          "start_index": 2801,
+          "end_index": 2850
+        }
+      },
+      {
+        "test_name": "Hemoglobin A1c",
+        "value": "8.9",
+        "unit": "%",
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2024-07-22",
+        "confidence": 0.95,
+        "source": {
+          "text": "Hb A1c: 8.9%",
+          "start_index": 2853,
+          "end_index": 2865
+        }
+      }
+    ],
+    "procedures": [
+      {
+        "name": "Appendectomy",
+        "procedure_date": "1991",
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Remote history of appendectomy (1991)",
+          "start_index": 608,
+          "end_index": 646
+        }
+      },
+      {
+        "name": "EKG",
+        "procedure_date": "2024-07-22",
+        "provider": null,
+        "outcome": "Atrial fibrillation, HR 115, nonspecific ST-T wave abnormalities",
+        "confidence": 0.95,
+        "source": {
+          "text": "EKG: Atrial fibrillation, HR 115, nonspecific ST-T wave abnormalities",
+          "start_index": 2545,
+          "end_index": 2615
+        }
+      },
+      {
+        "name": "Chest X-ray",
+        "procedure_date": "2024-07-22",
+        "provider": null,
+        "outcome": "Mild cardiomegaly, no acute infiltrate",
+        "confidence": 0.95,
+        "source": {
+          "text": "Chest X-ray: Mild cardiomegaly, no acute infiltrate",
+          "start_index": 2618,
+          "end_index": 2670
+        }
+      }
+    ],
+    "providers": [
+      {
+        "name": "Dr. Sarah Lin",
+        "specialty": "Internal Medicine / Cardiology Consult",
+        "role": "Provider",
+        "contact_info": "NPI: 1298745632",
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: Dr. Sarah Lin, MD Department: Internal Medicine / Cardiology Consult",
+          "start_index": 130,
+          "end_index": 208
+        }
+      }
+    ],
+    "encounters": [
+      {
+        "encounter_id": null,
+        "encounter_type": "office visit",
+        "encounter_date": "2024-07-22",
+        "encounter_end_date": null,
+        "location": "Internal Medicine / Cardiology Consult",
+        "reason": "chest discomfort described as \"pressure-like\" x3 days, associated with mild SOB, intermittent palpitations, and dizziness",
+        "participants": [
+          "Dr. Sarah Lin, MD"
+        ],
+        "status": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Encounter Date: 07/22/2024 Provider: Dr. Sarah Lin, MD Department: Internal Medicine / Cardiology Consult",
+          "start_index": 102,
+          "end_index": 208
+        }
+      },
+      {
+        "encounter_id": null,
+        "encounter_type": "hospital admission",
+        "encounter_date": "2024-07-22",
+        "encounter_end_date": null,
+        "location": "telemetry",
+        "reason": "Atrial fibrillation monitoring",
+        "participants": [],
+        "status": "planned",
+        "confidence": 0.9,
+        "source": {
+          "text": "Admit to telemetry for monitoring",
+          "start_index": 3000,
+          "end_index": 3034
+        }
+      }
+    ],
+    "service_requests": [
+      {
+        "request_id": null,
+        "request_type": "specialist referral",
+        "requester": "Dr. Sarah Lin",
+        "reason": "Atrial fibrillation management",
+        "priority": null,
+        "clinical_context": "new onset atrial fibrillation with moderate stroke risk",
+        "request_date": "2024-07-22",
+        "confidence": 0.95,
+        "source": {
+          "text": "Cardiology consult for further management",
+          "start_index": 3150,
+          "end_index": 3192
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "diagnostic test",
+        "requester": "Dr. Sarah Lin",
+        "reason": "cardiac evaluation",
+        "priority": "routine",
+        "clinical_context": "outpatient stress test once stable",
+        "request_date": "2024-07-22",
+        "confidence": 0.9,
+        "source": {
+          "text": "Recommend outpatient stress test once stable",
+          "start_index": 3250,
+          "end_index": 3295
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "imaging study",
+        "requester": null,
+        "reason": "cardiac evaluation",
+        "priority": null,
+        "clinical_context": "requires prior auth for echo",
+        "request_date": null,
+        "confidence": 0.85,
+        "source": {
+          "text": "Insurance: Horizon HMO – requires prior auth for echo",
+          "start_index": 3480,
+          "end_index": 3534
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "lab test",
+        "requester": null,
+        "reason": "diagnostic workup",
+        "priority": null,
+        "clinical_context": "CBC, CMP, Troponin I, Hb A1c",
+        "request_date": "2024-07-22",
+        "confidence": 0.95,
+        "source": {
+          "text": "Labs (drawn 07/22/24): CBC: WNL except mild leukocytosis (WBC 11.2k) CMP: Glucose 198 mg/d L (H), Cr 1.3 mg/d L (mildly ›), ALT 52 (›) Troponin I: 0.03 ng/m L (upper limit normal 0.04) Hb A1c: 8.9%",
+          "start_index": 2673,
+          "end_index": 2865
+        }
+      }
+    ],
+    "diagnostic_reports": [
+      {
+        "report_id": null,
+        "report_type": "cardiology",
+        "findings": "Atrial fibrillation, HR 115, nonspecific ST-T wave abnormalities",
+        "conclusion": "Atrial fibrillation",
+        "recommendations": null,
+        "status": "final",
+        "report_date": "2024-07-22",
+        "ordering_provider": "Dr. Sarah Lin",
+        "confidence": 0.95,
+        "source": {
+          "text": "EKG: Atrial fibrillation, HR 115, nonspecific ST-T wave abnormalities",
+          "start_index": 2545,
+          "end_index": 2615
+        }
+      },
+      {
+        "report_id": null,
+        "report_type": "radiology",
+        "findings": "Mild cardiomegaly, no acute infiltrate",
+        "conclusion": "Mild cardiomegaly",
+        "recommendations": null,
+        "status": "final",
+        "report_date": "2024-07-22",
+        "ordering_provider": "Dr. Sarah Lin",
+        "confidence": 0.95,
+        "source": {
+          "text": "Chest X-ray: Mild cardiomegaly, no acute infiltrate",
+          "start_index": 2618,
+          "end_index": 2670
+        }
+      },
+      {
+        "report_id": null,
+        "report_type": "lab",
+        "findings": "WBC 11.2k (mild leukocytosis), Glucose 198 mg/dL (H), Cr 1.3 mg/dL (mildly elevated), ALT 52 (elevated), Troponin I 0.03 ng/mL (normal), Hb A1c 8.9%",
+        "conclusion": "Mild leukocytosis, hyperglycemia, mildly elevated creatinine and ALT, normal troponin, poorly controlled diabetes",
+        "recommendations": null,
+        "status": "final",
+        "report_date": "2024-07-22",
+        "ordering_provider": "Dr. Sarah Lin",
+        "confidence": 0.95,
+        "source": {
+          "text": "Labs (drawn 07/22/24): CBC: WNL except mild leukocytosis (WBC 11.2k) CMP: Glucose 198 mg/d L (H), Cr 1.3 mg/d L (mildly ›), ALT 52 (›) Troponin I: 0.03 ng/m L (upper limit normal 0.04) Hb A1c: 8.9%",
+          "start_index": 2673,
+          "end_index": 2865
+        }
+      }
+    ],
+    "allergies": [],
+    "care_plans": [
+      {
+        "plan_id": null,
+        "plan_description": "Comprehensive management plan for atrial fibrillation, hypertension, diabetes, and hyperlipidemia",
+        "goals": [
+          "Control atrial fibrillation",
+          "Reduce stroke risk",
+          "Improve blood pressure control",
+          "Improve diabetes control",
+          "Improve medication adherence"
+        ],
+        "activities": [
+          "Admit to telemetry for monitoring",
+          "Start Metoprolol tartrate 25mg PO q6h",
+          "Consider anticoagulation (CHAn DSn-VASc = 3)",
+          "Cardiology consult for further management",
+          "Counseling re: diet, exercise, medication adherence",
+          "Recommend outpatient stress test once stable"
+        ],
+        "period_start": "2024-07-22",
+        "period_end": null,
+        "status": "active",
+        "intent": "plan",
+        "confidence": 0.95,
+        "source": {
+          "text": "Plan: Admit to telemetry for monitoring. Start Metoprolol tartrate 25mg PO q6h (hold if HR <60). Consider anticoagulation (CHAn DSn-VASc = 3 fi moderate risk). Cardiology consult for further management. Counseling re: diet, exercise, medication adherence. Recommend outpatient stress test once stable.",
+          "start_index": 2995,
+          "end_index": 3295
+        }
+      }
+    ],
+    "organizations": [
+      {
+        "organization_id": null,
+        "name": "Horizon HMO",
+        "identifier": null,
+        "organization_type": "payer",
+        "address": null,
+        "city": null,
+        "state": null,
+        "postal_code": null,
+        "phone": null,
+        "confidence": 0.9,
+        "source": {
+          "text": "Insurance: Horizon HMO",
+          "start_index": 3480,
+          "end_index": 3502
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-12-24T22:34:15.994298",
+    "document_type": null,
+    "confidence_average": 0.926
+  }
+}

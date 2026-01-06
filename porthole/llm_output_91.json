@@ -1,0 +1,414 @@
+{
+  "document_id": 91,
+  "timestamp": "2025-12-24T22:31:22.963375",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Seasonal allergies",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Seasonal allergies",
+          "start_index": 285,
+          "end_index": 302
+        }
+      },
+      {
+        "name": "Depression",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Depression",
+          "start_index": 305,
+          "end_index": 315
+        }
+      },
+      {
+        "name": "Hypothyroidism",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hypothyroidism",
+          "start_index": 318,
+          "end_index": 332
+        }
+      },
+      {
+        "name": "Hypertension",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hypertension, controlled",
+          "start_index": 695,
+          "end_index": 719
+        }
+      },
+      {
+        "name": "Type II Diabetes",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Type II Diabetes, fair control",
+          "start_index": 723,
+          "end_index": 753
+        }
+      },
+      {
+        "name": "Hyperlipidemia",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "Hyperlipidemia, on therapy",
+          "start_index": 757,
+          "end_index": 783
+        }
+      },
+      {
+        "name": "Asthma",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "For asthma",
+          "start_index": 527,
+          "end_index": 537
+        }
+      },
+      {
+        "name": "GERD",
+        "status": "active",
+        "confidence": 0.9,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "For GERD",
+          "start_index": 571,
+          "end_index": 579
+        }
+      },
+      {
+        "name": "Persistent cough",
+        "status": "active",
+        "confidence": 0.85,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "persistent cough",
+          "start_index": 197,
+          "end_index": 213
+        }
+      },
+      {
+        "name": "Shortness of breath",
+        "status": "active",
+        "confidence": 0.85,
+        "onset_date": null,
+        "icd_code": null,
+        "source": {
+          "text": "shortness of breath",
+          "start_index": 218,
+          "end_index": 237
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Lisinopril",
+        "dosage": "10mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Lisinopril 10mg PO daily BP control",
+          "start_index": 390,
+          "end_index": 425
+        }
+      },
+      {
+        "name": "Metformin",
+        "dosage": "500mg",
+        "route": "PO",
+        "frequency": "BID",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Metformin 500mg PO BID For diabetes",
+          "start_index": 426,
+          "end_index": 462
+        }
+      },
+      {
+        "name": "Atorvastatin",
+        "dosage": "20mg",
+        "route": "PO",
+        "frequency": "nightly",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Atorvastatin 20mg PO nightly For cholesterol",
+          "start_index": 463,
+          "end_index": 508
+        }
+      },
+      {
+        "name": "Albuterol inhaler",
+        "dosage": "2 puffs",
+        "route": "inhaled",
+        "frequency": "PRN",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Albuterol inhaler 2 puffs PRN For asthma",
+          "start_index": 509,
+          "end_index": 550
+        }
+      },
+      {
+        "name": "Omeprazole",
+        "dosage": "20mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Omeprazole 20mg PO daily For GERD",
+          "start_index": 551,
+          "end_index": 585
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Blood Pressure",
+        "value": "157/104",
+        "unit": "mm Hg",
+        "timestamp": "2024-04-23",
+        "confidence": 0.95,
+        "source": {
+          "text": "BP: 157/104 mm Hg",
+          "start_index": 604,
+          "end_index": 621
+        }
+      },
+      {
+        "measurement": "Heart Rate",
+        "value": "101",
+        "unit": "bpm",
+        "timestamp": "2024-04-23",
+        "confidence": 0.95,
+        "source": {
+          "text": "HR: 101 bpm",
+          "start_index": 624,
+          "end_index": 635
+        }
+      },
+      {
+        "measurement": "Temperature",
+        "value": "98.8",
+        "unit": "°F",
+        "timestamp": "2024-04-23",
+        "confidence": 0.95,
+        "source": {
+          "text": "Temp: 98.8°F",
+          "start_index": 638,
+          "end_index": 650
+        }
+      },
+      {
+        "measurement": "Oxygen Saturation",
+        "value": "94",
+        "unit": "% RA",
+        "timestamp": "2024-04-23",
+        "confidence": 0.9,
+        "source": {
+          "text": "Sp On: 94% RA",
+          "start_index": 653,
+          "end_index": 666
+        }
+      },
+      {
+        "measurement": "Weight",
+        "value": "73.5",
+        "unit": "kg",
+        "timestamp": "2024-04-23",
+        "confidence": 0.95,
+        "source": {
+          "text": "Weight: 73.5 kg",
+          "start_index": 669,
+          "end_index": 684
+        }
+      },
+      {
+        "measurement": "Height",
+        "value": "162",
+        "unit": "cm",
+        "timestamp": "2024-04-23",
+        "confidence": 0.95,
+        "source": {
+          "text": "Height: 162 cm",
+          "start_index": 687,
+          "end_index": 701
+        }
+      }
+    ],
+    "lab_results": [],
+    "procedures": [],
+    "providers": [
+      {
+        "name": "Dr. Robert Chang",
+        "specialty": "Pulmonology",
+        "role": "Provider",
+        "contact_info": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Provider: Dr. Robert Chang, MD\nDepartment: Pulmonology",
+          "start_index": 119,
+          "end_index": 174
+        }
+      },
+      {
+        "name": "Dr. David Kumar",
+        "specialty": null,
+        "role": "Signing Provider",
+        "contact_info": "NPI: 1464824097",
+        "confidence": 0.95,
+        "source": {
+          "text": "Dr. David Kumar, MD\nNPI: 1464824097\nSigned electronically 04/23/2024 8:15",
+          "start_index": 916,
+          "end_index": 990
+        }
+      }
+    ],
+    "encounters": [
+      {
+        "encounter_id": null,
+        "encounter_type": "office visit",
+        "encounter_date": "2024-04-23",
+        "encounter_end_date": null,
+        "location": "Pulmonology",
+        "reason": "persistent cough and shortness of breath",
+        "participants": [
+          "Dr. Robert Chang, MD"
+        ],
+        "status": "finished",
+        "confidence": 0.95,
+        "source": {
+          "text": "Encounter Date: 04/23/2024\nProvider: Dr. Robert Chang, MD\nDepartment: Pulmonology\n1. Reason for Visit\nPatient presents with persistent cough and shortness of breath",
+          "start_index": 92,
+          "end_index": 260
+        }
+      }
+    ],
+    "service_requests": [
+      {
+        "request_id": null,
+        "request_type": "diagnostic study",
+        "requester": "Dr. Robert Chang",
+        "reason": "shortness of breath evaluation",
+        "priority": "routine",
+        "clinical_context": "Patient with persistent cough and shortness of breath",
+        "request_date": "2024-04-23",
+        "confidence": 0.9,
+        "source": {
+          "text": "Refer for sleep study",
+          "start_index": 843,
+          "end_index": 864
+        }
+      },
+      {
+        "request_id": null,
+        "request_type": "specialist referral",
+        "requester": "Dr. Robert Chang",
+        "reason": "mood management",
+        "priority": "routine",
+        "clinical_context": "Patient with depression",
+        "request_date": "2024-04-23",
+        "confidence": 0.9,
+        "source": {
+          "text": "Recommend counseling for mood management",
+          "start_index": 867,
+          "end_index": 907
+        }
+      }
+    ],
+    "diagnostic_reports": [],
+    "allergies": [],
+    "care_plans": [
+      {
+        "plan_id": null,
+        "plan_description": "Treatment plan for hypertension, diabetes, hyperlipidemia, and respiratory symptoms",
+        "goals": [
+          "Control hypertension",
+          "Improve diabetes control",
+          "Manage hyperlipidemia",
+          "Address respiratory symptoms",
+          "Improve mood management"
+        ],
+        "activities": [
+          "Start PPI therapy daily",
+          "Refer for sleep study",
+          "Recommend counseling for mood management"
+        ],
+        "period_start": "2024-04-23",
+        "period_end": null,
+        "status": "active",
+        "intent": "plan",
+        "confidence": 0.9,
+        "source": {
+          "text": "6. Plan\n- Start PPI therapy daily.\n- Refer for sleep study.\n- Recommend counseling for mood management.",
+          "start_index": 802,
+          "end_index": 907
+        }
+      }
+    ],
+    "organizations": [
+      {
+        "organization_id": null,
+        "name": "Pulmonology Department",
+        "identifier": null,
+        "organization_type": "clinical department",
+        "address": null,
+        "city": null,
+        "state": null,
+        "postal_code": null,
+        "phone": null,
+        "confidence": 0.85,
+        "source": {
+          "text": "Department: Pulmonology",
+          "start_index": 151,
+          "end_index": 174
+        }
+      }
+    ],
+    "extraction_timestamp": "2025-12-24T22:31:22.961268",
+    "document_type": null,
+    "confidence_average": 0.929
+  }
+}

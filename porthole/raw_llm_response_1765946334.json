@@ -1,0 +1,9 @@
+{
+  "document_id": "1765946334",
+  "timestamp": "2025-12-16T20:39:03.411119",
+  "stage": "raw_llm_response",
+  "llm_type": "claude_manual_json",
+  "parsing_successful": false,
+  "response_length": 1287,
+  "raw_response": "```json\n{\n  \"conditions\": [\n    {\n      \"name\": \"Unknown diagnosis\",\n      \"status\": \"unknown\",\n      \"confidence\": 0.2,\n      \"onset_date\": null,\n      \"icd_code\": null,\n      \"source\": {\"text\": \"Some diagnosis mentioned - unclear\", \"start_index\": 60, \"end_index\": 92}\n    }\n  ],\n  \"medications\": [],\n  \"vital_signs\": [\n    {\n      \"measurement\": \"Unknown vital signs\",\n      \"value\": \"unreadable\",\n      \"unit\": null,\n      \"timestamp\": null,\n      \"confidence\": 0.1,\n      \"source\": {\"text\": \"Vitals recorded but smudged\", \"start_index\": 93, \"end_index\": 120}\n    }\n  ],\n  \"lab_results\": [],\n  \"procedures\": [],\n  \"providers\": [],\n  \"encounters\": [\n    {\n      \"encounter_id\": null,\n      \"encounter_type\": \"general clinical visit\",\n      \"encounter_date\": null,\n      \"encounter_end_date\": null,\n      \"location\": null,\n      \"reason\": null,\n      \"participants\": [],\n      \"status\": null,\n      \"confidence\": 0.3,\n      \"source\": {\"text\": \"Document context: General clinical document\", \"start_index\": 122, \"end_index\": 165}\n    }\n  ],\n  \"service_requests\": [],\n  \"diagnostic_reports\": [],\n  \"allergies\": [],\n  \"care_plans\": [],\n  \"organizations\": [],\n  \"extraction_timestamp\": \"2024-01-01T00:00:00Z\",\n  \"document_type\": \"General clinical document\",\n  \"confidence_average\": 0.2\n}\n```"
+}

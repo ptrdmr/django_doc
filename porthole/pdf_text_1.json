@@ -1,0 +1,18 @@
+{
+  "document_id": 1,
+  "timestamp": "2025-12-16T20:38:37.717522",
+  "stage": "pdf_extraction",
+  "text_length": 426,
+  "text_content": "--- Page 1 ---\nMEDICAL RECORD\nPatient: John Doe\nDOB: 01/01/1980\nMRN: INT-TEST-001\nDate of Service: 12/15/2024\nDIAGNOSES:\n- Hypertension (Essential) - I10\n- Type 2 Diabetes Mellitus - E11.9\nMEDICATIONS:\n- Lisinopril 10mg PO daily\n- Metformin 500mg PO twice daily\nVITAL SIGNS:\nBlood Pressure: 138/88 mm Hg\nBlood Glucose: 142 mg/d L (fasting)\nWeight: 185 lbs\nPROCEDURES:\n- Annual Physical Examination\n- Diabetic retinal screening",
+  "metadata": {
+    "page_count": 1,
+    "file_size_mb": 0.0,
+    "pdf_metadata": {
+      "title": "untitled",
+      "author": "anonymous",
+      "creator": "ReportLab PDF Library - www.reportlab.com",
+      "creation_date": "D:20251216094533-08'00'",
+      "extraction_method": "embedded_text"
+    }
+  }
+}

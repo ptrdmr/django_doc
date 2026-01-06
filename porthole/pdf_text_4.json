@@ -1,0 +1,18 @@
+{
+  "document_id": 4,
+  "timestamp": "2025-12-16T20:10:30.696671",
+  "stage": "pdf_extraction",
+  "text_length": 146,
+  "text_content": "--- Page 1 ---\nMed Rec - unclear handwriting transcribed\nPt: J. Doe? (hard to read)\nSome diagnosis mentioned - unclear\nVitals recorded but smudged",
+  "metadata": {
+    "page_count": 1,
+    "file_size_mb": 0.0,
+    "pdf_metadata": {
+      "title": "untitled",
+      "author": "anonymous",
+      "creator": "ReportLab PDF Library - www.reportlab.com",
+      "creation_date": "D:20251216094533-08'00'",
+      "extraction_method": "embedded_text"
+    }
+  }
+}

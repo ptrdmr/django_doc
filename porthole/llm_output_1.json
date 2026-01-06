@@ -1,0 +1,162 @@
+{
+  "document_id": 1,
+  "timestamp": "2025-12-16T20:38:53.880401",
+  "stage": "llm_extraction",
+  "llm_type": "structured_extraction_claude",
+  "success": true,
+  "response_data": {
+    "conditions": [
+      {
+        "name": "Hypertension (Essential)",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "I10",
+        "source": {
+          "text": "Hypertension (Essential) - I10",
+          "start_index": 120,
+          "end_index": 151
+        }
+      },
+      {
+        "name": "Type 2 Diabetes Mellitus",
+        "status": "active",
+        "confidence": 0.95,
+        "onset_date": null,
+        "icd_code": "E11.9",
+        "source": {
+          "text": "Type 2 Diabetes Mellitus - E11.9",
+          "start_index": 154,
+          "end_index": 187
+        }
+      }
+    ],
+    "medications": [
+      {
+        "name": "Lisinopril",
+        "dosage": "10mg",
+        "route": "PO",
+        "frequency": "daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Lisinopril 10mg PO daily",
+          "start_index": 203,
+          "end_index": 227
+        }
+      },
+      {
+        "name": "Metformin",
+        "dosage": "500mg",
+        "route": "PO",
+        "frequency": "twice daily",
+        "status": "active",
+        "confidence": 0.95,
+        "start_date": null,
+        "stop_date": null,
+        "source": {
+          "text": "Metformin 500mg PO twice daily",
+          "start_index": 230,
+          "end_index": 260
+        }
+      }
+    ],
+    "vital_signs": [
+      {
+        "measurement": "Blood Pressure",
+        "value": "138/88",
+        "unit": "mm Hg",
+        "timestamp": "2024-12-15",
+        "confidence": 0.95,
+        "source": {
+          "text": "Blood Pressure: 138/88 mm Hg",
+          "start_index": 275,
+          "end_index": 304
+        }
+      },
+      {
+        "measurement": "Weight",
+        "value": "185",
+        "unit": "lbs",
+        "timestamp": "2024-12-15",
+        "confidence": 0.95,
+        "source": {
+          "text": "Weight: 185 lbs",
+          "start_index": 355,
+          "end_index": 370
+        }
+      }
+    ],
+    "lab_results": [
+      {
+        "test_name": "Blood Glucose",
+        "value": "142",
+        "unit": "mg/dL",
+        "reference_range": null,
+        "status": "final",
+        "test_date": "2024-12-15",
+        "confidence": 0.95,
+        "source": {
+          "text": "Blood Glucose: 142 mg/d L (fasting)",
+          "start_index": 305,
+          "end_index": 341
+        }
+      }
+    ],
+    "procedures": [
+      {
+        "name": "Annual Physical Examination",
+        "procedure_date": "2024-12-15",
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Annual Physical Examination",
+          "start_index": 387,
+          "end_index": 414
+        }
+      },
+      {
+        "name": "Diabetic retinal screening",
+        "procedure_date": "2024-12-15",
+        "provider": null,
+        "outcome": null,
+        "confidence": 0.95,
+        "source": {
+          "text": "Diabetic retinal screening",
+          "start_index": 417,
+          "end_index": 443
+        }
+      }
+    ],
+    "providers": [],
+    "encounters": [
+      {
+        "encounter_id": null,
+        "encounter_type": "office visit",
+        "encounter_date": "2024-12-15",
+        "encounter_end_date": null,
+        "location": null,
+        "reason": "Annual Physical Examination",
+        "participants": [],
+        "status": "finished",
+        "confidence": 0.9,
+        "source": {
+          "text": "Date of Service: 12/15/2024",
+          "start_index": 80,
+          "end_index": 107
+        }
+      }
+    ],
+    "service_requests": [],
+    "diagnostic_reports": [],
+    "allergies": [],
+    "care_plans": [],
+    "organizations": [],
+    "extraction_timestamp": "2025-12-16T20:38:53.879400",
+    "document_type": null,
+    "confidence_average": 0.945
+  }
+}

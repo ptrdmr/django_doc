@@ -1,0 +1,8 @@
+{
+  "document_id": 7,
+  "timestamp": "2025-12-09T08:40:17.890577",
+  "stage": "structured_fhir_conversion",
+  "patient_id": "c40ffe6e-f56d-4215-b77f-974baadf7b13",
+  "resource_count": 0,
+  "fhir_resources": []
+}
