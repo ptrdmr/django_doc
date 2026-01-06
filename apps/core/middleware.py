@@ -40,8 +40,11 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
             "frame-ancestors 'none'",             # Prevent framing completely
             "object-src 'none'",                  # No Flash, Java applets, etc.
             "base-uri 'self'",                    # Restrict base tag
-            "upgrade-insecure-requests",          # Force HTTPS
         ]
+        
+        # Only force HTTPS upgrade in production (DEBUG=False)
+        if not settings.DEBUG:
+            csp_directives.append("upgrade-insecure-requests")
         
         # Join CSP directives
         csp_header = "; ".join(csp_directives)
