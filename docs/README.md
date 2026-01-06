@@ -87,6 +87,17 @@
 - HIPAA compliance testing
 - Performance testing
 
+### [📋 Compliance](./compliance/)
+- **HIPAA compliance documentation for auditors and customers**
+- Security controls summary
+- Architecture overview (shareable)
+- Risk assessment summary
+- Audit logging specification
+- Encryption standards
+- Access control policy
+- Incident response plan
+- Business Associate Agreement template
+
 ---
 
 ## 🏁 Current Project Status
