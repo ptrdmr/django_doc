@@ -9,7 +9,8 @@ from decouple import config
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+# ALLOWED_HOSTS from environment variable (supports comma-separated list)
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').split(',')
 
 # Add ngrok hostname from environment variable for development
 NGROK_HOSTNAME = config('NGROK_HOSTNAME', default=None)
@@ -18,10 +19,6 @@ if NGROK_HOSTNAME:
     # Also allow the ngrok.pizza domain if that's what's being used
     if 'ngrok.pizza' in NGROK_HOSTNAME:
         ALLOWED_HOSTS.append('.ngrok.pizza')
-
-# For convenience in this specific case, I'll add the requested host directly.
-# For future use, please use the NGROK_HOSTNAME environment variable.
-ALLOWED_HOSTS.append('moritrac.ngrok.pizza')
 
 
 # Database Configuration - ALWAYS use PostgreSQL for this medical application
