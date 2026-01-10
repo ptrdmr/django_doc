@@ -79,7 +79,8 @@ def _initialize_ai_clients():
         # Try to patch Anthropic client with instructor for Pydantic support
         if anthropic_client:
             try:
-                anthropic_client = instructor.patch(anthropic_client)
+                from instructor import from_anthropic
+                anthropic_client = from_anthropic(anthropic_client)
                 logger.info("Anthropic Claude client patched with instructor for Pydantic support")
             except Exception as e:
                 logger.warning(f"Could not patch Anthropic client with instructor: {e}, using manual JSON parsing")

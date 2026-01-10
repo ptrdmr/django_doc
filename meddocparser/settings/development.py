@@ -98,8 +98,8 @@ LOGGING['loggers']['meddocparser']['handlers'].append('console')
 #     INTERNAL_IPS = ['127.0.0.1']
 
 # Celery settings for development (if using Redis locally)
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
 # CELERY_TASK_ALWAYS_EAGER = True  # Execute tasks synchronously in development
 
 # Use Redis for Celery in development (needed for async document processing)
