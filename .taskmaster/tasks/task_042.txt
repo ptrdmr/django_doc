@@ -741,7 +741,7 @@ TACTICAL NOTE (from Commander Riker): We're executing 42.4 BEFORE 42.2 and 42.3 
 This is a tactical optimization, not a deviation from the mission.
 </info added on 2026-01-29T03:27:25.329Z>
 
-## 5. Create TextractResult dataclass [pending]
+## 5. Create TextractResult dataclass [done]
 ### Dependencies: 42.1
 ### Description: Create dataclass in apps/documents/services/textract.py to hold parsed Textract response with pages, text blocks, confidence scores, and metadata
 ### Details:

@@ -3389,7 +3389,7 @@
             "title": "Create TextractResult dataclass",
             "description": "Create dataclass in apps/documents/services/textract.py to hold parsed Textract response with pages, text blocks, confidence scores, and metadata",
             "details": "Create apps/documents/services/textract.py with TextractResult dataclass containing: pages (list of page text), blocks (raw Textract blocks), confidence (average confidence score), page_count (int), extraction_time_ms (int), job_id (optional str for async). Use @dataclass decorator. Include from_response() classmethod to parse Textract API response.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               "42.1"
             ],
@@ -3613,7 +3613,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2026-01-29T03:29:04.261Z",
+      "updated": "2026-01-29T03:48:43.233Z",
       "description": "Tasks for master context"
     }
   }
