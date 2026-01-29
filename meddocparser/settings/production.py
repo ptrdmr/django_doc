@@ -81,11 +81,12 @@ CELERY_ENABLE_UTC = True
 # AWS_DEFAULT_ACL = 'private'  # HIPAA compliance - no public access
 
 # Enhanced logging for production
-LOGGING['handlers']['file']['filename'] = '/var/log/meddocparser/django.log'
+# Use /app/logs/ directory created by Dockerfile (owned by django user)
+LOGGING['handlers']['file']['filename'] = '/app/logs/django.log'
 LOGGING['handlers']['security'] = {
     'level': 'INFO',
     'class': 'logging.FileHandler',
-    'filename': '/var/log/meddocparser/security.log',
+    'filename': '/app/logs/security.log',
     'formatter': 'verbose',
 }
 
