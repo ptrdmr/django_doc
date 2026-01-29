@@ -3362,7 +3362,7 @@
             "title": "Create S3 OCR temp bucket",
             "description": "Create dedicated S3 bucket with SSE-S3 encryption, blocked public access, and 24-hour lifecycle rule for auto-deletion",
             "details": "Create S3 bucket following pattern: {project}-ocr-temp-{environment} (e.g., meddocparser-ocr-temp-dev). Configuration: Region us-east-1, SSE-S3 encryption (AWS-managed keys), all public access blocked, versioning disabled. Add lifecycle rule 'DeleteOCRTempFiles' with 1-day expiration for all objects. This bucket stores temporary files during async Textract processing only.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 42
           },
@@ -3613,7 +3613,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2026-01-29T03:48:43.233Z",
+      "updated": "2026-01-29T04:19:09.133Z",
       "description": "Tasks for master context"
     }
   }

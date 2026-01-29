@@ -713,7 +713,7 @@ class TextractPerformanceTests(TestCase):
 ### Details:
 Add boto3>=1.34.0 to requirements.txt. Run pip install -r requirements.txt to install. Verify with: python -c "import boto3; print(boto3.__version__)". boto3 is the AWS SDK for Python, required for Textract and S3 integration.
 
-## 2. Create S3 OCR temp bucket [pending]
+## 2. Create S3 OCR temp bucket [done]
 ### Dependencies: None
 ### Description: Create dedicated S3 bucket with SSE-S3 encryption, blocked public access, and 24-hour lifecycle rule for auto-deletion
 ### Details:
