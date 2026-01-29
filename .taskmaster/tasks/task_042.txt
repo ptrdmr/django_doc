@@ -719,7 +719,7 @@ Add boto3>=1.34.0 to requirements.txt. Run pip install -r requirements.txt to in
 ### Details:
 Create S3 bucket following pattern: {project}-ocr-temp-{environment} (e.g., meddocparser-ocr-temp-dev). Configuration: Region us-east-1, SSE-S3 encryption (AWS-managed keys), all public access blocked, versioning disabled. Add lifecycle rule 'DeleteOCRTempFiles' with 1-day expiration for all objects. This bucket stores temporary files during async Textract processing only.
 
-## 3. Create IAM policy for Textract and S3 [pending]
+## 3. Create IAM policy for Textract and S3 [done]
 ### Dependencies: None
 ### Description: Create IAM policy with textract:AnalyzeDocument, textract:StartDocumentAnalysis, textract:GetDocumentAnalysis permissions plus S3 PutObject/GetObject/DeleteObject for OCR bucket
 ### Details:
