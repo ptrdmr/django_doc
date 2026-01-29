@@ -87,11 +87,10 @@ coverage.xml
 .pytest_cache/
 
 # Logs
-logs/
+logs/*
+!logs/.gitkeep
 *.log
-dev-debug.log 
-
-logs
+dev-debug.log
 # Dependency directories
 # Editor directories and files
 .idea
