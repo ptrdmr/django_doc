@@ -3379,8 +3379,8 @@
             "id": 4,
             "title": "Add AWS configuration to Django settings",
             "description": "Add OCR_ENABLED, OCR_TEXT_THRESHOLD, OCR_ASYNC_THRESHOLD_MB, AWS credentials, OCR_S3_BUCKET settings to meddocparser/settings/base.py using python-decouple pattern",
-            "details": "Add to base.py: OCR_ENABLED (bool, default True), OCR_SELECTIVE_ENABLED (bool, default True), OCR_TEXT_THRESHOLD (int, default 50), OCR_ASYNC_THRESHOLD_MB (int, default 5), AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION (default us-east-1), OCR_S3_BUCKET, OCR_S3_PREFIX (default 'ocr-temp/'), TEXTRACT_FEATURE_TYPES=['TABLES','FORMS'], TEXTRACT_ASYNC_POLL_INTERVAL (int, default 10), TEXTRACT_ASYNC_MAX_WAIT (int, default 300). Update .env.example with all new variables.",
-            "status": "pending",
+            "details": "Add to base.py: OCR_ENABLED (bool, default True), OCR_SELECTIVE_ENABLED (bool, default True), OCR_TEXT_THRESHOLD (int, default 50), OCR_ASYNC_THRESHOLD_MB (int, default 5), AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION (default us-east-1), OCR_S3_BUCKET, OCR_S3_PREFIX (default 'ocr-temp/'), TEXTRACT_FEATURE_TYPES=['TABLES','FORMS'], TEXTRACT_ASYNC_POLL_INTERVAL (int, default 10), TEXTRACT_ASYNC_MAX_WAIT (int, default 300). Update .env.example with all new variables.\n<info added on 2026-01-29T03:27:25.329Z>\nTACTICAL NOTE (from Commander Riker): We're executing 42.4 BEFORE 42.2 and 42.3 because:\n\n1. Settings work is pure code - executable immediately without AWS console access\n2. Subtasks 42.5, 42.6, 42.8, 42.13, 42.14 ALL depend on 42.4 being complete\n3. AWS infrastructure work (S3 bucket, IAM policies) requires console/Terraform access\n4. Completing 42.4 first unblocks the most downstream work\n\nThis is a tactical optimization, not a deviation from the mission.\n</info added on 2026-01-29T03:27:25.329Z>",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 42
           },
@@ -3613,7 +3613,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2026-01-29T03:23:28.510Z",
+      "updated": "2026-01-29T03:29:04.261Z",
       "description": "Tasks for master context"
     }
   }

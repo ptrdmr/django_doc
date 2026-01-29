@@ -474,6 +474,40 @@ FHIR_VALIDATION_ENABLED = config('FHIR_VALIDATION_ENABLED', default=True, cast=b
 FHIR_STRICT_MODE = config('FHIR_STRICT_MODE', default=False, cast=bool)
 
 # ============================================================================
+# AWS TEXTRACT OCR CONFIGURATION
+# ============================================================================
+# Task 42.4: AWS Textract integration for document OCR processing
+# TACTICAL NOTE: This subtask was executed BEFORE 42.2 (S3 bucket) and 42.3 (IAM)
+# because settings work is pure code (no AWS console access needed) and unblocks
+# subtasks 42.5, 42.6, 42.8, 42.13, 42.14 which all depend on these settings.
+
+# OCR Feature Flags
+OCR_ENABLED = config('OCR_ENABLED', default=True, cast=bool)
+OCR_SELECTIVE_ENABLED = config('OCR_SELECTIVE_ENABLED', default=True, cast=bool)
+
+# OCR Thresholds
+# Pages with fewer characters than this threshold are classified as "image pages" needing OCR
+OCR_TEXT_THRESHOLD = config('OCR_TEXT_THRESHOLD', default=50, cast=int)
+# Documents larger than this size (in MB) use async Textract processing
+OCR_ASYNC_THRESHOLD_MB = config('OCR_ASYNC_THRESHOLD_MB', default=5, cast=int)
+
+# AWS Credentials (can also use IAM roles in production)
+AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default=None)
+AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default=None)
+AWS_DEFAULT_REGION = config('AWS_DEFAULT_REGION', default='us-east-1')
+
+# S3 Configuration for OCR temporary file storage
+OCR_S3_BUCKET = config('OCR_S3_BUCKET', default=None)
+OCR_S3_PREFIX = config('OCR_S3_PREFIX', default='ocr-temp/')
+
+# Textract API Configuration
+TEXTRACT_FEATURE_TYPES = ['TABLES', 'FORMS']  # Extract tables and form fields
+
+# Async Processing Configuration
+TEXTRACT_ASYNC_POLL_INTERVAL = config('TEXTRACT_ASYNC_POLL_INTERVAL', default=10, cast=int)  # seconds
+TEXTRACT_ASYNC_MAX_WAIT = config('TEXTRACT_ASYNC_MAX_WAIT', default=300, cast=int)  # 5 minutes max
+
+# ============================================================================
 # REST FRAMEWORK CONFIGURATION
 # ============================================================================
 
