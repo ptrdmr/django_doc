@@ -1,0 +1,841 @@
+# Task ID: 42
+# Title: Implement AWS Textract OCR Integration
+# Status: pending
+# Dependencies: 6, 20
+# Priority: high
+# Description: Replace local Tesseract OCR with AWS Textract, adding S3 infrastructure for async processing of large documents while preserving existing Django/Celery pipeline, optimistic FHIR merge flow, and HIPAA audit practices.
+# Details:
+Implement AWS Textract OCR integration to replace the current Tesseract OCR implementation:
+
+1. Create a new `TextractService` class in the document processing module:
+```python
+class TextractService:
+    """Service for handling AWS Textract OCR operations."""
+    
+    def __init__(self, aws_region=None, s3_bucket=None):
+        self.aws_region = aws_region or settings.AWS_REGION
+        self.s3_bucket = s3_bucket or settings.AWS_TEXTRACT_S3_BUCKET
+        self.textract_client = boto3.client('textract', region_name=self.aws_region)
+        self.s3_client = boto3.client('s3', region_name=self.aws_region)
+    
+    def process_document(self, document_bytes, document_id, sync_mode=True):
+        """Process document with AWS Textract.
+        
+        Args:
+            document_bytes: The PDF document as bytes
+            document_id: Unique identifier for the document
+            sync_mode: Whether to use synchronous (True) or asynchronous (False) processing
+            
+        Returns:
+            dict: The extracted text and structure from the document
+        """
+        if sync_mode:
+            return self._process_sync(document_bytes)
+        else:
+            return self._process_async(document_bytes, document_id)
+            
+    def _process_sync(self, document_bytes):
+        """Process document synchronously for documents < 5MB."""
+        response = self.textract_client.analyze_document(
+            Document={'Bytes': document_bytes},
+            FeatureTypes=['TABLES', 'FORMS']
+        )
+        return self._parse_textract_response(response)
+        
+    def _process_async(self, document_bytes, document_id):
+        """Process document asynchronously for documents >= 5MB."""
+        # Upload to S3
+        s3_key = f"temp-documents/{document_id}.pdf"
+        self.s3_client.put_object(
+            Bucket=self.s3_bucket,
+            Key=s3_key,
+            Body=document_bytes,
+            ServerSideEncryption='AES256'  # SSE-S3 encryption
+        )
+        
+        # Start async job
+        response = self.textract_client.start_document_analysis(
+            DocumentLocation={
+                'S3Object': {
+                    'Bucket': self.s3_bucket,
+                    'Name': s3_key
+                }
+            },
+            FeatureTypes=['TABLES', 'FORMS']
+        )
+        
+        job_id = response['JobId']
+        return {'job_id': job_id, 's3_key': s3_key}
+    
+    def check_job_status(self, job_id):
+        """Check the status of an async Textract job."""
+        response = self.textract_client.get_document_analysis(
+            JobId=job_id
+        )
+        return response['JobStatus']
+    
+    def get_job_results(self, job_id):
+        """Get the results of a completed async Textract job."""
+        pages = []
+        next_token = None
+        
+        while True:
+            if next_token:
+                response = self.textract_client.get_document_analysis(
+                    JobId=job_id,
+                    NextToken=next_token
+                )
+            else:
+                response = self.textract_client.get_document_analysis(
+                    JobId=job_id
+                )
+                
+            pages.append(response)
+            
+            if 'NextToken' in response:
+                next_token = response['NextToken']
+            else:
+                break
+                
+        return self._parse_textract_response(pages)
+    
+    def _parse_textract_response(self, response):
+        """Parse the Textract response into a structured format."""
+        # Implementation for parsing Textract response
+        # This will extract text, tables, and form fields
+        # ...
+        
+    def cleanup_s3_document(self, s3_key):
+        """Remove temporary document from S3 after processing."""
+        self.s3_client.delete_object(
+            Bucket=self.s3_bucket,
+            Key=s3_key
+        )
+```
+
+2. Update the existing `PDFTextExtractor` class to use the new TextractService:
+```python
+class PDFTextExtractor:
+    """Extract text from PDF documents using AWS Textract."""
+    
+    def __init__(self):
+        self.textract_service = TextractService()
+        
+    def extract_text(self, pdf_path):
+        """Extract text from a PDF file.
+        
+        Args:
+            pdf_path: Path to the PDF file
+            
+        Returns:
+            dict: The extracted text and structure
+        """
+        with open(pdf_path, 'rb') as f:
+            pdf_bytes = f.read()
+            
+        file_size = len(pdf_bytes)
+        
+        # Use sync mode for small documents, async for larger ones
+        sync_mode = file_size < 5 * 1024 * 1024  # 5MB threshold
+        
+        document_id = str(uuid.uuid4())
+        
+        if sync_mode:
+            return self.textract_service.process_document(pdf_bytes, document_id, sync_mode=True)
+        else:
+            # Start async job
+            job_info = self.textract_service.process_document(pdf_bytes, document_id, sync_mode=False)
+            
+            # Poll for job completion
+            job_id = job_info['job_id']
+            s3_key = job_info['s3_key']
+            
+            status = 'IN_PROGRESS'
+            while status == 'IN_PROGRESS':
+                time.sleep(5)
+                status = self.textract_service.check_job_status(job_id)
+                
+            if status == 'SUCCEEDED':
+                result = self.textract_service.get_job_results(job_id)
+                # Clean up S3
+                self.textract_service.cleanup_s3_document(s3_key)
+                return result
+            else:
+                raise Exception(f"Textract job failed with status: {status}")
+```
+
+3. Update the Celery task for document processing to handle the new OCR flow:
+```python
+@app.task(bind=True, max_retries=3)
+def process_document(self, document_id):
+    """Process a document with OCR and extract medical data."""
+    try:
+        document = Document.objects.get(id=document_id)
+        document.status = Document.PROCESSING
+        document.save()
+        
+        # Extract text using AWS Textract
+        extractor = PDFTextExtractor()
+        extracted_data = extractor.extract_text(document.file.path)
+        
+        # Store extracted text
+        document.extracted_text = extracted_data['text']
+        document.extracted_structure = extracted_data
+        document.save()
+        
+        # Continue with existing pipeline (AI processing, FHIR conversion, etc.)
+        # ...
+        
+        document.status = Document.COMPLETED
+        document.save()
+        
+    except Exception as e:
+        document.status = Document.ERROR
+        document.error_message = str(e)
+        document.save()
+        
+        # Log the error
+        logger.error(f"Error processing document {document_id}: {str(e)}")
+        raise self.retry(exc=e, countdown=60)
+```
+
+4. Configure AWS infrastructure:
+   - Create a dedicated S3 bucket for temporary document storage
+   - Set up lifecycle policy to auto-delete objects after 24 hours
+   - Configure SSE-S3 encryption for the bucket
+   - Set up appropriate IAM roles and policies for Textract and S3 access
+
+5. Update Django settings:
+```python
+# AWS Settings
+AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
+AWS_TEXTRACT_S3_BUCKET = os.environ.get('AWS_TEXTRACT_S3_BUCKET', 'your-app-textract-temp')
+```
+
+6. Ensure HIPAA audit logging is maintained:
+```python
+# In TextractService
+def process_document(self, document_bytes, document_id, sync_mode=True):
+    # Log the OCR operation
+    AuditLog.objects.create(
+        user=get_current_user(),
+        action='OCR_PROCESS',
+        resource_type='Document',
+        resource_id=document_id,
+        data_accessed=False,  # No PHI accessed during OCR
+        details=f"Document OCR processing with AWS Textract ({sync_mode and 'sync' or 'async'})"
+    )
+    # Rest of the method...
+```
+
+7. Update requirements.txt:
+```
+boto3==1.26.0
+```
+
+8. Create a utility for handling Textract response parsing:
+```python
+def parse_textract_blocks(blocks):
+    """Parse Textract blocks into structured text, tables, and form fields."""
+    # Implementation details for parsing Textract response blocks
+    # ...
+```
+
+Key implementation decisions:
+- Use AWS Textract AnalyzeDocument API with TABLES+FORMS features
+- No fallback to local OCR - rely entirely on AWS Textract
+- Use synchronous processing for documents <5MB and asynchronous for >=5MB
+- Create dedicated S3 temp bucket with 24hr auto-delete lifecycle policy
+- Implement SSE-S3 encryption for all S3 objects
+- Maintain existing Django/Celery pipeline structure
+- Preserve HIPAA audit logging for all operations
+
+# Test Strategy:
+To verify the AWS Textract OCR integration:
+
+1. Unit Tests for TextractService:
+```python
+class TextractServiceTests(TestCase):
+    @mock.patch('boto3.client')
+    def setUp(self, mock_boto3_client):
+        self.mock_textract = MagicMock()
+        self.mock_s3 = MagicMock()
+        
+        # Configure boto3 mock to return our mocked services
+        mock_boto3_client.side_effect = lambda service, region_name: {
+            'textract': self.mock_textract,
+            's3': self.mock_s3
+        }[service]
+        
+        self.service = TextractService()
+        
+    def test_process_document_sync(self):
+        # Mock Textract response
+        self.mock_textract.analyze_document.return_value = {
+            'Blocks': [
+                {'BlockType': 'PAGE', 'Page': 1},
+                {'BlockType': 'LINE', 'Text': 'Sample text'}
+            ]
+        }
+        
+        # Test with small document (sync mode)
+        result = self.service.process_document(b'sample pdf content', 'doc-123', sync_mode=True)
+        
+        # Verify Textract was called correctly
+        self.mock_textract.analyze_document.assert_called_once()
+        call_args = self.mock_textract.analyze_document.call_args[1]
+        self.assertEqual(call_args['Document']['Bytes'], b'sample pdf content')
+        self.assertEqual(call_args['FeatureTypes'], ['TABLES', 'FORMS'])
+        
+        # Verify S3 was not used
+        self.mock_s3.put_object.assert_not_called()
+        
+    def test_process_document_async(self):
+        # Mock S3 and Textract responses
+        self.mock_s3.put_object.return_value = {}
+        self.mock_textract.start_document_analysis.return_value = {'JobId': 'job-123'}
+        
+        # Test with large document (async mode)
+        result = self.service.process_document(b'large pdf content', 'doc-456', sync_mode=False)
+        
+        # Verify S3 upload was called correctly
+        self.mock_s3.put_object.assert_called_once()
+        s3_call_args = self.mock_s3.put_object.call_args[1]
+        self.assertEqual(s3_call_args['Bucket'], settings.AWS_TEXTRACT_S3_BUCKET)
+        self.assertTrue(s3_call_args['Key'].startswith('temp-documents/'))
+        self.assertEqual(s3_call_args['Body'], b'large pdf content')
+        self.assertEqual(s3_call_args['ServerSideEncryption'], 'AES256')
+        
+        # Verify Textract async job was started
+        self.mock_textract.start_document_analysis.assert_called_once()
+        textract_call_args = self.mock_textract.start_document_analysis.call_args[1]
+        self.assertEqual(textract_call_args['FeatureTypes'], ['TABLES', 'FORMS'])
+        
+        # Verify result contains job ID
+        self.assertEqual(result['job_id'], 'job-123')
+        
+    def test_check_job_status(self):
+        self.mock_textract.get_document_analysis.return_value = {'JobStatus': 'SUCCEEDED'}
+        status = self.service.check_job_status('job-123')
+        self.assertEqual(status, 'SUCCEEDED')
+        
+    def test_get_job_results(self):
+        # Mock paginated results
+        self.mock_textract.get_document_analysis.side_effect = [
+            {
+                'JobStatus': 'SUCCEEDED',
+                'Blocks': [{'BlockType': 'PAGE', 'Page': 1}],
+                'NextToken': 'token-1'
+            },
+            {
+                'JobStatus': 'SUCCEEDED',
+                'Blocks': [{'BlockType': 'LINE', 'Text': 'Page 2 text'}]
+            }
+        ]
+        
+        results = self.service.get_job_results('job-123')
+        
+        # Verify pagination was handled
+        self.assertEqual(len(self.mock_textract.get_document_analysis.call_args_list), 2)
+        
+    def test_cleanup_s3_document(self):
+        self.service.cleanup_s3_document('temp-documents/doc-123.pdf')
+        self.mock_s3.delete_object.assert_called_once_with(
+            Bucket=settings.AWS_TEXTRACT_S3_BUCKET,
+            Key='temp-documents/doc-123.pdf'
+        )
+```
+
+2. Integration Tests for PDFTextExtractor:
+```python
+class PDFTextExtractorTests(TestCase):
+    @mock.patch('document_processing.services.TextractService')
+    def setUp(self, mock_textract_service_class):
+        self.mock_textract_service = MagicMock()
+        mock_textract_service_class.return_value = self.mock_textract_service
+        self.extractor = PDFTextExtractor()
+        
+    def test_extract_text_small_document(self):
+        # Create a small test PDF file
+        pdf_path = '/tmp/test_small.pdf'
+        with open(pdf_path, 'wb') as f:
+            f.write(b'small pdf content')
+            
+        # Mock the Textract service response
+        self.mock_textract_service.process_document.return_value = {
+            'text': 'Extracted text',
+            'tables': [],
+            'forms': []
+        }
+        
+        # Extract text
+        result = self.extractor.extract_text(pdf_path)
+        
+        # Verify sync mode was used
+        self.mock_textract_service.process_document.assert_called_once()
+        call_args = self.mock_textract_service.process_document.call_args
+        self.assertEqual(call_args[0][0], b'small pdf content')
+        self.assertTrue(call_args[1]['sync_mode'])
+        
+        # Verify result
+        self.assertEqual(result['text'], 'Extracted text')
+        
+    @mock.patch('time.sleep')  # Prevent actual sleeping in tests
+    def test_extract_text_large_document(self, mock_sleep):
+        # Create a large test PDF file (>5MB)
+        pdf_path = '/tmp/test_large.pdf'
+        with open(pdf_path, 'wb') as f:
+            f.write(b'X' * (6 * 1024 * 1024))  # 6MB of data
+            
+        # Mock the Textract service responses
+        self.mock_textract_service.process_document.return_value = {
+            'job_id': 'job-123',
+            's3_key': 'temp-documents/doc-uuid.pdf'
+        }
+        self.mock_textract_service.check_job_status.side_effect = ['IN_PROGRESS', 'SUCCEEDED']
+        self.mock_textract_service.get_job_results.return_value = {
+            'text': 'Extracted text from large document',
+            'tables': [{'cells': []}],
+            'forms': []
+        }
+        
+        # Extract text
+        result = self.extractor.extract_text(pdf_path)
+        
+        # Verify async mode was used
+        self.mock_textract_service.process_document.assert_called_once()
+        call_args = self.mock_textract_service.process_document.call_args
+        self.assertFalse(call_args[1]['sync_mode'])
+        
+        # Verify job status was checked
+        self.assertEqual(self.mock_textract_service.check_job_status.call_count, 2)
+        
+        # Verify results were fetched
+        self.mock_textract_service.get_job_results.assert_called_once_with('job-123')
+        
+        # Verify S3 cleanup
+        self.mock_textract_service.cleanup_s3_document.assert_called_once_with('temp-documents/doc-uuid.pdf')
+        
+        # Verify result
+        self.assertEqual(result['text'], 'Extracted text from large document')
+```
+
+3. End-to-End Tests with AWS Sandbox:
+```python
+class TextractE2ETests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Ensure AWS credentials are configured for sandbox environment
+        os.environ['AWS_PROFILE'] = 'sandbox'
+        cls.textract_service = TextractService()
+        
+    def test_e2e_sync_processing(self):
+        # Use a known test PDF file
+        with open('test_files/sample.pdf', 'rb') as f:
+            pdf_bytes = f.read()
+            
+        # Process directly with Textract
+        result = self.textract_service.process_document(pdf_bytes, 'test-doc-1', sync_mode=True)
+        
+        # Verify structure of result
+        self.assertIn('text', result)
+        self.assertIn('tables', result)
+        self.assertIn('forms', result)
+        
+    def test_e2e_async_processing(self):
+        # Use a larger test PDF file
+        with open('test_files/large_sample.pdf', 'rb') as f:
+            pdf_bytes = f.read()
+            
+        # Start async job
+        job_info = self.textract_service.process_document(pdf_bytes, 'test-doc-2', sync_mode=False)
+        
+        # Verify job was created
+        self.assertIn('job_id', job_info)
+        
+        # Poll for completion (with timeout)
+        job_id = job_info['job_id']
+        s3_key = job_info['s3_key']
+        
+        status = 'IN_PROGRESS'
+        max_attempts = 12  # 2 minutes max (12 * 10 seconds)
+        attempts = 0
+        
+        while status == 'IN_PROGRESS' and attempts < max_attempts:
+            time.sleep(10)
+            status = self.textract_service.check_job_status(job_id)
+            attempts += 1
+            
+        self.assertEqual(status, 'SUCCEEDED')
+        
+        # Get results
+        result = self.textract_service.get_job_results(job_id)
+        
+        # Verify structure of result
+        self.assertIn('text', result)
+        self.assertIn('tables', result)
+        self.assertIn('forms', result)
+        
+        # Clean up
+        self.textract_service.cleanup_s3_document(s3_key)
+```
+
+4. Test Celery Task Integration:
+```python
+class DocumentProcessingTaskTests(TestCase):
+    @mock.patch('document_processing.tasks.PDFTextExtractor')
+    def test_process_document_task(self, mock_extractor_class):
+        # Setup mocks
+        mock_extractor = MagicMock()
+        mock_extractor_class.return_value = mock_extractor
+        mock_extractor.extract_text.return_value = {
+            'text': 'Extracted document text',
+            'tables': [],
+            'forms': []
+        }
+        
+        # Create test document
+        document = Document.objects.create(
+            title='Test Document',
+            file='documents/test.pdf',
+            status=Document.UPLOADED
+        )
+        
+        # Run the task
+        process_document(document.id)
+        
+        # Refresh document from DB
+        document.refresh_from_db()
+        
+        # Verify document was processed
+        self.assertEqual(document.status, Document.COMPLETED)
+        self.assertEqual(document.extracted_text, 'Extracted document text')
+        
+    @mock.patch('document_processing.tasks.PDFTextExtractor')
+    def test_process_document_task_error_handling(self, mock_extractor_class):
+        # Setup mocks to raise exception
+        mock_extractor = MagicMock()
+        mock_extractor_class.return_value = mock_extractor
+        mock_extractor.extract_text.side_effect = Exception("Textract processing failed")
+        
+        # Create test document
+        document = Document.objects.create(
+            title='Test Document',
+            file='documents/test.pdf',
+            status=Document.UPLOADED
+        )
+        
+        # Run the task (should catch exception)
+        with self.assertRaises(Retry):  # Celery retry exception
+            process_document(document.id)
+        
+        # Refresh document from DB
+        document.refresh_from_db()
+        
+        # Verify document status was updated
+        self.assertEqual(document.status, Document.ERROR)
+        self.assertEqual(document.error_message, "Textract processing failed")
+```
+
+5. HIPAA Audit Logging Tests:
+```python
+class TextractAuditLoggingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('testuser', 'test@example.com', 'password')
+        self.client.login(username='testuser', password='password')
+        
+    @mock.patch('document_processing.services.TextractService.process_document')
+    def test_audit_logging_for_ocr(self, mock_process):
+        # Setup mock
+        mock_process.return_value = {'text': 'Sample text'}
+        
+        # Create document
+        document = Document.objects.create(
+            title='Audit Test Doc',
+            file='documents/audit_test.pdf',
+            status=Document.UPLOADED
+        )
+        
+        # Process document
+        with user_login_context(self.user):
+            extractor = PDFTextExtractor()
+            with open(document.file.path, 'rb') as f:
+                extractor.extract_text(document.file.path)
+        
+        # Verify audit log was created
+        audit_logs = AuditLog.objects.filter(
+            user=self.user,
+            action='OCR_PROCESS',
+            resource_type='Document',
+            resource_id=str(document.id)
+        )
+        
+        self.assertEqual(audit_logs.count(), 1)
+        self.assertFalse(audit_logs.first().data_accessed)
+```
+
+6. AWS Infrastructure Tests:
+```python
+class AWSInfrastructureTests(TestCase):
+    def setUp(self):
+        # Use boto3 with sandbox credentials
+        self.s3 = boto3.client('s3')
+        self.textract = boto3.client('textract')
+        self.bucket_name = settings.AWS_TEXTRACT_S3_BUCKET
+        
+    def test_s3_bucket_exists(self):
+        response = self.s3.head_bucket(Bucket=self.bucket_name)
+        self.assertEqual(response['ResponseMetadata']['HTTPStatusCode'], 200)
+        
+    def test_s3_bucket_lifecycle_policy(self):
+        response = self.s3.get_bucket_lifecycle_configuration(Bucket=self.bucket_name)
+        
+        # Verify there's a rule for deleting objects after 24 hours
+        rules = response['Rules']
+        expiration_rule = next((r for r in rules if 'Expiration' in r), None)
+        
+        self.assertIsNotNone(expiration_rule)
+        self.assertLessEqual(expiration_rule['Expiration']['Days'], 1)
+        
+    def test_s3_bucket_encryption(self):
+        response = self.s3.get_bucket_encryption(Bucket=self.bucket_name)
+        
+        # Verify SSE-S3 encryption is enabled
+        encryption_rules = response['ServerSideEncryptionConfiguration']['Rules']
+        self.assertTrue(any(
+            rule.get('ApplyServerSideEncryptionByDefault', {}).get('SSEAlgorithm') == 'AES256'
+            for rule in encryption_rules
+        ))
+        
+    def test_textract_permissions(self):
+        # Create a small test file
+        test_key = f'test-permissions-{uuid.uuid4()}.txt'
+        self.s3.put_object(
+            Bucket=self.bucket_name,
+            Key=test_key,
+            Body=b'test content'
+        )
+        
+        try:
+            # Try to start a Textract job (should succeed if permissions are correct)
+            response = self.textract.start_document_text_detection(
+                DocumentLocation={
+                    'S3Object': {
+                        'Bucket': self.bucket_name,
+                        'Name': test_key
+                    }
+                }
+            )
+            
+            self.assertIn('JobId', response)
+            
+            # Cancel the job since we don't need the results
+            self.textract.cancel_document_text_detection(JobId=response['JobId'])
+            
+        finally:
+            # Clean up test file
+            self.s3.delete_object(
+                Bucket=self.bucket_name,
+                Key=test_key
+            )
+```
+
+7. Performance Tests:
+```python
+class TextractPerformanceTests(TestCase):
+    def setUp(self):
+        self.service = TextractService()
+        
+    def test_sync_performance(self):
+        # Test with various file sizes
+        test_files = [
+            ('test_files/1page.pdf', 'small'),
+            ('test_files/5page.pdf', 'medium'),
+            ('test_files/20page.pdf', 'large')
+        ]
+        
+        for file_path, size in test_files:
+            with open(file_path, 'rb') as f:
+                pdf_bytes = f.read()
+                
+            start_time = time.time()
+            result = self.service.process_document(pdf_bytes, f'perf-test-{size}', sync_mode=True)
+            duration = time.time() - start_time
+            
+            print(f"Sync processing time for {size} document: {duration:.2f} seconds")
+            
+            # Basic assertions to ensure processing worked
+            self.assertIn('text', result)
+            
+    def test_async_performance(self):
+        # Test with a large file
+        with open('test_files/50page.pdf', 'rb') as f:
+            pdf_bytes = f.read()
+            
+        start_time = time.time()
+        job_info = self.service.process_document(pdf_bytes, 'perf-test-async', sync_mode=False)
+        
+        # Poll for completion
+        job_id = job_info['job_id']
+        s3_key = job_info['s3_key']
+        
+        status = 'IN_PROGRESS'
+        while status == 'IN_PROGRESS':
+            time.sleep(10)
+            status = self.service.check_job_status(job_id)
+            
+        result = self.service.get_job_results(job_id)
+        duration = time.time() - start_time
+        
+        print(f"Async processing time: {duration:.2f} seconds")
+        
+        # Clean up
+        self.service.cleanup_s3_document(s3_key)
+        
+        # Basic assertions
+        self.assertIn('text', result)
+```
+
+8. Manual Testing Checklist:
+   - Upload small documents (<5MB) and verify text extraction works correctly
+   - Upload large documents (>5MB) and verify async processing works correctly
+   - Verify tables and forms are correctly extracted from structured documents
+   - Test with various document types (medical records, lab reports, prescriptions)
+   - Verify HIPAA audit logs are created for all OCR operations
+   - Test error handling by intentionally causing failures (invalid files, AWS connectivity issues)
+   - Verify S3 cleanup works correctly after processing
+   - Monitor AWS costs during testing to validate budget assumptions
+
+# Subtasks:
+## 1. Add boto3 dependency [done]
+### Dependencies: None
+### Description: Add boto3>=1.34.0 to requirements.txt and verify installation in virtual environment
+### Details:
+Add boto3>=1.34.0 to requirements.txt. Run pip install -r requirements.txt to install. Verify with: python -c "import boto3; print(boto3.__version__)". boto3 is the AWS SDK for Python, required for Textract and S3 integration.
+
+## 2. Create S3 OCR temp bucket [pending]
+### Dependencies: None
+### Description: Create dedicated S3 bucket with SSE-S3 encryption, blocked public access, and 24-hour lifecycle rule for auto-deletion
+### Details:
+Create S3 bucket following pattern: {project}-ocr-temp-{environment} (e.g., meddocparser-ocr-temp-dev). Configuration: Region us-east-1, SSE-S3 encryption (AWS-managed keys), all public access blocked, versioning disabled. Add lifecycle rule 'DeleteOCRTempFiles' with 1-day expiration for all objects. This bucket stores temporary files during async Textract processing only.
+
+## 3. Create IAM policy for Textract and S3 [pending]
+### Dependencies: None
+### Description: Create IAM policy with textract:AnalyzeDocument, textract:StartDocumentAnalysis, textract:GetDocumentAnalysis permissions plus S3 PutObject/GetObject/DeleteObject for OCR bucket
+### Details:
+Create IAM policy with: TextractAccess (textract:AnalyzeDocument, StartDocumentAnalysis, GetDocumentAnalysis on Resource *), S3OCRBucketAccess (s3:PutObject, GetObject, DeleteObject on bucket/*), S3BucketList (s3:ListBucket on bucket). Attach policy to EC2/ECS role for production. For local dev, create IAM user with this policy and generate access keys.
+
+## 4. Add AWS configuration to Django settings [pending]
+### Dependencies: None
+### Description: Add OCR_ENABLED, OCR_TEXT_THRESHOLD, OCR_ASYNC_THRESHOLD_MB, AWS credentials, OCR_S3_BUCKET settings to meddocparser/settings/base.py using python-decouple pattern
+### Details:
+Add to base.py: OCR_ENABLED (bool, default True), OCR_SELECTIVE_ENABLED (bool, default True), OCR_TEXT_THRESHOLD (int, default 50), OCR_ASYNC_THRESHOLD_MB (int, default 5), AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION (default us-east-1), OCR_S3_BUCKET, OCR_S3_PREFIX (default 'ocr-temp/'), TEXTRACT_FEATURE_TYPES=['TABLES','FORMS'], TEXTRACT_ASYNC_POLL_INTERVAL (int, default 10), TEXTRACT_ASYNC_MAX_WAIT (int, default 300). Update .env.example with all new variables.
+
+## 5. Create TextractResult dataclass [pending]
+### Dependencies: 42.1
+### Description: Create dataclass in apps/documents/services/textract.py to hold parsed Textract response with pages, text blocks, confidence scores, and metadata
+### Details:
+Create apps/documents/services/textract.py with TextractResult dataclass containing: pages (list of page text), blocks (raw Textract blocks), confidence (average confidence score), page_count (int), extraction_time_ms (int), job_id (optional str for async). Use @dataclass decorator. Include from_response() classmethod to parse Textract API response.
+
+## 6. Create TextractService with sync analysis [pending]
+### Dependencies: 42.1, 42.4, 42.5
+### Description: Implement TextractService class with analyze_document_sync() method that calls Textract AnalyzeDocument API for documents <5MB. Include TABLES and FORMS feature types.
+### Details:
+Create TextractService class in apps/documents/services/textract.py. Method analyze_document_sync(document_bytes: bytes) -> TextractResult calls boto3 textract.analyze_document() with FeatureTypes=['TABLES','FORMS']. Handle DocumentTooLargeException. Use settings for AWS credentials (support both IAM role and env vars). Add logging for API calls (no PHI).
+
+## 7. Implement Textract response text extraction [pending]
+### Dependencies: 42.5, 42.6
+### Description: Add extract_text_from_result() method to TextractService that converts Textract WORD/LINE blocks to plain text with page separators matching existing format
+### Details:
+Implement extract_text_from_result(result: TextractResult) -> str that processes Textract blocks. Group LINE blocks by page, concatenate with newlines. Add page separators matching existing format: '--- Page N (OCR) ---'. Handle WORD blocks for table cells. Preserve reading order using Textract geometry. Return clean text ready for DocumentAnalyzer.
+
+## 8. Create OCRTempStorage service for S3 [pending]
+### Dependencies: 42.1, 42.2, 42.3, 42.4
+### Description: Create apps/documents/services/s3_upload.py with OCRTempStorage class implementing upload_for_ocr() and delete_temp_file() methods using boto3 S3 client
+### Details:
+Create OCRTempStorage class with: upload_for_ocr(document_bytes: bytes, document_id: int) -> str that uploads to S3 bucket at OCR_S3_PREFIX/{document_id}/{uuid}.pdf, returns S3 URI. delete_temp_file(s3_key: str) -> None that removes file after OCR. Use settings.OCR_S3_BUCKET. Add audit logging for uploads/deletes. Handle S3 errors with specific exceptions.
+
+## 9. Add async Textract methods to TextractService [pending]
+### Dependencies: 42.6, 42.8
+### Description: Implement start_async_analysis() that calls StartDocumentAnalysis API with S3 location, and get_async_result() that calls GetDocumentAnalysis to retrieve results
+### Details:
+Add to TextractService: start_async_analysis(s3_bucket: str, s3_key: str) -> str that calls textract.start_document_analysis() with S3Object, returns job_id. get_async_result(job_id: str) -> TextractResult that polls GetDocumentAnalysis, handles IN_PROGRESS/SUCCEEDED/FAILED states. Include pagination for large result sets (NextToken handling).
+
+## 10. Create start_textract_async_job Celery task [pending]
+### Dependencies: 42.8, 42.9
+### Description: Add new Celery task in apps/documents/tasks.py that uploads document to S3 via OCRTempStorage, starts async Textract job, and schedules poll task
+### Details:
+Create @shared_task start_textract_async_job(document_id: int) that: 1) Loads Document, 2) Calls OCRTempStorage.upload_for_ocr(), 3) Calls TextractService.start_async_analysis(), 4) Stores job_id in Document metadata, 5) Schedules poll_textract_job.delay(document_id, job_id, countdown=10), 6) Creates audit log entry 'ocr_async_job_started'. Handle errors with Document.status='failed'.
+
+## 11. Create poll_textract_job Celery task [pending]
+### Dependencies: 42.9, 42.10
+### Description: Add Celery task that polls Textract job status with exponential backoff (10s, 20s, 40s), retrieves results on completion, deletes S3 temp file, and chains to continue_document_processing
+### Details:
+Create @shared_task(bind=True, max_retries=30) poll_textract_job(self, document_id, job_id, s3_key, attempt=0) that: 1) Calls TextractService.get_async_result(), 2) On SUCCEEDED: delete S3 temp file, chain to continue_document_processing with extracted text, 3) On IN_PROGRESS: self.retry with countdown=min(10*2**attempt, 60), 4) On FAILED/timeout: mark Document failed, create review queue entry. Track attempt count for TEXTRACT_ASYNC_MAX_WAIT.
+
+## 12. Create continue_document_processing Celery task [pending]
+### Dependencies: 42.10, 42.11
+### Description: Add Celery task that receives OCR text and continues document pipeline (DocumentAnalyzer, FHIR conversion, merge) for documents that went through async OCR flow
+### Details:
+Create @shared_task continue_document_processing(document_id: int, ocr_text: str) that: 1) Loads Document, 2) Stores ocr_text in Document.original_text (encrypted), 3) Continues with DocumentAnalyzer.analyze(), 4) Runs StructuredDataConverter, 5) Creates ParsedData with optimistic FHIR merge, 6) Sets Document.status='completed'. This mirrors the sync path after text extraction. Reuse existing code from process_document_async where possible.
+
+## 13. Update PDFTextExtractor with page-level text detection [pending]
+### Dependencies: 42.1, 42.4
+### Description: Modify extract_text() in apps/documents/services.py to track per-page character counts using pdfplumber and classify pages as text (>=50 chars) or image (<50 chars)
+### Details:
+Modify PDFTextExtractor.extract_text() to: 1) Track char_count per page from pdfplumber, 2) Classify each page using OCR_TEXT_THRESHOLD (default 50), 3) Build list of image_pages (indices) that need OCR, 4) Return metadata: {extraction_method, total_pages, text_pages, image_pages, chars_per_page}. This classification enables selective OCR routing.
+
+## 14. Integrate TextractService into PDFTextExtractor for sync OCR [pending]
+### Dependencies: 42.6, 42.7, 42.13
+### Description: Update PDFTextExtractor to call TextractService.analyze_document_sync() for documents <5MB when OCR is needed, replacing local Tesseract fallback
+### Details:
+Modify PDFTextExtractor: 1) When image_pages detected and file_size < OCR_ASYNC_THRESHOLD_MB*1024*1024, 2) Call TextractService.analyze_document_sync(document_bytes), 3) Use extract_text_from_result() to get text, 4) Set extraction_method='external_ocr', 5) Create audit log 'ocr_sync_completed'. Remove call to extract_with_ocr() (Tesseract). Preserve existing output format for downstream compatibility.
+
+## 15. Integrate async OCR flow into PDFTextExtractor [pending]
+### Dependencies: 42.10, 42.13, 42.14
+### Description: Update PDFTextExtractor to detect documents >=5MB needing OCR, trigger start_textract_async_job.delay(), and return early with 'ocr_pending' status
+### Details:
+Modify PDFTextExtractor: 1) When image_pages detected and file_size >= OCR_ASYNC_THRESHOLD_MB*1024*1024, 2) Call start_textract_async_job.delay(document_id), 3) Set Document.status='ocr_pending', 4) Return early from extract_text() with partial result. process_document_async must handle this early return - don't proceed to DocumentAnalyzer, the async chain will continue later.
+
+## 16. Implement selective OCR for hybrid documents [pending]
+### Dependencies: 42.13, 42.14, 42.15
+### Description: Update PDFTextExtractor to OCR only image pages (not entire document) for hybrid PDFs, then merge OCR text with embedded text preserving page order
+### Details:
+Modify PDFTextExtractor for hybrid documents (some text, some image pages): 1) Extract embedded text from text_pages using pdfplumber, 2) For image_pages only, render to image and send to Textract, 3) Merge results preserving page order: text_pages use pdfplumber text, image_pages use Textract text, 4) Set extraction_method='hybrid', 5) Track ocr.pages_external vs ocr.pages_local metrics. This reduces Textract API calls and costs.
+
+## 17. Implement OCR error handling with review queue [pending]
+### Dependencies: 42.14, 42.15
+### Description: Add error handling for Textract failures: raise PDFExtractionError, set document status to 'failed', populate processing_message, create review queue entry with 'OCR failed - manual review needed'
+### Details:
+Implement comprehensive error handling: 1) Catch Textract exceptions (ThrottlingException, ProvisionedThroughputExceededException, InvalidS3ObjectException, UnsupportedDocumentException), 2) Raise PDFExtractionError with error details, 3) Set Document.status='failed' and Document.processing_message with user-friendly error, 4) Create review queue entry via existing mechanism with message 'OCR failed - manual review needed', 5) Audit log entry with error code (no PHI). No fallback to Tesseract - failed documents go to review queue.
+
+## 18. Add OCR audit logging events [pending]
+### Dependencies: 42.14, 42.15
+### Description: Add audit events to AuditLog: ocr_sync_completed, ocr_async_job_started, ocr_async_job_completed, ocr_async_job_failed, ocr_temp_upload, ocr_temp_delete. Log metadata only (no PHI)
+### Details:
+Add new audit event types to AuditLog: ocr_sync_completed (document_id, page_count, duration_ms), ocr_async_job_started (document_id, job_id), ocr_async_job_polling (job_id, attempt), ocr_async_job_completed (document_id, job_id, duration_ms), ocr_async_job_timeout (document_id, job_id, elapsed_seconds), ocr_async_job_failed (document_id, job_id, error_code), ocr_temp_upload (document_id, s3_key), ocr_temp_delete (s3_key). Use existing audit_extraction_decision pattern. NEVER log extracted text or page content.
+
+## 19. Add OCR metrics to monitoring [pending]
+### Dependencies: 42.14, 42.15
+### Description: Add metrics to performance_monitor: ocr.extraction_time_ms, ocr.pages_external, ocr.pages_local, ocr.documents_by_route. Add Textract error rates to ErrorMetrics
+### Details:
+Add to performance_monitor: ocr.extraction_time_ms (histogram), ocr.pages_external (counter - pages sent to Textract), ocr.pages_local (counter - pages extracted locally), ocr.documents_by_route (counter with labels: embedded_text, external_ocr, hybrid, async_ocr), ocr.async_jobs_started/completed/failed (counters). Add to ErrorMetrics: Textract error rates by error_code, timeout rates for sync vs async, S3 upload/delete failure rates.
+
+## 20. Write unit tests for TextractService [pending]
+### Dependencies: 42.6, 42.7, 42.8, 42.9
+### Description: Create apps/documents/tests/test_textract.py with tests for response parsing, text extraction with page separators, error code handling. Requires AWS sandbox credentials
+### Details:
+Create test_textract.py with: test_textract_result_from_response() - parse mock Textract response, test_extract_text_preserves_page_separators() - verify '--- Page N (OCR) ---' format, test_sync_analysis_handles_large_document_error() - DocumentTooLargeException, test_async_methods_return_job_id() - StartDocumentAnalysis response, test_s3_upload_generates_correct_key() - OCRTempStorage path format. Use real AWS sandbox credentials (no mocking Textract). Test with small real documents.
+
+## 21. Write integration tests for OCR flows [pending]
+### Dependencies: 42.14, 42.15, 42.16, 42.17
+### Description: Create apps/documents/tests/test_ocr_integration.py with tests for: text-only PDF (no OCR), image-only PDF (sync OCR), hybrid PDF (selective OCR), large document (async flow), OCR failure (review queue entry)
+### Details:
+Create test_ocr_integration.py with: test_text_pdf_no_textract_call() - verify extraction_method=embedded_text, test_image_pdf_uses_sync_textract() - verify extraction_method=external_ocr, test_hybrid_pdf_selective_ocr() - verify extraction_method=hybrid, test_large_document_async_flow() - verify async task chain completes, test_ocr_failure_creates_review_entry() - verify review queue entry created, test_process_document_async_continues_after_ocr() - verify ParsedData and FHIR merge. Use real anonymized test documents. Requires AWS sandbox credentials.
+
+## 22. Remove local Tesseract OCR code [pending]
+### Dependencies: 42.21
+### Description: Delete extract_with_ocr() method from PDFTextExtractor and remove pytesseract/pdf2image imports. Update requirements.txt to remove pytesseract and pdf2image dependencies
+### Details:
+Final cleanup after all tests pass: 1) Remove extract_with_ocr() method from PDFTextExtractor in apps/documents/services.py, 2) Remove imports: pytesseract, pdf2image, 3) Remove from requirements.txt: pytesseract, pdf2image, Pillow (if only used for OCR), 4) Update any documentation referencing local OCR, 5) Run full test suite to confirm no regressions. This completes the migration to AWS Textract.
+
