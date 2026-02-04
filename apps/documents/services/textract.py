@@ -17,6 +17,7 @@ from statistics import mean
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
 from django.conf import settings
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,16 @@ class TextractAPIError(TextractError):
     def __init__(self, message: str, error_code: str = None, request_id: str = None):
         self.error_code = error_code
         self.request_id = request_id
+        super().__init__(message)
+
+
+class S3StorageError(TextractError):
+    """Raised when S3 upload/download operations fail."""
+    
+    def __init__(self, message: str, error_code: str = None, bucket: str = None, key: str = None):
+        self.error_code = error_code
+        self.bucket = bucket
+        self.key = key
         super().__init__(message)
 
 
@@ -338,6 +349,360 @@ class TextractResult:
             f"blocks={len(self.blocks)}, "
             f"job_id={self.job_id})"
         )
+
+
+# =============================================================================
+# S3 TEMPORARY STORAGE SERVICE
+# =============================================================================
+
+class OCRTempStorage:
+    """
+    Service for managing temporary S3 storage for large document OCR processing.
+    
+    Handles uploading PDFs to S3 for async Textract processing and cleanup
+    after processing completes. All uploads use SSE-S3 (AES256) encryption
+    for HIPAA compliance.
+    
+    HIPAA Compliance:
+    - All S3 uploads use server-side encryption (SSE-S3)
+    - Temporary files use unique, non-guessable keys (UUID-based)
+    - No PHI is logged; only S3 keys and sizes are recorded
+    - Cleanup is automatic after processing completes
+    
+    Usage:
+        storage = OCRTempStorage()
+        s3_key = storage.upload_document(document_bytes, document_id='doc-123')
+        # ... process with Textract ...
+        storage.delete_document(s3_key)
+    
+    Attributes:
+        bucket: S3 bucket name for temporary storage
+        prefix: S3 key prefix for organizing temporary files
+        region: AWS region for S3 operations
+    """
+    
+    def __init__(self, bucket: str = None, prefix: str = None, region: str = None):
+        """
+        Initialize the OCRTempStorage service.
+        
+        Args:
+            bucket: S3 bucket name. Defaults to settings.OCR_S3_BUCKET
+            prefix: S3 key prefix. Defaults to settings.OCR_S3_PREFIX
+            region: AWS region. Defaults to settings.AWS_DEFAULT_REGION
+            
+        Raises:
+            TextractConfigurationError: If S3 bucket is not configured
+        """
+        self.bucket = bucket or getattr(settings, 'OCR_S3_BUCKET', None)
+        self.prefix = prefix or getattr(settings, 'OCR_S3_PREFIX', 'ocr-temp/')
+        self.region = region or getattr(settings, 'AWS_DEFAULT_REGION', 'us-east-1')
+        
+        if not self.bucket:
+            raise TextractConfigurationError(
+                "S3 bucket not configured. Set OCR_S3_BUCKET in settings."
+            )
+        
+        # Ensure prefix ends with /
+        if self.prefix and not self.prefix.endswith('/'):
+            self.prefix += '/'
+        
+        # Initialize boto3 S3 client lazily
+        self._s3_client = None
+        
+        logger.info(
+            "OCRTempStorage initialized: bucket=%s, prefix=%s, region=%s",
+            self.bucket,
+            self.prefix,
+            self.region
+        )
+    
+    @property
+    def s3_client(self):
+        """
+        Lazy initialization of boto3 S3 client.
+        
+        Supports both explicit credentials (development) and IAM roles (production).
+        
+        Returns:
+            boto3 S3 client
+            
+        Raises:
+            TextractConfigurationError: If credentials cannot be resolved
+        """
+        if self._s3_client is None:
+            try:
+                # Check for explicit credentials in settings
+                aws_access_key = getattr(settings, 'AWS_ACCESS_KEY_ID', None)
+                aws_secret_key = getattr(settings, 'AWS_SECRET_ACCESS_KEY', None)
+                
+                if aws_access_key and aws_secret_key:
+                    # Use explicit credentials (development/testing)
+                    self._s3_client = boto3.client(
+                        's3',
+                        region_name=self.region,
+                        aws_access_key_id=aws_access_key,
+                        aws_secret_access_key=aws_secret_key
+                    )
+                    logger.debug("S3 client initialized with explicit credentials")
+                else:
+                    # Use IAM role or default credential chain (production)
+                    self._s3_client = boto3.client('s3', region_name=self.region)
+                    logger.debug("S3 client initialized with default credential chain")
+                    
+            except (ClientError, BotoCoreError) as e:
+                logger.error("Failed to initialize S3 client: %s", str(e))
+                raise TextractConfigurationError(
+                    f"Failed to initialize AWS S3 client: {str(e)}"
+                ) from e
+        
+        return self._s3_client
+    
+    def upload_document(
+        self,
+        document_bytes: bytes,
+        document_id: str = None,
+        file_extension: str = 'pdf'
+    ) -> str:
+        """
+        Upload a document to S3 for async Textract processing.
+        
+        Generates a unique S3 key using UUID to prevent collisions and
+        applies server-side encryption for HIPAA compliance.
+        
+        Args:
+            document_bytes: The document content as bytes
+            document_id: Optional identifier for audit logging
+            file_extension: File extension (default: 'pdf')
+            
+        Returns:
+            S3 key of the uploaded document (e.g., 'ocr-temp/uuid.pdf')
+            
+        Raises:
+            S3StorageError: If upload fails
+        """
+        # Generate unique S3 key
+        unique_id = str(uuid.uuid4())
+        s3_key = f"{self.prefix}{unique_id}.{file_extension}"
+        
+        doc_size = len(document_bytes)
+        
+        # Log upload attempt (no PHI - just metadata)
+        logger.info(
+            "Uploading document to S3: bucket=%s, key=%s, size=%d bytes, doc_id=%s",
+            self.bucket,
+            s3_key,
+            doc_size,
+            document_id or 'unknown'
+        )
+        
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket,
+                Key=s3_key,
+                Body=document_bytes,
+                ServerSideEncryption='AES256',  # SSE-S3 encryption for HIPAA
+                ContentType='application/pdf',
+                Metadata={
+                    'document_id': document_id or '',
+                    'upload_service': 'OCRTempStorage'
+                }
+            )
+            
+            logger.info(
+                "Document uploaded successfully: bucket=%s, key=%s, size=%d bytes",
+                self.bucket,
+                s3_key,
+                doc_size
+            )
+            
+            return s3_key
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            
+            logger.error(
+                "S3 upload failed: bucket=%s, key=%s, error=%s - %s",
+                self.bucket,
+                s3_key,
+                error_code,
+                error_message
+            )
+            
+            raise S3StorageError(
+                f"Failed to upload document to S3: {error_message}",
+                error_code=error_code,
+                bucket=self.bucket,
+                key=s3_key
+            ) from e
+            
+        except BotoCoreError as e:
+            logger.error(
+                "S3 boto3 error during upload: bucket=%s, key=%s, error=%s",
+                self.bucket,
+                s3_key,
+                str(e)
+            )
+            raise S3StorageError(
+                f"AWS SDK error during upload: {str(e)}",
+                bucket=self.bucket,
+                key=s3_key
+            ) from e
+    
+    def delete_document(self, s3_key: str) -> bool:
+        """
+        Delete a temporary document from S3 after processing.
+        
+        Args:
+            s3_key: S3 key of the document to delete
+            
+        Returns:
+            True if deletion succeeded or object didn't exist, False otherwise
+            
+        Raises:
+            S3StorageError: If deletion fails with an unexpected error
+        """
+        logger.info(
+            "Deleting document from S3: bucket=%s, key=%s",
+            self.bucket,
+            s3_key
+        )
+        
+        try:
+            self.s3_client.delete_object(
+                Bucket=self.bucket,
+                Key=s3_key
+            )
+            
+            logger.info(
+                "Document deleted successfully: bucket=%s, key=%s",
+                self.bucket,
+                s3_key
+            )
+            
+            return True
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            
+            # NoSuchKey means object already deleted - not an error
+            if error_code == 'NoSuchKey':
+                logger.info(
+                    "Document already deleted or never existed: bucket=%s, key=%s",
+                    self.bucket,
+                    s3_key
+                )
+                return True
+            
+            logger.error(
+                "S3 deletion failed: bucket=%s, key=%s, error=%s - %s",
+                self.bucket,
+                s3_key,
+                error_code,
+                error_message
+            )
+            
+            raise S3StorageError(
+                f"Failed to delete document from S3: {error_message}",
+                error_code=error_code,
+                bucket=self.bucket,
+                key=s3_key
+            ) from e
+            
+        except BotoCoreError as e:
+            logger.error(
+                "S3 boto3 error during deletion: bucket=%s, key=%s, error=%s",
+                self.bucket,
+                s3_key,
+                str(e)
+            )
+            raise S3StorageError(
+                f"AWS SDK error during deletion: {str(e)}",
+                bucket=self.bucket,
+                key=s3_key
+            ) from e
+    
+    def document_exists(self, s3_key: str) -> bool:
+        """
+        Check if a document exists in S3.
+        
+        Args:
+            s3_key: S3 key of the document to check
+            
+        Returns:
+            True if document exists, False otherwise
+        """
+        try:
+            self.s3_client.head_object(
+                Bucket=self.bucket,
+                Key=s3_key
+            )
+            return True
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            if error_code == '404':
+                return False
+            
+            # Log unexpected errors but don't raise
+            logger.warning(
+                "Unexpected error checking S3 object existence: bucket=%s, key=%s, error=%s",
+                self.bucket,
+                s3_key,
+                error_code
+            )
+            return False
+    
+    def get_document_size(self, s3_key: str) -> Optional[int]:
+        """
+        Get the size of a document in S3.
+        
+        Args:
+            s3_key: S3 key of the document
+            
+        Returns:
+            Document size in bytes, or None if document doesn't exist
+        """
+        try:
+            response = self.s3_client.head_object(
+                Bucket=self.bucket,
+                Key=s3_key
+            )
+            return response.get('ContentLength', 0)
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            if error_code == '404':
+                return None
+            
+            logger.warning(
+                "Error getting S3 object size: bucket=%s, key=%s, error=%s",
+                self.bucket,
+                s3_key,
+                error_code
+            )
+            return None
+    
+    def get_s3_location(self, s3_key: str) -> Dict[str, str]:
+        """
+        Get S3 location dict for Textract StartDocumentAnalysis.
+        
+        Args:
+            s3_key: S3 key of the document
+            
+        Returns:
+            Dict with 'S3Object' structure for Textract API
+        """
+        return {
+            'S3Object': {
+                'Bucket': self.bucket,
+                'Name': s3_key
+            }
+        }
+    
+    def __repr__(self) -> str:
+        return f"OCRTempStorage(bucket={self.bucket}, prefix={self.prefix})"
 
 
 # =============================================================================

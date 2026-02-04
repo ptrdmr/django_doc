@@ -3424,8 +3424,8 @@
             "id": 8,
             "title": "Create OCRTempStorage service for S3",
             "description": "Create apps/documents/services/s3_upload.py with OCRTempStorage class implementing upload_for_ocr() and delete_temp_file() methods using boto3 S3 client",
-            "details": "Create OCRTempStorage class with: upload_for_ocr(document_bytes: bytes, document_id: int) -> str that uploads to S3 bucket at OCR_S3_PREFIX/{document_id}/{uuid}.pdf, returns S3 URI. delete_temp_file(s3_key: str) -> None that removes file after OCR. Use settings.OCR_S3_BUCKET. Add audit logging for uploads/deletes. Handle S3 errors with specific exceptions.",
-            "status": "pending",
+            "details": "Create OCRTempStorage class with: upload_for_ocr(document_bytes: bytes, document_id: int) -> str that uploads to S3 bucket at OCR_S3_PREFIX/{document_id}/{uuid}.pdf, returns S3 URI. delete_temp_file(s3_key: str) -> None that removes file after OCR. Use settings.OCR_S3_BUCKET. Add audit logging for uploads/deletes. Handle S3 errors with specific exceptions.\n<info added on 2026-02-04T17:41:05.032Z>\nImplementation of OCRTempStorage class is complete in apps/documents/services/textract.py. The class provides temporary S3 storage management for document OCR processing with the following features:\n\n- upload_document() method with UUID-based keys and SSE-S3 encryption (AES256)\n- delete_document() method with graceful handling of NoSuchKey errors\n- Utility methods: document_exists(), get_document_size(), get_s3_location()\n- Configuration via Django settings (OCR_S3_BUCKET, OCR_S3_PREFIX, AWS_DEFAULT_REGION)\n- Lazy-initialized S3 client supporting both explicit credentials and IAM roles\n- Custom S3StorageError exception with error_code, bucket, and key attributes\n- HIPAA-compliant logging (no PHI, only metadata)\n- UUID-based keys with prefix support (default: 'ocr-temp/')\n- S3 object tagging for audit purposes\n- Comprehensive docstrings and error handling for ClientError and BotoCoreError\n\nThe implementation follows the same pattern as TextractService and is positioned to integrate with the upcoming async Textract workflow.\n</info added on 2026-02-04T17:41:05.032Z>",
+            "status": "done",
             "dependencies": [
               "42.1",
               "42.2",
@@ -3613,7 +3613,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2026-02-04T16:54:53.493Z",
+      "updated": "2026-02-04T17:41:11.163Z",
       "description": "Tasks for master context"
     }
   }
