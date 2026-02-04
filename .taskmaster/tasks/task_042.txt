@@ -1,6 +1,6 @@
 # Task ID: 42
 # Title: Implement AWS Textract OCR Integration
-# Status: pending
+# Status: in-progress
 # Dependencies: 6, 20
 # Priority: high
 # Description: Replace local Tesseract OCR with AWS Textract, adding S3 infrastructure for async processing of large documents while preserving existing Django/Celery pipeline, optimistic FHIR merge flow, and HIPAA audit practices.
@@ -753,7 +753,7 @@ Create apps/documents/services/textract.py with TextractResult dataclass contain
 ### Details:
 Create TextractService class in apps/documents/services/textract.py. Method analyze_document_sync(document_bytes: bytes) -> TextractResult calls boto3 textract.analyze_document() with FeatureTypes=['TABLES','FORMS']. Handle DocumentTooLargeException. Use settings for AWS credentials (support both IAM role and env vars). Add logging for API calls (no PHI).
 
-## 7. Implement Textract response text extraction [pending]
+## 7. Implement Textract response text extraction [done]
 ### Dependencies: 42.5, 42.6
 ### Description: Add extract_text_from_result() method to TextractService that converts Textract WORD/LINE blocks to plain text with page separators matching existing format
 ### Details:

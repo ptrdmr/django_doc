@@ -551,6 +551,183 @@ class TextractService:
         except BotoCoreError as e:
             logger.error("Textract boto3 error: %s", str(e))
             raise TextractAPIError(f"AWS SDK error: {str(e)}") from e
+
+    def extract_text_from_result(self, result: TextractResult) -> str:
+        """
+        Convert a TextractResult into plain text with OCR page separators.
+        
+        This preserves reading order by sorting LINE blocks by geometry
+        and falls back to WORD blocks when LINE blocks are unavailable.
+        
+        Args:
+            result: Parsed TextractResult instance
+            
+        Returns:
+            Combined text with page separators in the format:
+            '--- Page N (OCR) ---'
+        """
+        if not result or not result.blocks:
+            return ''
+        
+        page_count = result.page_count or 1
+        formatted_pages: List[str] = []
+        
+        for page_number in range(1, page_count + 1):
+            page_text = self._build_page_text(result, page_number)
+            if page_text:
+                formatted_pages.append(
+                    f"--- Page {page_number} (OCR) ---\n{page_text}"
+                )
+        
+        return '\n\n'.join(formatted_pages)
+
+    def _build_page_text(self, result: TextractResult, page_number: int) -> str:
+        """
+        Build text for a single page from Textract blocks.
+        
+        Args:
+            result: TextractResult containing parsed blocks
+            page_number: 1-indexed page number to extract
+            
+        Returns:
+            Page text string (empty if no content found)
+        """
+        line_blocks = self._get_sorted_blocks(result, page_number, 'LINE')
+        word_blocks = self._get_unreferenced_word_blocks(result, page_number, line_blocks)
+        
+        fragments = self._build_text_fragments(line_blocks, word_blocks)
+        if not fragments:
+            return ''
+        
+        return self._build_text_from_fragments(fragments)
+
+    def _get_unreferenced_word_blocks(
+        self,
+        result: TextractResult,
+        page_number: int,
+        line_blocks: List[TextractBlock]
+    ) -> List[TextractBlock]:
+        """
+        Return WORD blocks not already referenced by LINE blocks.
+        
+        This captures table cells that Textract may not include in LINE blocks.
+        """
+        line_word_ids = self._collect_word_ids_from_lines(line_blocks)
+        
+        return [
+            block for block in result.blocks
+            if (
+                block.block_type == 'WORD'
+                and block.page == page_number
+                and block.text
+                and (not block.id or block.id not in line_word_ids)
+            )
+        ]
+
+    @staticmethod
+    def _collect_word_ids_from_lines(line_blocks: List[TextractBlock]) -> set:
+        """
+        Collect WORD block IDs referenced by LINE blocks.
+        """
+        word_ids = set()
+        for line in line_blocks:
+            for rel_ids in line.relationships:
+                if isinstance(rel_ids, list):
+                    word_ids.update(rel_ids)
+                elif rel_ids:
+                    word_ids.add(rel_ids)
+        return word_ids
+
+    def _build_text_fragments(
+        self,
+        line_blocks: List[TextractBlock],
+        word_blocks: List[TextractBlock]
+    ) -> List[tuple]:
+        """
+        Build (text, top, left) fragments from LINE and WORD blocks.
+        """
+        fragments: List[tuple] = []
+        
+        for block in line_blocks + word_blocks:
+            if block.text:
+                top, left = self._geometry_sort_key(block)
+                fragments.append((block.text, top, left))
+        
+        return sorted(fragments, key=lambda fragment: (fragment[1], fragment[2]))
+
+    @staticmethod
+    def _build_text_from_fragments(fragments: List[tuple]) -> str:
+        """
+        Group fragments by vertical position and build readable lines.
+        """
+        if not fragments:
+            return ''
+        
+        line_merge_threshold = 0.01
+        lines: List[str] = []
+        current_top = None
+        current_parts: List[str] = []
+        
+        for text, top, _left in fragments:
+            if current_top is None:
+                current_top = top
+                current_parts = [text]
+                continue
+            
+            if abs(top - current_top) <= line_merge_threshold:
+                current_parts.append(text)
+            else:
+                lines.append(' '.join(current_parts).strip())
+                current_parts = [text]
+                current_top = top
+        
+        if current_parts:
+            lines.append(' '.join(current_parts).strip())
+        
+        return '\n'.join(line for line in lines if line)
+
+    def _get_sorted_blocks(
+        self,
+        result: TextractResult,
+        page_number: int,
+        block_type: str
+    ) -> List[TextractBlock]:
+        """
+        Get blocks of a given type for a page, sorted by geometry.
+        
+        Args:
+            result: TextractResult containing parsed blocks
+            page_number: 1-indexed page number to extract
+            block_type: Textract block type to filter (e.g., 'LINE', 'WORD')
+            
+        Returns:
+            Sorted list of TextractBlock objects
+        """
+        blocks = [
+            block for block in result.blocks
+            if block.block_type == block_type and block.page == page_number
+        ]
+        
+        return sorted(
+            blocks,
+            key=self._geometry_sort_key
+        )
+
+    @staticmethod
+    def _geometry_sort_key(block: TextractBlock) -> tuple:
+        """
+        Sort key for blocks based on Textract geometry (top-to-bottom, left-to-right).
+        
+        Args:
+            block: TextractBlock with geometry data
+            
+        Returns:
+            Tuple suitable for sorting (top, left)
+        """
+        bounding_box = block.geometry.get('BoundingBox', {}) if block.geometry else {}
+        top = round(bounding_box.get('Top', 0.0), 4)
+        left = round(bounding_box.get('Left', 0.0), 4)
+        return (top, left)
     
     def is_sync_eligible(self, document_bytes: bytes) -> bool:
         """

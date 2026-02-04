@@ -3604,6 +3604,17 @@ def _convert_to_legacy_fields(self, extracted_data: Dict[str, Any]) -> List[Dict
     return fields
 ```
 
+#### Textract OCR Text Extraction (Task 42.7 Completed)
+
+**✅ DO: Build ordered OCR text with page separators**
+```python
+service = TextractService()
+result = service.analyze_document_sync(document_bytes)
+text = service.extract_text_from_result(result)
+# text uses: --- Page N (OCR) --- separators
+```
+
 ---
 
 *Updated: 2025-09-17 07:36:02 | Task 34.2 refactoring patterns documented with testing and compatibility strategies*
+*Updated: 2026-02-04 08:54:01 | Added Textract OCR text extraction ordering and page separators (Task 42.7)*
