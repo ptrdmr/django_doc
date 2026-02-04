@@ -1,14 +1,59 @@
 """
 AWS Textract OCR service for medical document processing.
 Provides structured data containers and service classes for Textract integration.
+
+HIPAA Compliance Note:
+- This service processes document bytes but NEVER logs document content
+- Audit logging captures metadata only (page count, confidence, job IDs)
+- All PHI remains in memory during processing and is not persisted by this service
 """
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 import logging
+import time
 from statistics import mean
 
+import boto3
+from botocore.exceptions import ClientError, BotoCoreError
+from django.conf import settings
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# CUSTOM EXCEPTIONS
+# =============================================================================
+
+class TextractError(Exception):
+    """Base exception for Textract-related errors."""
+    pass
+
+
+class TextractDocumentTooLargeError(TextractError):
+    """Raised when document exceeds sync processing limit (5MB)."""
+    
+    def __init__(self, size_bytes: int, limit_bytes: int = 5 * 1024 * 1024):
+        self.size_bytes = size_bytes
+        self.limit_bytes = limit_bytes
+        super().__init__(
+            f"Document size ({size_bytes:,} bytes) exceeds sync limit "
+            f"({limit_bytes:,} bytes). Use async processing."
+        )
+
+
+class TextractConfigurationError(TextractError):
+    """Raised when AWS credentials or configuration are missing."""
+    pass
+
+
+class TextractAPIError(TextractError):
+    """Raised when Textract API returns an error."""
+    
+    def __init__(self, message: str, error_code: str = None, request_id: str = None):
+        self.error_code = error_code
+        self.request_id = request_id
+        super().__init__(message)
 
 
 @dataclass
@@ -293,3 +338,237 @@ class TextractResult:
             f"blocks={len(self.blocks)}, "
             f"job_id={self.job_id})"
         )
+
+
+# =============================================================================
+# TEXTRACT SERVICE
+# =============================================================================
+
+class TextractService:
+    """
+    Service for AWS Textract OCR operations.
+    
+    Provides synchronous document analysis for documents under 5MB using the
+    AnalyzeDocument API with TABLES and FORMS feature extraction.
+    
+    HIPAA Compliance:
+    - No PHI is logged; only metadata (page counts, confidence scores, job IDs)
+    - Document bytes are processed in memory only
+    - AWS credentials support both IAM roles (production) and env vars (development)
+    
+    Usage:
+        service = TextractService()
+        result = service.analyze_document_sync(document_bytes)
+        text = result.get_full_text()
+    
+    Attributes:
+        region: AWS region for Textract API calls
+        feature_types: List of Textract features to extract (TABLES, FORMS)
+    """
+    
+    # Textract sync API limit is 5MB
+    SYNC_SIZE_LIMIT_BYTES = 5 * 1024 * 1024
+    
+    def __init__(self, region: str = None, feature_types: List[str] = None):
+        """
+        Initialize the TextractService.
+        
+        Args:
+            region: AWS region. Defaults to settings.AWS_DEFAULT_REGION
+            feature_types: Textract features to extract. 
+                          Defaults to settings.TEXTRACT_FEATURE_TYPES
+        
+        Raises:
+            TextractConfigurationError: If OCR is disabled in settings
+        """
+        if not getattr(settings, 'OCR_ENABLED', True):
+            raise TextractConfigurationError("OCR is disabled in settings (OCR_ENABLED=False)")
+        
+        self.region = region or getattr(settings, 'AWS_DEFAULT_REGION', 'us-east-1')
+        self.feature_types = feature_types or getattr(
+            settings, 'TEXTRACT_FEATURE_TYPES', ['TABLES', 'FORMS']
+        )
+        
+        # Initialize boto3 client lazily
+        self._textract_client = None
+        
+        logger.info(
+            "TextractService initialized: region=%s, features=%s",
+            self.region,
+            self.feature_types
+        )
+    
+    @property
+    def textract_client(self):
+        """
+        Lazy initialization of boto3 Textract client.
+        
+        Supports both explicit credentials (development) and IAM roles (production).
+        
+        Returns:
+            boto3 Textract client
+            
+        Raises:
+            TextractConfigurationError: If credentials cannot be resolved
+        """
+        if self._textract_client is None:
+            try:
+                # Check for explicit credentials in settings
+                aws_access_key = getattr(settings, 'AWS_ACCESS_KEY_ID', None)
+                aws_secret_key = getattr(settings, 'AWS_SECRET_ACCESS_KEY', None)
+                
+                if aws_access_key and aws_secret_key:
+                    # Use explicit credentials (development/testing)
+                    self._textract_client = boto3.client(
+                        'textract',
+                        region_name=self.region,
+                        aws_access_key_id=aws_access_key,
+                        aws_secret_access_key=aws_secret_key
+                    )
+                    logger.debug("Textract client initialized with explicit credentials")
+                else:
+                    # Use IAM role or default credential chain (production)
+                    self._textract_client = boto3.client(
+                        'textract',
+                        region_name=self.region
+                    )
+                    logger.debug("Textract client initialized with default credential chain")
+                    
+            except (ClientError, BotoCoreError) as e:
+                logger.error("Failed to initialize Textract client: %s", str(e))
+                raise TextractConfigurationError(
+                    f"Failed to initialize AWS Textract client: {str(e)}"
+                ) from e
+        
+        return self._textract_client
+    
+    def analyze_document_sync(self, document_bytes: bytes) -> TextractResult:
+        """
+        Analyze a document synchronously using Textract AnalyzeDocument API.
+        
+        This method is suitable for documents under 5MB. For larger documents,
+        use the async workflow (start_async_analysis + get_async_result).
+        
+        Args:
+            document_bytes: The document content as bytes (PDF or image)
+            
+        Returns:
+            TextractResult containing extracted text, blocks, and metadata
+            
+        Raises:
+            TextractDocumentTooLargeError: If document exceeds 5MB limit
+            TextractAPIError: If Textract API returns an error
+            TextractConfigurationError: If AWS credentials are invalid
+        """
+        # Validate document size
+        doc_size = len(document_bytes)
+        if doc_size > self.SYNC_SIZE_LIMIT_BYTES:
+            logger.warning(
+                "Document too large for sync processing: %d bytes (limit: %d)",
+                doc_size,
+                self.SYNC_SIZE_LIMIT_BYTES
+            )
+            raise TextractDocumentTooLargeError(doc_size, self.SYNC_SIZE_LIMIT_BYTES)
+        
+        # Log operation start (no PHI - just size metadata)
+        logger.info(
+            "Starting sync Textract analysis: size=%d bytes, features=%s",
+            doc_size,
+            self.feature_types
+        )
+        
+        start_time = time.time()
+        
+        try:
+            response = self.textract_client.analyze_document(
+                Document={'Bytes': document_bytes},
+                FeatureTypes=self.feature_types
+            )
+            
+            # Calculate processing time
+            extraction_time_ms = int((time.time() - start_time) * 1000)
+            
+            # Parse response into TextractResult
+            result = TextractResult.from_response(
+                response,
+                extraction_time_ms=extraction_time_ms
+            )
+            
+            # Log success (metadata only - no PHI)
+            logger.info(
+                "Sync Textract analysis complete: pages=%d, confidence=%.1f%%, "
+                "blocks=%d, time=%dms",
+                result.page_count,
+                result.confidence,
+                len(result.blocks),
+                extraction_time_ms
+            )
+            
+            return result
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            request_id = e.response.get('ResponseMetadata', {}).get('RequestId', 'Unknown')
+            
+            # Handle specific Textract errors
+            if error_code == 'InvalidParameterException':
+                logger.error(
+                    "Textract invalid parameter: %s (request_id=%s)",
+                    error_message,
+                    request_id
+                )
+            elif error_code == 'UnsupportedDocumentException':
+                logger.error(
+                    "Textract unsupported document format (request_id=%s)",
+                    request_id
+                )
+            elif error_code in ('ThrottlingException', 'ProvisionedThroughputExceededException'):
+                logger.warning(
+                    "Textract throttled: %s (request_id=%s)",
+                    error_code,
+                    request_id
+                )
+            elif error_code == 'AccessDeniedException':
+                logger.error(
+                    "Textract access denied - check IAM permissions (request_id=%s)",
+                    request_id
+                )
+            else:
+                logger.error(
+                    "Textract API error: %s - %s (request_id=%s)",
+                    error_code,
+                    error_message,
+                    request_id
+                )
+            
+            raise TextractAPIError(
+                f"Textract API error: {error_message}",
+                error_code=error_code,
+                request_id=request_id
+            ) from e
+            
+        except BotoCoreError as e:
+            logger.error("Textract boto3 error: %s", str(e))
+            raise TextractAPIError(f"AWS SDK error: {str(e)}") from e
+    
+    def is_sync_eligible(self, document_bytes: bytes) -> bool:
+        """
+        Check if a document is eligible for synchronous processing.
+        
+        Args:
+            document_bytes: The document content as bytes
+            
+        Returns:
+            True if document is under 5MB and can use sync API
+        """
+        return len(document_bytes) <= self.SYNC_SIZE_LIMIT_BYTES
+    
+    def get_size_limit_mb(self) -> float:
+        """
+        Get the sync processing size limit in megabytes.
+        
+        Returns:
+            Size limit in MB (currently 5.0)
+        """
+        return self.SYNC_SIZE_LIMIT_BYTES / (1024 * 1024)

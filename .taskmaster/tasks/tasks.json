@@ -3400,7 +3400,7 @@
             "title": "Create TextractService with sync analysis",
             "description": "Implement TextractService class with analyze_document_sync() method that calls Textract AnalyzeDocument API for documents <5MB. Include TABLES and FORMS feature types.",
             "details": "Create TextractService class in apps/documents/services/textract.py. Method analyze_document_sync(document_bytes: bytes) -> TextractResult calls boto3 textract.analyze_document() with FeatureTypes=['TABLES','FORMS']. Handle DocumentTooLargeException. Use settings for AWS credentials (support both IAM role and env vars). Add logging for API calls (no PHI).",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               "42.1",
               "42.4",
@@ -3613,7 +3613,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2026-01-29T04:29:13.199Z",
+      "updated": "2026-02-04T16:34:45.223Z",
       "description": "Tasks for master context"
     }
   }

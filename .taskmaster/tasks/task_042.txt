@@ -747,7 +747,7 @@ This is a tactical optimization, not a deviation from the mission.
 ### Details:
 Create apps/documents/services/textract.py with TextractResult dataclass containing: pages (list of page text), blocks (raw Textract blocks), confidence (average confidence score), page_count (int), extraction_time_ms (int), job_id (optional str for async). Use @dataclass decorator. Include from_response() classmethod to parse Textract API response.
 
-## 6. Create TextractService with sync analysis [pending]
+## 6. Create TextractService with sync analysis [done]
 ### Dependencies: 42.1, 42.4, 42.5
 ### Description: Implement TextractService class with analyze_document_sync() method that calls Textract AnalyzeDocument API for documents <5MB. Include TABLES and FORMS feature types.
 ### Details:
