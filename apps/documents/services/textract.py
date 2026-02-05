@@ -1114,3 +1114,346 @@ class TextractService:
             Size limit in MB (currently 5.0)
         """
         return self.SYNC_SIZE_LIMIT_BYTES / (1024 * 1024)
+
+    # =========================================================================
+    # ASYNC TEXTRACT METHODS (for documents >= 5MB)
+    # =========================================================================
+
+    def start_async_analysis(self, s3_bucket: str, s3_key: str) -> str:
+        """
+        Start an asynchronous Textract document analysis job.
+        
+        Use this for documents >= 5MB that exceed the sync API limit.
+        The document must already be uploaded to S3.
+        
+        Args:
+            s3_bucket: S3 bucket containing the document
+            s3_key: S3 key (path) of the document
+            
+        Returns:
+            Job ID string to use with get_async_result()
+            
+        Raises:
+            TextractAPIError: If Textract API returns an error
+            TextractConfigurationError: If AWS credentials are invalid
+            
+        Example:
+            job_id = service.start_async_analysis('my-bucket', 'docs/large.pdf')
+            # ... poll for completion ...
+            result = service.get_async_result(job_id)
+        """
+        logger.info(
+            "Starting async Textract analysis: bucket=%s, key=%s, features=%s",
+            s3_bucket,
+            s3_key,
+            self.feature_types
+        )
+        
+        try:
+            response = self.textract_client.start_document_analysis(
+                DocumentLocation={
+                    'S3Object': {
+                        'Bucket': s3_bucket,
+                        'Name': s3_key
+                    }
+                },
+                FeatureTypes=self.feature_types
+            )
+            
+            job_id = response.get('JobId')
+            
+            if not job_id:
+                raise TextractAPIError(
+                    "Textract returned empty JobId",
+                    error_code='NoJobId'
+                )
+            
+            logger.info(
+                "Async Textract job started: job_id=%s, bucket=%s, key=%s",
+                job_id,
+                s3_bucket,
+                s3_key
+            )
+            
+            return job_id
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            request_id = e.response.get('ResponseMetadata', {}).get('RequestId', 'Unknown')
+            
+            # Handle specific async errors
+            if error_code == 'InvalidS3ObjectException':
+                logger.error(
+                    "Textract cannot access S3 object: bucket=%s, key=%s (request_id=%s)",
+                    s3_bucket,
+                    s3_key,
+                    request_id
+                )
+            elif error_code == 'InvalidKMSKeyException':
+                logger.error(
+                    "Textract cannot decrypt S3 object - check KMS key permissions (request_id=%s)",
+                    request_id
+                )
+            elif error_code == 'LimitExceededException':
+                logger.warning(
+                    "Textract concurrent job limit exceeded (request_id=%s)",
+                    request_id
+                )
+            else:
+                logger.error(
+                    "Textract StartDocumentAnalysis error: %s - %s (request_id=%s)",
+                    error_code,
+                    error_message,
+                    request_id
+                )
+            
+            raise TextractAPIError(
+                f"Failed to start async analysis: {error_message}",
+                error_code=error_code,
+                request_id=request_id
+            ) from e
+            
+        except BotoCoreError as e:
+            logger.error("Textract boto3 error starting async job: %s", str(e))
+            raise TextractAPIError(f"AWS SDK error: {str(e)}") from e
+
+    def get_async_job_status(self, job_id: str) -> str:
+        """
+        Check the status of an async Textract job.
+        
+        Args:
+            job_id: The job ID returned by start_async_analysis()
+            
+        Returns:
+            Job status string: 'IN_PROGRESS', 'SUCCEEDED', 'FAILED', or 'PARTIAL_SUCCESS'
+            
+        Raises:
+            TextractAPIError: If Textract API returns an error
+        """
+        try:
+            response = self.textract_client.get_document_analysis(
+                JobId=job_id,
+                MaxResults=1  # Minimal results just for status check
+            )
+            
+            status = response.get('JobStatus', 'UNKNOWN')
+            
+            logger.debug(
+                "Async Textract job status: job_id=%s, status=%s",
+                job_id,
+                status
+            )
+            
+            return status
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            request_id = e.response.get('ResponseMetadata', {}).get('RequestId', 'Unknown')
+            
+            if error_code == 'InvalidJobIdException':
+                logger.error(
+                    "Invalid Textract job ID: %s (request_id=%s)",
+                    job_id,
+                    request_id
+                )
+            
+            raise TextractAPIError(
+                f"Failed to get job status: {error_message}",
+                error_code=error_code,
+                request_id=request_id
+            ) from e
+
+    def get_async_result(
+        self,
+        job_id: str,
+        poll_interval_seconds: float = None,
+        max_wait_seconds: int = None
+    ) -> TextractResult:
+        """
+        Get results from a completed async Textract job with polling and pagination.
+        
+        This method polls until the job completes (or times out), then retrieves
+        all result pages using NextToken pagination.
+        
+        Args:
+            job_id: The job ID returned by start_async_analysis()
+            poll_interval_seconds: Seconds between status polls. 
+                                   Defaults to settings.TEXTRACT_ASYNC_POLL_INTERVAL (10)
+            max_wait_seconds: Maximum seconds to wait for job completion.
+                              Defaults to settings.TEXTRACT_ASYNC_MAX_WAIT (300)
+            
+        Returns:
+            TextractResult containing extracted text, blocks, and metadata
+            
+        Raises:
+            TextractAPIError: If job fails or times out
+            
+        Example:
+            result = service.get_async_result('job-12345')
+            text = result.get_full_text()
+        """
+        poll_interval = poll_interval_seconds or getattr(
+            settings, 'TEXTRACT_ASYNC_POLL_INTERVAL', 10
+        )
+        max_wait = max_wait_seconds or getattr(
+            settings, 'TEXTRACT_ASYNC_MAX_WAIT', 300
+        )
+        
+        logger.info(
+            "Waiting for async Textract job: job_id=%s, poll_interval=%ss, max_wait=%ss",
+            job_id,
+            poll_interval,
+            max_wait
+        )
+        
+        start_time = time.time()
+        
+        # Poll until job completes or timeout
+        status = 'IN_PROGRESS'
+        while status == 'IN_PROGRESS':
+            elapsed = time.time() - start_time
+            
+            if elapsed >= max_wait:
+                logger.error(
+                    "Async Textract job timed out: job_id=%s, elapsed=%.1fs, max_wait=%ss",
+                    job_id,
+                    elapsed,
+                    max_wait
+                )
+                raise TextractAPIError(
+                    f"Textract job timed out after {max_wait} seconds",
+                    error_code='JobTimeout'
+                )
+            
+            status = self.get_async_job_status(job_id)
+            
+            if status == 'IN_PROGRESS':
+                logger.debug(
+                    "Job still processing: job_id=%s, elapsed=%.1fs",
+                    job_id,
+                    elapsed
+                )
+                time.sleep(poll_interval)
+        
+        # Check final status
+        if status == 'FAILED':
+            logger.error("Async Textract job failed: job_id=%s", job_id)
+            raise TextractAPIError(
+                "Textract job failed",
+                error_code='JobFailed'
+            )
+        
+        if status not in ('SUCCEEDED', 'PARTIAL_SUCCESS'):
+            logger.warning(
+                "Unexpected Textract job status: job_id=%s, status=%s",
+                job_id,
+                status
+            )
+        
+        # Retrieve all result pages
+        result = self._fetch_paginated_results(job_id, start_time)
+        
+        return result
+
+    def _fetch_paginated_results(
+        self,
+        job_id: str,
+        start_time: float
+    ) -> TextractResult:
+        """
+        Fetch all paginated results from a completed async Textract job.
+        
+        Handles NextToken pagination to retrieve all blocks from large documents.
+        
+        Args:
+            job_id: The completed job ID
+            start_time: Time when polling started (for extraction_time_ms calculation)
+            
+        Returns:
+            TextractResult with combined data from all result pages
+            
+        Raises:
+            TextractAPIError: If retrieval fails
+        """
+        responses = []
+        next_token = None
+        page_count = 0
+        
+        logger.info("Fetching paginated results for job: %s", job_id)
+        
+        try:
+            while True:
+                page_count += 1
+                
+                # Build request params
+                request_params = {'JobId': job_id}
+                if next_token:
+                    request_params['NextToken'] = next_token
+                
+                response = self.textract_client.get_document_analysis(**request_params)
+                responses.append(response)
+                
+                block_count = len(response.get('Blocks', []))
+                logger.debug(
+                    "Retrieved result page %d: job_id=%s, blocks=%d",
+                    page_count,
+                    job_id,
+                    block_count
+                )
+                
+                # Check for more pages
+                next_token = response.get('NextToken')
+                if not next_token:
+                    break
+            
+            # Calculate total extraction time
+            extraction_time_ms = int((time.time() - start_time) * 1000)
+            
+            # Parse combined responses into TextractResult
+            result = TextractResult.from_paginated_responses(
+                responses,
+                extraction_time_ms=extraction_time_ms,
+                job_id=job_id
+            )
+            
+            logger.info(
+                "Async Textract analysis complete: job_id=%s, pages=%d, "
+                "confidence=%.1f%%, blocks=%d, result_pages=%d, time=%dms",
+                job_id,
+                result.page_count,
+                result.confidence,
+                len(result.blocks),
+                page_count,
+                extraction_time_ms
+            )
+            
+            return result
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            request_id = e.response.get('ResponseMetadata', {}).get('RequestId', 'Unknown')
+            
+            logger.error(
+                "Failed to fetch Textract results: job_id=%s, error=%s - %s (request_id=%s)",
+                job_id,
+                error_code,
+                error_message,
+                request_id
+            )
+            
+            raise TextractAPIError(
+                f"Failed to retrieve job results: {error_message}",
+                error_code=error_code,
+                request_id=request_id
+            ) from e
+            
+        except BotoCoreError as e:
+            logger.error(
+                "Boto3 error fetching Textract results: job_id=%s, error=%s",
+                job_id,
+                str(e)
+            )
+            raise TextractAPIError(f"AWS SDK error: {str(e)}") from e
