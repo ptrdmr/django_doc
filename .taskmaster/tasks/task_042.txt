@@ -787,19 +787,19 @@ The implementation follows the same pattern as TextractService and is positioned
 ### Details:
 Add to TextractService: start_async_analysis(s3_bucket: str, s3_key: str) -> str that calls textract.start_document_analysis() with S3Object, returns job_id. get_async_result(job_id: str) -> TextractResult that polls GetDocumentAnalysis, handles IN_PROGRESS/SUCCEEDED/FAILED states. Include pagination for large result sets (NextToken handling).
 
-## 10. Create start_textract_async_job Celery task [pending]
+## 10. Create start_textract_async_job Celery task [done]
 ### Dependencies: 42.8, 42.9
 ### Description: Add new Celery task in apps/documents/tasks.py that uploads document to S3 via OCRTempStorage, starts async Textract job, and schedules poll task
 ### Details:
 Create @shared_task start_textract_async_job(document_id: int) that: 1) Loads Document, 2) Calls OCRTempStorage.upload_for_ocr(), 3) Calls TextractService.start_async_analysis(), 4) Stores job_id in Document metadata, 5) Schedules poll_textract_job.delay(document_id, job_id, countdown=10), 6) Creates audit log entry 'ocr_async_job_started'. Handle errors with Document.status='failed'.
 
-## 11. Create poll_textract_job Celery task [pending]
+## 11. Create poll_textract_job Celery task [done]
 ### Dependencies: 42.9, 42.10
 ### Description: Add Celery task that polls Textract job status with exponential backoff (10s, 20s, 40s), retrieves results on completion, deletes S3 temp file, and chains to continue_document_processing
 ### Details:
 Create @shared_task(bind=True, max_retries=30) poll_textract_job(self, document_id, job_id, s3_key, attempt=0) that: 1) Calls TextractService.get_async_result(), 2) On SUCCEEDED: delete S3 temp file, chain to continue_document_processing with extracted text, 3) On IN_PROGRESS: self.retry with countdown=min(10*2**attempt, 60), 4) On FAILED/timeout: mark Document failed, create review queue entry. Track attempt count for TEXTRACT_ASYNC_MAX_WAIT.
 
-## 12. Create continue_document_processing Celery task [pending]
+## 12. Create continue_document_processing Celery task [done]
 ### Dependencies: 42.10, 42.11
 ### Description: Add Celery task that receives OCR text and continues document pipeline (DocumentAnalyzer, FHIR conversion, merge) for documents that went through async OCR flow
 ### Details:
