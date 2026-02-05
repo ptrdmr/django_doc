@@ -811,7 +811,7 @@ Create @shared_task continue_document_processing(document_id: int, ocr_text: str
 ### Details:
 Modify PDFTextExtractor.extract_text() to: 1) Track char_count per page from pdfplumber, 2) Classify each page using OCR_TEXT_THRESHOLD (default 50), 3) Build list of image_pages (indices) that need OCR, 4) Return metadata: {extraction_method, total_pages, text_pages, image_pages, chars_per_page}. This classification enables selective OCR routing.
 
-## 14. Integrate TextractService into PDFTextExtractor for sync OCR [pending]
+## 14. Integrate TextractService into PDFTextExtractor for sync OCR [done]
 ### Dependencies: 42.6, 42.7, 42.13
 ### Description: Update PDFTextExtractor to call TextractService.analyze_document_sync() for documents <5MB when OCR is needed, replacing local Tesseract fallback
 ### Details:

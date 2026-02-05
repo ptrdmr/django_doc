@@ -3499,7 +3499,7 @@
             "title": "Integrate TextractService into PDFTextExtractor for sync OCR",
             "description": "Update PDFTextExtractor to call TextractService.analyze_document_sync() for documents <5MB when OCR is needed, replacing local Tesseract fallback",
             "details": "Modify PDFTextExtractor: 1) When image_pages detected and file_size < OCR_ASYNC_THRESHOLD_MB*1024*1024, 2) Call TextractService.analyze_document_sync(document_bytes), 3) Use extract_text_from_result() to get text, 4) Set extraction_method='external_ocr', 5) Create audit log 'ocr_sync_completed'. Remove call to extract_with_ocr() (Tesseract). Preserve existing output format for downstream compatibility.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               "42.6",
               "42.7",
@@ -3613,7 +3613,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2026-02-05T05:21:07.972Z",
+      "updated": "2026-02-05T05:35:27.166Z",
       "description": "Tasks for master context"
     }
   }

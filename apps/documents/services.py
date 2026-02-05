@@ -17,6 +17,16 @@ from django.db import transaction
 from django.core.exceptions import ValidationError
 from apps.core.date_parser import ClinicalDateParser
 
+# AWS Textract integration for OCR
+from apps.documents.services.textract import (
+    TextractService,
+    TextractResult,
+    TextractError,
+    TextractDocumentTooLargeError,
+    TextractAPIError,
+    TextractConfigurationError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,7 +57,110 @@ class PDFTextExtractor:
         # OCR configuration from settings
         self.ocr_text_threshold = getattr(settings, 'OCR_TEXT_THRESHOLD', 50)
         self.ocr_selective_enabled = getattr(settings, 'OCR_SELECTIVE_ENABLED', True)
+        self.ocr_enabled = getattr(settings, 'OCR_ENABLED', True)
         
+        # Threshold for async vs sync Textract processing (in MB)
+        # Documents >= this size use async workflow; smaller use sync API
+        self.ocr_async_threshold_mb = getattr(settings, 'OCR_ASYNC_THRESHOLD_MB', 5)
+        
+        # Textract service (lazy initialization)
+        self._textract_service = None
+        
+    @property
+    def textract_service(self) -> Optional[TextractService]:
+        """
+        Lazy initialization of AWS Textract service.
+        
+        Returns:
+            TextractService instance, or None if OCR is disabled or unconfigured
+        """
+        if self._textract_service is None and self.ocr_enabled:
+            try:
+                self._textract_service = TextractService()
+            except TextractConfigurationError as e:
+                logger.warning(f"TextractService not available: {e}")
+                self._textract_service = None
+        return self._textract_service
+
+    def _extract_with_textract_sync(
+        self, 
+        file_path: str, 
+        file_size_mb: float
+    ) -> Tuple[Optional[str], Optional[Dict]]:
+        """
+        Extract text using AWS Textract synchronous API.
+        
+        This method is called for documents <5MB that need OCR processing.
+        It reads the file bytes and sends them to Textract's AnalyzeDocument API.
+        
+        Args:
+            file_path: Path to the PDF file
+            file_size_mb: File size in megabytes (for validation)
+            
+        Returns:
+            Tuple of (extracted_text, textract_metadata) or (None, None) on failure
+            
+        HIPAA Note:
+            - Document bytes are processed in memory only
+            - No PHI is logged; only metadata (page count, confidence)
+        """
+        if not self.textract_service:
+            logger.warning("TextractService not available for sync OCR")
+            return None, None
+        
+        # Validate file size for sync processing
+        if file_size_mb >= self.ocr_async_threshold_mb:
+            logger.info(
+                f"Document size ({file_size_mb:.2f}MB) exceeds sync threshold "
+                f"({self.ocr_async_threshold_mb}MB) - async processing required"
+            )
+            return None, None
+        
+        try:
+            # Read document bytes
+            with open(file_path, 'rb') as f:
+                document_bytes = f.read()
+            
+            logger.info(
+                f"Starting Textract sync OCR: file_size={file_size_mb:.2f}MB"
+            )
+            
+            # Call Textract sync API
+            result: TextractResult = self.textract_service.analyze_document_sync(
+                document_bytes
+            )
+            
+            # Extract text with page separators
+            extracted_text = self.textract_service.extract_text_from_result(result)
+            
+            # Build metadata for audit (no PHI)
+            textract_metadata = result.to_audit_dict()
+            
+            logger.info(
+                f"Textract sync OCR complete: pages={result.page_count}, "
+                f"confidence={result.confidence:.1f}%, time={result.extraction_time_ms}ms"
+            )
+            
+            return extracted_text, textract_metadata
+            
+        except TextractDocumentTooLargeError as e:
+            logger.warning(f"Document too large for sync Textract: {e}")
+            return None, None
+            
+        except TextractAPIError as e:
+            logger.error(
+                f"Textract API error during sync OCR: {e} (error_code={e.error_code})"
+            )
+            return None, None
+            
+        except TextractError as e:
+            logger.error(f"Textract error during sync OCR: {e}")
+            return None, None
+            
+        except IOError as e:
+            logger.error(f"Failed to read file for Textract OCR: {e}")
+            return None, None
+
     def extract_text(self, file_path: str) -> Dict[str, any]:
         """
         Extract text from a PDF file with comprehensive error handling.
@@ -57,6 +170,10 @@ class PDFTextExtractor:
         - image_page: Has < OCR_TEXT_THRESHOLD characters (likely scanned/image)
         
         This classification enables selective OCR routing for hybrid documents.
+        
+        For documents with image pages requiring OCR:
+        - Documents <5MB: Uses AWS Textract synchronous API (external_ocr)
+        - Documents >=5MB: Currently falls back to local OCR (async workflow pending)
         
         Args:
             file_path (str): Path to the PDF file
@@ -69,12 +186,13 @@ class PDFTextExtractor:
                 - file_size (float): File size in MB
                 - error_message (str): Error details if failed
                 - metadata (dict): Additional file metadata including:
-                    - extraction_method: 'embedded_text', 'ocr', or 'hybrid'
+                    - extraction_method: 'embedded_text', 'external_ocr', 'hybrid', or 'ocr'
                     - total_pages: Total page count
                     - text_pages: List of page indices with embedded text
                     - image_pages: List of page indices needing OCR
                     - chars_per_page: Dict mapping page number to char count
                     - ocr_text_threshold: Threshold used for classification
+                    - textract_metadata: Textract audit data (if external_ocr used)
         """
         try:
             # Validate file existence and type
@@ -148,28 +266,70 @@ class PDFTextExtractor:
                     text_pages, image_pages, page_count
                 )
                 
+                # Track Textract metadata for audit logging
+                textract_metadata = None
+                
                 # OCR fallback: If image pages detected, try OCR extraction
                 if image_pages and extraction_method in ('ocr', 'hybrid'):
                     logger.info(
                         f"Document has {len(image_pages)} image pages requiring OCR: {image_pages}"
                     )
-                    ocr_text = self.extract_with_ocr(file_path, page_count)
+                    
+                    ocr_text = None
+                    
+                    # Route based on file size: sync Textract for <5MB, async for >=5MB
+                    if file_size < self.ocr_async_threshold_mb:
+                        # Use AWS Textract synchronous API for smaller documents
+                        ocr_text, textract_metadata = self._extract_with_textract_sync(
+                            file_path, file_size
+                        )
+                        
+                        if ocr_text:
+                            # Update extraction method to reflect Textract usage
+                            if extraction_method == 'ocr':
+                                extraction_method = 'external_ocr'
+                            # Note: hybrid stays as 'hybrid' but will use external OCR data
+                            
+                            logger.info(
+                                f"Textract sync OCR recovered {len(ocr_text)} characters"
+                            )
+                        else:
+                            logger.warning(
+                                "Textract sync OCR returned no text, falling back to local OCR"
+                            )
+                    else:
+                        # Document too large for sync - async flow (subtask 42.15) not yet integrated
+                        logger.info(
+                            f"Document size ({file_size:.2f}MB) requires async OCR flow "
+                            f"(threshold: {self.ocr_async_threshold_mb}MB)"
+                        )
+                    
+                    # Fallback to local OCR if Textract didn't produce results
+                    if not ocr_text:
+                        ocr_text = self.extract_with_ocr(file_path, page_count)
+                        if ocr_text:
+                            logger.info(f"Local OCR fallback recovered {len(ocr_text)} characters")
+                    
+                    # Apply OCR text to result
                     if ocr_text:
-                        if extraction_method == 'ocr':
+                        if extraction_method in ('ocr', 'external_ocr'):
                             # Full OCR - replace all text
                             full_text = ocr_text
                         else:
                             # Hybrid - OCR text will be merged in future subtask (42.16)
                             # For now, append OCR text to embedded text
                             full_text = full_text + '\n\n' + ocr_text if full_text else ocr_text
-                        logger.info(f"OCR extraction recovered {len(ocr_text)} characters")
                     else:
                         logger.warning(
-                            f"OCR extraction failed for {len(image_pages)} image pages in {file_path}"
+                            f"All OCR extraction failed for {len(image_pages)} image pages in {file_path}"
                         )
                 
                 # Add page classification to metadata
                 metadata['extraction_method'] = extraction_method
+                
+                # Include Textract metadata if available (for audit logging)
+                if textract_metadata:
+                    metadata['textract_metadata'] = textract_metadata
                 metadata['total_pages'] = page_count
                 metadata['text_pages'] = text_pages
                 metadata['image_pages'] = image_pages
