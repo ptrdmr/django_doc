@@ -805,7 +805,7 @@ Create @shared_task(bind=True, max_retries=30) poll_textract_job(self, document_
 ### Details:
 Create @shared_task continue_document_processing(document_id: int, ocr_text: str) that: 1) Loads Document, 2) Stores ocr_text in Document.original_text (encrypted), 3) Continues with DocumentAnalyzer.analyze(), 4) Runs StructuredDataConverter, 5) Creates ParsedData with optimistic FHIR merge, 6) Sets Document.status='completed'. This mirrors the sync path after text extraction. Reuse existing code from process_document_async where possible.
 
-## 13. Update PDFTextExtractor with page-level text detection [pending]
+## 13. Update PDFTextExtractor with page-level text detection [done]
 ### Dependencies: 42.1, 42.4
 ### Description: Modify extract_text() in apps/documents/services.py to track per-page character counts using pdfplumber and classify pages as text (>=50 chars) or image (<50 chars)
 ### Details:

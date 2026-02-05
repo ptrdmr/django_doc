@@ -29,16 +29,34 @@ class PDFTextExtractor:
     """
     Service class for extracting text from PDF documents.
     Designed for medical documents with proper error handling.
+    
+    Supports page-level text detection to classify pages as:
+    - text_pages: Pages with embedded text >= OCR_TEXT_THRESHOLD characters
+    - image_pages: Pages with < OCR_TEXT_THRESHOLD characters (likely scanned)
+    
+    This classification enables selective OCR routing to reduce costs.
     """
     
     def __init__(self):
         """Initialize the PDF text extractor"""
+        from django.conf import settings
+        
         self.supported_extensions = ['.pdf']
         self.max_file_size_mb = 50  # Maximum file size in MB
+        
+        # OCR configuration from settings
+        self.ocr_text_threshold = getattr(settings, 'OCR_TEXT_THRESHOLD', 50)
+        self.ocr_selective_enabled = getattr(settings, 'OCR_SELECTIVE_ENABLED', True)
         
     def extract_text(self, file_path: str) -> Dict[str, any]:
         """
         Extract text from a PDF file with comprehensive error handling.
+        
+        Performs page-level text detection to classify each page as:
+        - text_page: Has >= OCR_TEXT_THRESHOLD characters (embedded text)
+        - image_page: Has < OCR_TEXT_THRESHOLD characters (likely scanned/image)
+        
+        This classification enables selective OCR routing for hybrid documents.
         
         Args:
             file_path (str): Path to the PDF file
@@ -50,7 +68,13 @@ class PDFTextExtractor:
                 - page_count (int): Number of pages processed
                 - file_size (float): File size in MB
                 - error_message (str): Error details if failed
-                - metadata (dict): Additional file metadata
+                - metadata (dict): Additional file metadata including:
+                    - extraction_method: 'embedded_text', 'ocr', or 'hybrid'
+                    - total_pages: Total page count
+                    - text_pages: List of page indices with embedded text
+                    - image_pages: List of page indices needing OCR
+                    - chars_per_page: Dict mapping page number to char count
+                    - ocr_text_threshold: Threshold used for classification
         """
         try:
             # Validate file existence and type
@@ -65,9 +89,16 @@ class PDFTextExtractor:
                     'metadata': {}
                 }
             
-            # Extract text using pdfplumber
+            # Extract text using pdfplumber with page-level classification
             with pdfplumber.open(file_path) as pdf:
                 extracted_text = []
+                
+                # Page classification tracking
+                chars_per_page = {}
+                text_pages = []  # Pages with sufficient embedded text
+                image_pages = []  # Pages that may need OCR
+                page_texts = {}  # Store text per page for potential merging
+                
                 metadata = {
                     'title': pdf.metadata.get('Title', ''),
                     'author': pdf.metadata.get('Author', ''),
@@ -75,42 +106,75 @@ class PDFTextExtractor:
                     'creation_date': pdf.metadata.get('CreationDate', ''),
                 }
                 
-                # Process each page
+                # Process each page and classify
                 for page_num, page in enumerate(pdf.pages, 1):
                     try:
                         page_text = page.extract_text()
-                        if page_text:
-                            # Clean and format the text
-                            cleaned_text = self._clean_text(page_text)
+                        cleaned_text = self._clean_text(page_text) if page_text else ''
+                        char_count = len(cleaned_text)
+                        
+                        # Track character count per page
+                        chars_per_page[page_num] = char_count
+                        page_texts[page_num] = cleaned_text
+                        
+                        # Classify page based on text threshold
+                        if char_count >= self.ocr_text_threshold:
+                            text_pages.append(page_num)
                             if cleaned_text.strip():
                                 extracted_text.append(f"--- Page {page_num} ---\n{cleaned_text}")
+                        else:
+                            image_pages.append(page_num)
+                            logger.debug(
+                                f"Page {page_num} classified as image page "
+                                f"({char_count} chars < {self.ocr_text_threshold} threshold)"
+                            )
                         
                     except Exception as page_error:
                         logger.warning(f"Failed to extract text from page {page_num}: {page_error}")
-                        # Continue with other pages
+                        # Mark failed pages as image pages (may need OCR)
+                        chars_per_page[page_num] = 0
+                        image_pages.append(page_num)
                         continue
                 
-                # Combine all pages
+                # Combine all text pages
                 full_text = '\n\n'.join(extracted_text)
                 page_count = len(pdf.pages)
                 
                 # Get file size
                 file_size = os.path.getsize(file_path) / (1024 * 1024)  # Convert to MB
                 
-                # OCR fallback: If no embedded text found, try OCR extraction
-                extraction_method = 'embedded_text'
-                if not full_text.strip():
-                    logger.warning(f"No embedded text found in {file_path}, attempting OCR extraction")
+                # Determine extraction method based on page classification
+                extraction_method = self._determine_extraction_method(
+                    text_pages, image_pages, page_count
+                )
+                
+                # OCR fallback: If image pages detected, try OCR extraction
+                if image_pages and extraction_method in ('ocr', 'hybrid'):
+                    logger.info(
+                        f"Document has {len(image_pages)} image pages requiring OCR: {image_pages}"
+                    )
                     ocr_text = self.extract_with_ocr(file_path, page_count)
                     if ocr_text:
-                        full_text = ocr_text
-                        extraction_method = 'ocr'
+                        if extraction_method == 'ocr':
+                            # Full OCR - replace all text
+                            full_text = ocr_text
+                        else:
+                            # Hybrid - OCR text will be merged in future subtask (42.16)
+                            # For now, append OCR text to embedded text
+                            full_text = full_text + '\n\n' + ocr_text if full_text else ocr_text
                         logger.info(f"OCR extraction recovered {len(ocr_text)} characters")
                     else:
-                        logger.error(f"Both embedded text and OCR extraction failed for {file_path}")
+                        logger.warning(
+                            f"OCR extraction failed for {len(image_pages)} image pages in {file_path}"
+                        )
                 
-                # Add extraction method to metadata
+                # Add page classification to metadata
                 metadata['extraction_method'] = extraction_method
+                metadata['total_pages'] = page_count
+                metadata['text_pages'] = text_pages
+                metadata['image_pages'] = image_pages
+                metadata['chars_per_page'] = chars_per_page
+                metadata['ocr_text_threshold'] = self.ocr_text_threshold
                 
                 result = {
                     'success': True,
@@ -121,8 +185,11 @@ class PDFTextExtractor:
                     'metadata': metadata
                 }
                 
-                logger.info(f"Successfully extracted text from PDF: {file_path} "
-                           f"({page_count} pages, {len(full_text)} characters, method: {extraction_method})")
+                logger.info(
+                    f"Successfully extracted text from PDF: {file_path} "
+                    f"({page_count} pages, {len(full_text)} characters, method: {extraction_method}, "
+                    f"text_pages: {len(text_pages)}, image_pages: {len(image_pages)})"
+                )
                 
                 return result
                 
@@ -138,6 +205,33 @@ class PDFTextExtractor:
                 'error_message': error_msg,
                 'metadata': {}
             }
+    
+    def _determine_extraction_method(
+        self, 
+        text_pages: List[int], 
+        image_pages: List[int], 
+        total_pages: int
+    ) -> str:
+        """
+        Determine the extraction method based on page classification.
+        
+        Args:
+            text_pages: List of page numbers with embedded text
+            image_pages: List of page numbers needing OCR
+            total_pages: Total number of pages in document
+            
+        Returns:
+            str: One of 'embedded_text', 'ocr', or 'hybrid'
+        """
+        if not image_pages:
+            # All pages have embedded text
+            return 'embedded_text'
+        elif not text_pages:
+            # All pages are images (scanned document)
+            return 'ocr'
+        else:
+            # Mix of text and image pages
+            return 'hybrid'
     
     def _validate_file(self, file_path: str) -> Dict[str, any]:
         """

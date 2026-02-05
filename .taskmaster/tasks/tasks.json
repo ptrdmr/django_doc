@@ -3487,7 +3487,7 @@
             "title": "Update PDFTextExtractor with page-level text detection",
             "description": "Modify extract_text() in apps/documents/services.py to track per-page character counts using pdfplumber and classify pages as text (>=50 chars) or image (<50 chars)",
             "details": "Modify PDFTextExtractor.extract_text() to: 1) Track char_count per page from pdfplumber, 2) Classify each page using OCR_TEXT_THRESHOLD (default 50), 3) Build list of image_pages (indices) that need OCR, 4) Return metadata: {extraction_method, total_pages, text_pages, image_pages, chars_per_page}. This classification enables selective OCR routing.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               "42.1",
               "42.4"
@@ -3613,7 +3613,7 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2026-02-05T05:04:24.525Z",
+      "updated": "2026-02-05T05:21:07.972Z",
       "description": "Tasks for master context"
     }
   }
