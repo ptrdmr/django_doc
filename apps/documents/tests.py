@@ -4,7 +4,7 @@ Tests for document processing functionality.
 import os
 import tempfile
 from unittest.mock import patch, MagicMock
-from django.test import TestCase, override_settings
+from django.test import TestCase, SimpleTestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
@@ -17,9 +17,12 @@ from .tasks import process_document_async
 User = get_user_model()
 
 
-class PDFTextExtractorTests(TestCase):
+class PDFTextExtractorTests(SimpleTestCase):
     """
     Test the PDF text extraction service.
+    
+    Uses SimpleTestCase since PDFTextExtractor is a pure service class
+    that doesn't require database access.
     """
     
     def setUp(self):
@@ -78,15 +81,20 @@ class PDFTextExtractorTests(TestCase):
     
     @patch('pdfplumber.open')
     def test_extract_text_success(self, mock_pdfplumber):
-        """Test successful text extraction"""
+        """Test successful text extraction from text-native PDF"""
         # Mock PDF object
         mock_pdf = MagicMock()
         mock_pdf.metadata = {'Title': 'Test Document', 'Author': 'Test Author'}
         mock_pdf.pages = [MagicMock(), MagicMock()]
         
-        # Mock page text extraction
-        mock_pdf.pages[0].extract_text.return_value = "Page 1 content"
-        mock_pdf.pages[1].extract_text.return_value = "Page 2 content"
+        # Mock page text extraction - must be >= OCR_TEXT_THRESHOLD (50 chars) 
+        # to be classified as text pages and skip OCR processing
+        mock_pdf.pages[0].extract_text.return_value = (
+            "Page 1 content with plenty of embedded text to exceed the OCR threshold"
+        )
+        mock_pdf.pages[1].extract_text.return_value = (
+            "Page 2 content also containing enough text to be recognized as text page"
+        )
         
         mock_pdfplumber.return_value.__enter__.return_value = mock_pdf
         
@@ -122,6 +130,247 @@ class PDFTextExtractorTests(TestCase):
             
             self.assertFalse(result['success'])
             self.assertIn('Invalid or corrupted PDF', result['error_message'])
+            
+        finally:
+            os.unlink(temp_file_path)
+
+    @patch('apps.documents.services.PDFTextExtractor._extract_with_textract_sync')
+    @patch('apps.documents.services.PDFTextExtractor.extract_with_ocr')
+    @patch('pdfplumber.open')
+    def test_text_only_document_skips_ocr(self, mock_pdfplumber, mock_local_ocr, mock_textract_sync):
+        """
+        RIGOROUS: Test that documents with all embedded text pages skip OCR entirely.
+        
+        When all pages have sufficient embedded text (>= OCR_TEXT_THRESHOLD chars),
+        neither Textract nor local OCR should be called. This verifies:
+        1. extraction_method is 'embedded_text'
+        2. No AWS API calls are made (cost optimization)
+        3. No fallback to local Tesseract
+        """
+        # Mock PDF with 3 pages, all having plenty of embedded text
+        mock_pdf = MagicMock()
+        mock_pdf.metadata = {'Title': 'Text-Native PDF', 'Author': 'Test'}
+        mock_pdf.pages = [MagicMock(), MagicMock(), MagicMock()]
+        
+        # Each page has 100+ characters (well above default threshold of 50)
+        page_texts = [
+            "This is page 1 with plenty of embedded text content from a digitally created PDF document.",
+            "Page 2 contains medical information including diagnosis codes and treatment plans for the patient.",
+            "The third page has laboratory results, vital signs, and physician notes from the clinical encounter."
+        ]
+        
+        for i, page_text in enumerate(page_texts):
+            mock_pdf.pages[i].extract_text.return_value = page_text
+        
+        mock_pdfplumber.return_value.__enter__.return_value = mock_pdf
+        
+        # Create a temporary PDF file for testing
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+            temp_file.write(b"fake pdf content")
+            temp_file_path = temp_file.name
+        
+        try:
+            result = self.extractor.extract_text(temp_file_path)
+            
+            # Verify successful extraction
+            self.assertTrue(result['success'])
+            self.assertEqual(result['page_count'], 3)
+            
+            # CRITICAL: Verify extraction method is 'embedded_text' (not 'ocr' or 'external_ocr')
+            self.assertEqual(
+                result['metadata']['extraction_method'], 
+                'embedded_text',
+                "Text-only documents should use 'embedded_text' extraction method"
+            )
+            
+            # CRITICAL: Verify NO OCR methods were called
+            mock_textract_sync.assert_not_called()
+            mock_local_ocr.assert_not_called()
+            
+            # Verify page classification
+            self.assertEqual(len(result['metadata']['text_pages']), 3)
+            self.assertEqual(len(result['metadata']['image_pages']), 0)
+            
+            # Verify all page text is present
+            for page_text in page_texts:
+                self.assertIn(page_text[:20], result['text'])
+            
+        finally:
+            os.unlink(temp_file_path)
+
+    @patch('apps.documents.services.PDFTextExtractor._extract_with_textract_sync')
+    @patch('apps.documents.services.PDFTextExtractor.extract_with_ocr')
+    @patch('pdfplumber.open')
+    def test_image_only_document_uses_textract(self, mock_pdfplumber, mock_local_ocr, mock_textract_sync):
+        """
+        RIGOROUS: Test that scanned documents with no embedded text use Textract.
+        
+        When all pages have insufficient text (< OCR_TEXT_THRESHOLD chars),
+        Textract sync API should be called and extraction_method should be 'external_ocr'.
+        """
+        # Mock PDF with 2 pages, all having minimal/no embedded text (scanned images)
+        mock_pdf = MagicMock()
+        mock_pdf.metadata = {'Title': 'Scanned Document', 'Author': 'Scanner'}
+        mock_pdf.pages = [MagicMock(), MagicMock()]
+        
+        # Each page has < 50 characters (below default threshold)
+        mock_pdf.pages[0].extract_text.return_value = "Scanned"  # 7 chars
+        mock_pdf.pages[1].extract_text.return_value = ""  # 0 chars
+        
+        mock_pdfplumber.return_value.__enter__.return_value = mock_pdf
+        
+        # Mock Textract sync returning extracted text
+        mock_textract_sync.return_value = (
+            "--- Page 1 (OCR) ---\nPatient Name: John Doe\n\n--- Page 2 (OCR) ---\nDiagnosis: Hypertension",
+            {'page_count': 2, 'confidence': 95.5, 'extraction_time_ms': 1500}
+        )
+        
+        # Create a temporary PDF file for testing (small, under 5MB threshold)
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+            temp_file.write(b"fake pdf content" * 100)  # Small file
+            temp_file_path = temp_file.name
+        
+        try:
+            result = self.extractor.extract_text(temp_file_path)
+            
+            # Verify successful extraction
+            self.assertTrue(result['success'])
+            
+            # CRITICAL: Verify extraction method is 'external_ocr' (Textract was used)
+            self.assertEqual(
+                result['metadata']['extraction_method'], 
+                'external_ocr',
+                "Scanned documents should use 'external_ocr' extraction method"
+            )
+            
+            # CRITICAL: Verify Textract sync was called
+            mock_textract_sync.assert_called_once()
+            
+            # Verify local OCR was NOT called (Textract succeeded)
+            mock_local_ocr.assert_not_called()
+            
+            # Verify page classification
+            self.assertEqual(len(result['metadata']['text_pages']), 0)
+            self.assertEqual(len(result['metadata']['image_pages']), 2)
+            
+            # Verify Textract metadata is included
+            self.assertIn('textract_metadata', result['metadata'])
+            self.assertEqual(result['metadata']['textract_metadata']['confidence'], 95.5)
+            
+        finally:
+            os.unlink(temp_file_path)
+
+    @patch('apps.documents.services.PDFTextExtractor._extract_with_textract_sync')
+    @patch('apps.documents.services.PDFTextExtractor.extract_with_ocr')
+    @patch('pdfplumber.open')
+    def test_hybrid_document_uses_textract_for_image_pages(self, mock_pdfplumber, mock_local_ocr, mock_textract_sync):
+        """
+        RIGOROUS: Test hybrid documents (mix of text and scanned pages).
+        
+        When some pages have embedded text and others are scanned images,
+        Textract should be called and extraction_method should be 'hybrid'.
+        """
+        # Mock PDF with 3 pages: 2 text pages, 1 scanned image page
+        mock_pdf = MagicMock()
+        mock_pdf.metadata = {'Title': 'Hybrid Document', 'Author': 'Mixed'}
+        mock_pdf.pages = [MagicMock(), MagicMock(), MagicMock()]
+        
+        # Page 1: Rich text (above threshold)
+        mock_pdf.pages[0].extract_text.return_value = (
+            "This is a digitally created cover page with plenty of embedded text content."
+        )
+        # Page 2: Scanned image (below threshold)
+        mock_pdf.pages[1].extract_text.return_value = ""  # No embedded text
+        # Page 3: Rich text (above threshold)
+        mock_pdf.pages[2].extract_text.return_value = (
+            "This is the final page with signatures and additional information."
+        )
+        
+        mock_pdfplumber.return_value.__enter__.return_value = mock_pdf
+        
+        # Mock Textract sync returning extracted text for the scanned page
+        mock_textract_sync.return_value = (
+            "--- Page 2 (OCR) ---\nScanned content from image page",
+            {'page_count': 1, 'confidence': 92.0, 'extraction_time_ms': 800}
+        )
+        
+        # Create a temporary PDF file for testing
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+            temp_file.write(b"fake pdf content" * 50)
+            temp_file_path = temp_file.name
+        
+        try:
+            result = self.extractor.extract_text(temp_file_path)
+            
+            # Verify successful extraction
+            self.assertTrue(result['success'])
+            
+            # CRITICAL: Verify extraction method is 'hybrid'
+            self.assertEqual(
+                result['metadata']['extraction_method'], 
+                'hybrid',
+                "Mixed documents should use 'hybrid' extraction method"
+            )
+            
+            # CRITICAL: Verify Textract sync was called for image pages
+            mock_textract_sync.assert_called_once()
+            
+            # Verify page classification
+            self.assertEqual(result['metadata']['text_pages'], [1, 3])  # 1-indexed
+            self.assertEqual(result['metadata']['image_pages'], [2])
+            
+        finally:
+            os.unlink(temp_file_path)
+
+    @patch('apps.documents.services.PDFTextExtractor._extract_with_textract_sync')
+    @patch('apps.documents.services.PDFTextExtractor.extract_with_ocr')
+    @patch('pdfplumber.open')
+    def test_textract_failure_falls_back_to_local_ocr(self, mock_pdfplumber, mock_local_ocr, mock_textract_sync):
+        """
+        RIGOROUS: Test that Textract failure falls back to local Tesseract OCR.
+        
+        When Textract sync fails or returns no text, the system should
+        gracefully fall back to local OCR (Tesseract).
+        """
+        # Mock PDF with scanned page
+        mock_pdf = MagicMock()
+        mock_pdf.metadata = {'Title': 'Scanned Doc', 'Author': 'Scanner'}
+        mock_pdf.pages = [MagicMock()]
+        mock_pdf.pages[0].extract_text.return_value = ""  # Scanned image
+        
+        mock_pdfplumber.return_value.__enter__.return_value = mock_pdf
+        
+        # Mock Textract sync FAILING (returns None, None)
+        mock_textract_sync.return_value = (None, None)
+        
+        # Mock local OCR succeeding as fallback
+        mock_local_ocr.return_value = "--- Page 1 (OCR) ---\nText from Tesseract fallback"
+        
+        # Create a temporary PDF file
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+            temp_file.write(b"fake pdf content" * 50)
+            temp_file_path = temp_file.name
+        
+        try:
+            result = self.extractor.extract_text(temp_file_path)
+            
+            # Verify successful extraction (via fallback)
+            self.assertTrue(result['success'])
+            
+            # Verify Textract was attempted
+            mock_textract_sync.assert_called_once()
+            
+            # CRITICAL: Verify local OCR fallback was called
+            mock_local_ocr.assert_called_once()
+            
+            # Verify extracted text came from local OCR
+            self.assertIn('Tesseract fallback', result['text'])
+            
+            # extraction_method should be 'ocr' (not 'external_ocr' since Textract failed)
+            self.assertEqual(result['metadata']['extraction_method'], 'ocr')
+            
+            # No Textract metadata since it failed
+            self.assertNotIn('textract_metadata', result['metadata'])
             
         finally:
             os.unlink(temp_file_path)
