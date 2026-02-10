@@ -2297,15 +2297,45 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
         processing_errors.append(str(pipeline_exc))
         ai_result = ai_result or {'success': False, 'error': str(pipeline_exc), 'fields': []}
     
-    # Set final document status
-    if processing_errors:
+    # Set final document status based on ParsedData review status and merge status
+    # (mirrors Task 41.13 logic from process_document_async)
+    try:
+        parsed_data_final = ParsedData.objects.filter(document=document).first()
+        
+        if not parsed_data_final:
+            document.status = 'failed'
+            document.processing_message = "Processing failed - no parsed data created"
+            logger.error(f"[{task_id}] Document {document_id} has no ParsedData record after pipeline")
+        elif not parsed_data_final.is_merged:
+            document.status = 'failed'
+            document.processing_message = (
+                f"Merge failed - data extracted but not merged to patient record. "
+                f"ParsedData ID: {parsed_data_final.id} contains the extracted data."
+            )
+            logger.error(f"[{task_id}] Document {document_id} MERGE FAILED")
+        elif parsed_data_final.auto_approved:
+            # High quality + merged → completed (no human review needed)
+            document.status = 'completed'
+            document.processing_message = "Processing completed - data auto-approved and merged"
+            logger.info(f"[{task_id}] Document {document_id} auto-approved and completed")
+        elif parsed_data_final.review_status == 'flagged':
+            # Merged but flagged → needs human review
+            document.status = 'review'
+            document.processing_message = f"Merged with flags - review recommended: {parsed_data_final.flag_reason[:100] if parsed_data_final.flag_reason else 'Unknown'}"
+            logger.info(f"[{task_id}] Document {document_id} flagged for review: {parsed_data_final.flag_reason}")
+        else:
+            document.status = 'review'
+            document.processing_message = "Processing completed - review recommended"
+    except Exception as status_exc:
+        logger.error(f"[{task_id}] Error determining final status: {status_exc}")
         document.status = 'review'
+        document.processing_message = "Processing completed - review recommended (status check failed)"
+    
+    if processing_errors:
         document.error_message = '; '.join(processing_errors[:3])
     else:
-        document.status = 'review'
         document.error_message = ''
     
-    document.processing_message = ''
     document.processed_at = timezone.now()
     document.save(update_fields=['status', 'processing_message', 'processed_at', 'error_message'])
     
