@@ -351,7 +351,7 @@ def process_document_async(self, document_id: int):
         
         pdf_step_start = time.time()
         logger.info(f"[{task_id}] Step 1: Starting PDF text extraction from {document.file.path}")
-        
+
         try:
             # Validate file existence and readability
             import os
@@ -2102,59 +2102,230 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
     
     # Store OCR text in document
     document.original_text = ocr_text
+    document.status = 'processing'
     document.processing_message = "OCR complete, analyzing document with AI..."
-    document.save(update_fields=['original_text', 'processing_message'])
+    document.save(update_fields=['original_text', 'status', 'processing_message'])
     
-    # Create fake extraction_result for compatibility with existing code
     # Get page count from structured_data if available
     textract_data = (document.structured_data or {}).get('textract_async', {})
     result_metadata = textract_data.get('result_metadata', {})
     page_count = result_metadata.get('page_count', ocr_text.count('--- Page') or 1)
     
-    extraction_result = {
-        'success': True,
-        'text': ocr_text,
-        'page_count': page_count,
-        'file_size': document.file_size / (1024 * 1024) if document.file_size else 0,
-        'metadata': {
-            'extraction_method': 'async_textract',
-            'job_id': textract_data.get('job_id'),
-            'confidence': result_metadata.get('confidence', 0)
-        }
-    }
-    
-    # The rest of the processing is identical to process_document_async
-    # We call a helper function or inline the code
-    # For now, we call process_document_async with special handling
-    # to skip PDF extraction and use the provided OCR text
-    
-    # For simplicity in this subtask, we'll just mark success and let
-    # the full implementation come in subtask 42.12
-    # This provides the skeleton and integration points
-    
     logger.info(
-        f"[{task_id}] Document {document_id} OCR text stored, "
-        f"continuing AI analysis..."
+        f"[{task_id}] OCR text stored ({len(ocr_text)} chars, {page_count} pages). "
+        f"Starting AI analysis pipeline..."
     )
     
-    # TODO (Task 42.12): Implement full AI analysis continuation
-    # For now, store the text and mark for review
-    document.status = 'review'
-    document.processing_message = 'Async OCR complete - pending AI analysis implementation'
+    # Import pipeline components
+    from apps.documents.analyzers import DocumentAnalyzer
+    from apps.fhir.converters import StructuredDataConverter
+    from apps.documents.services.ai_extraction import extract_medical_data_structured
+    from .validation_utils import validate_before_ai_extraction, validate_after_ai_extraction
+    from .models import ParsedData
+    from apps.documents.exceptions import (
+        AIExtractionError, FHIRConversionError, DataValidationError,
+        categorize_exception, get_recovery_strategy
+    )
+    
+    extracted_text = ocr_text
+    del ocr_text  # Free the parameter copy
+    text_length = len(extracted_text)
+    
+    processing_errors = []
+    ai_result = None
+    structured_extraction = None
+    fhir_resources = []
+    
+    try:
+        # STEP 2: AI Structured Extraction
+        document.processing_message = "Analyzing document with AI..."
+        document.save(update_fields=['processing_message'])
+        
+        context = "medical_document"
+        ai_analyzer = DocumentAnalyzer(document=document)
+        
+        logger.info(f"[{task_id}] Starting AI structured extraction ({text_length} chars)")
+        structured_extraction = ai_analyzer.analyze_document_structured(
+            document_content=extracted_text,
+            context=context
+        )
+        
+        # MEMORY FIX: Free extracted_text after AI extraction
+        del extracted_text
+        force_memory_cleanup("after AI extraction in continue_processing")
+        
+        if structured_extraction:
+            # Build ai_result for compatibility
+            ai_result = {
+                'success': True,
+                'fields': [
+                    *[{'label': f'condition_{i}', 'value': c.condition_name, 'confidence': c.confidence, 'type': 'condition'}
+                      for i, c in enumerate(structured_extraction.conditions)],
+                    *[{'label': f'medication_{i}', 'value': m.medication_name, 'confidence': m.confidence, 'type': 'medication'}
+                      for i, m in enumerate(structured_extraction.medications)],
+                    *[{'label': f'vital_{i}', 'value': f'{v.vital_name}: {v.value}', 'confidence': v.confidence, 'type': 'vital_sign'}
+                      for i, v in enumerate(structured_extraction.vital_signs)],
+                    *[{'label': f'lab_{i}', 'value': f'{l.test_name}: {l.value}', 'confidence': l.confidence, 'type': 'lab_result'}
+                      for i, l in enumerate(structured_extraction.lab_results)],
+                ],
+                'model_used': 'structured_extraction_claude',
+                'processing_method': 'async_ocr_then_structured',
+            }
+            
+            logger.info(
+                f"[{task_id}] AI extraction successful: "
+                f"{len(structured_extraction.conditions)} conditions, "
+                f"{len(structured_extraction.medications)} medications, "
+                f"{len(structured_extraction.vital_signs)} vitals, "
+                f"{len(structured_extraction.lab_results)} labs"
+            )
+            
+            # STEP 3: FHIR Conversion
+            document.processing_message = "Converting to FHIR format..."
+            document.save(update_fields=['processing_message'])
+            
+            patient_id = str(document.patient.id) if document.patient else None
+            structured_converter = StructuredDataConverter()
+            
+            conversion_metadata = {
+                'document_id': document.id,
+                'extraction_timestamp': structured_extraction.extraction_timestamp,
+                'document_type': structured_extraction.document_type,
+                'confidence_average': structured_extraction.confidence_average
+            }
+            
+            fhir_resources = structured_converter.convert_structured_data(
+                structured_extraction, conversion_metadata, document.patient
+            )
+            logger.info(f"[{task_id}] FHIR conversion: {len(fhir_resources)} resources created")
+            
+            # STEP 4: Serialize and store
+            document.processing_message = "Saving results..."
+            document.save(update_fields=['processing_message'])
+            
+            # Serialize structured extraction
+            structured_data_dict = structured_extraction.model_dump()
+            avg_confidence = structured_extraction.confidence_average or 0.0
+            
+            # MEMORY FIX: Free Pydantic model after serialization
+            del structured_extraction
+            force_memory_cleanup("after model_dump in continue_processing")
+            
+            # Serialize FHIR resources
+            serialized_fhir_resources = []
+            total_resources = len(fhir_resources)
+            while fhir_resources:
+                resource = fhir_resources.pop(0)
+                try:
+                    if hasattr(resource, 'dict'):
+                        resource_dict = resource.dict(exclude_none=True)
+                        serialized_fhir_resources.append(json.loads(json.dumps(resource_dict, default=str)))
+                        del resource_dict
+                    elif hasattr(resource, 'model_dump'):
+                        resource_dict = resource.model_dump(exclude_none=True)
+                        serialized_fhir_resources.append(json.loads(json.dumps(resource_dict, default=str)))
+                        del resource_dict
+                    elif isinstance(resource, dict):
+                        serialized_fhir_resources.append(json.loads(json.dumps(resource, default=str)))
+                except Exception as ser_exc:
+                    logger.warning(f"[{task_id}] Failed to serialize FHIR resource: {ser_exc}")
+                finally:
+                    del resource
+            
+            force_memory_cleanup("after FHIR serialization in continue_processing")
+            logger.info(f"[{task_id}] Serialized {len(serialized_fhir_resources)}/{total_resources} FHIR resources")
+            
+            # STEP 5: Create ParsedData record
+            parsed_data, created = ParsedData.objects.update_or_create(
+                document=document,
+                defaults={
+                    'patient': document.patient,
+                    'extraction_json': ai_result.get('fields', []),
+                    'fhir_delta_json': serialized_fhir_resources if serialized_fhir_resources else {},
+                    'extraction_confidence': avg_confidence,
+                    'ai_model_used': ai_result.get('model_used', 'unknown'),
+                    'corrections': {'structured_data': structured_data_dict} if structured_data_dict else {},
+                    'is_approved': False,
+                    'is_merged': False,
+                    'reviewed_at': None,
+                    'reviewed_by': None,
+                }
+            )
+            
+            action = "Created" if created else "Updated"
+            logger.info(f"[{task_id}] {action} ParsedData {parsed_data.id} for document {document_id}")
+            
+            # STEP 6: Review status + optimistic merge
+            try:
+                review_status, flag_reason = parsed_data.determine_review_status()
+                parsed_data.review_status = review_status
+                parsed_data.auto_approved = (review_status == 'auto_approved')
+                parsed_data.flag_reason = flag_reason
+                parsed_data.save(update_fields=['review_status', 'auto_approved', 'flag_reason'])
+                
+                logger.info(f"[{task_id}] Review status: {review_status}")
+                
+                # Optimistic merge into patient record
+                if serialized_fhir_resources and document.patient:
+                    merge_success = document.patient.add_fhir_resources(
+                        serialized_fhir_resources,
+                        document_id=document.id
+                    )
+                    if merge_success:
+                        parsed_data.is_merged = True
+                        parsed_data.merged_at = timezone.now()
+                        parsed_data.save(update_fields=['is_merged', 'merged_at'])
+                        logger.info(f"[{task_id}] Merged {len(serialized_fhir_resources)} FHIR resources into patient record")
+                    else:
+                        logger.error(f"[{task_id}] Failed to merge FHIR resources into patient record")
+                        
+            except Exception as merge_exc:
+                logger.error(f"[{task_id}] Review/merge error: {merge_exc}", exc_info=True)
+                processing_errors.append(f"Merge error: {str(merge_exc)}")
+            
+            # Free large data
+            del serialized_fhir_resources
+            del structured_data_dict
+            force_memory_cleanup("after ParsedData save in continue_processing")
+        
+        else:
+            logger.warning(f"[{task_id}] AI structured extraction returned None for document {document_id}")
+            ai_result = {'success': False, 'error': 'Structured extraction returned None', 'fields': []}
+    
+    except Exception as pipeline_exc:
+        logger.error(f"[{task_id}] Pipeline error in continue_processing: {pipeline_exc}", exc_info=True)
+        processing_errors.append(str(pipeline_exc))
+        ai_result = ai_result or {'success': False, 'error': str(pipeline_exc), 'fields': []}
+    
+    # Set final document status
+    if processing_errors:
+        document.status = 'review'
+        document.error_message = '; '.join(processing_errors[:3])
+    else:
+        document.status = 'review'
+        document.error_message = ''
+    
+    document.processing_message = ''
     document.processed_at = timezone.now()
-    document.save(update_fields=['status', 'processing_message', 'processed_at'])
+    document.save(update_fields=['status', 'processing_message', 'processed_at', 'error_message'])
     
     processing_time = time.time() - start_time
     
+    logger.info(
+        f"[{task_id}] Document {document_id} processing complete via async OCR pipeline. "
+        f"Status: {document.status}, Time: {processing_time:.1f}s"
+    )
+    
     return {
-        'success': True,
+        'success': len(processing_errors) == 0,
         'document_id': document_id,
-        'status': 'review',
+        'status': document.status,
         'task_id': task_id,
-        'ocr_text_length': len(ocr_text),
+        'ocr_text_length': text_length,
         'page_count': page_count,
+        'ai_analysis': ai_result if ai_result else {'success': False},
         'processing_time_seconds': round(processing_time, 2),
-        'message': 'Async OCR complete, document ready for review'
+        'errors': processing_errors if processing_errors else None,
     }
 
 
