@@ -23,15 +23,14 @@ import anthropic
 from openai import OpenAI
 
 
-def _cleanup_large_variables(*vars_to_delete):
+def _force_gc(context: str = ""):
     """
-    Clean up large variables and force garbage collection.
-    Call after processing large AI responses to prevent memory accumulation.
+    Force garbage collection after freeing large variables.
+    Caller is responsible for `del`-ing variables before calling this.
     """
-    for var in vars_to_delete:
-        if var is not None:
-            del var
     gc.collect()
+    if context:
+        logger.debug(f"GC forced: {context}")
 
 # Import custom exceptions for enhanced error handling
 from apps.documents.exceptions import (
@@ -966,10 +965,15 @@ CRITICAL FIELD NAME REQUIREMENTS:
                             }
                         }
                         document_cache.cache_ai_extraction(cache_key, cache_data)
+                        del cache_data  # MEMORY FIX: Free cache dict copy
                         logger.info(f"[{extraction_id}] Cached successful extraction result")
                     except Exception as cache_error:
                         logger.warning(f"[{extraction_id}] Failed to cache extraction result: {cache_error}")
                         # Don't fail the extraction if caching fails
+                    
+                    # MEMORY FIX: Free response_text before returning (extraction holds parsed data)
+                    del response_text
+                    _force_gc("after Claude extraction complete")
                     
                     return extraction
                     

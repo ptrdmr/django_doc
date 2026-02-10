@@ -488,6 +488,18 @@ def process_document_async(self, document_id: int):
         text_length = len(extracted_text)
         chunk_threshold = getattr(settings, 'AI_TOKEN_THRESHOLD_FOR_CHUNKING', 20000)
         
+        # MEMORY FIX: extraction_result holds the full text duplicated with extracted_text
+        # Keep only metadata we need for final result reporting
+        extraction_result_meta = {
+            'success': extraction_result['success'],
+            'text_length': text_length,
+            'page_count': extraction_result['page_count'],
+            'file_size': extraction_result.get('file_size', 0),
+            'metadata': extraction_result.get('metadata', {}),
+        }
+        del extraction_result
+        force_memory_cleanup("after extraction_result cleanup")
+        
         logger.info(f"[{task_id}] Document size: {text_length} chars (threshold: {chunk_threshold})")
         
         # STEP 2: Analyze document with AI using size-appropriate strategy
@@ -495,7 +507,7 @@ def process_document_async(self, document_id: int):
         structured_extraction = None
         if extracted_text.strip():
             # VALIDATION: Check text quality before AI extraction
-            if not validate_before_ai_extraction(document, extraction_result['text']):
+            if not validate_before_ai_extraction(document, extracted_text):
                 logger.warning(f"[{task_id}] Text quality validation failed for document {document_id}, proceeding with caution")
             
             try:
@@ -570,7 +582,7 @@ def process_document_async(self, document_id: int):
                     if not structured_extraction:  # Only run if not already processed above
                         logger.info(f"Attempting structured extraction for document {document_id}")
                         structured_extraction = ai_analyzer.analyze_document_structured(
-                            document_content=extraction_result['text'],
+                            document_content=extracted_text,
                             context=context
                         )
                     
@@ -581,6 +593,11 @@ def process_document_async(self, document_id: int):
                         llm_type="structured_extraction_claude",
                         success=bool(structured_extraction)
                     )
+                    
+                    # MEMORY FIX: extracted_text is no longer needed after AI extraction
+                    # It was already saved to document.original_text earlier
+                    del extracted_text
+                    force_memory_cleanup("after AI extraction - freed extracted_text")
                     
                     if structured_extraction:
                         # VALIDATION: Check structured extraction quality
@@ -649,7 +666,7 @@ def process_document_async(self, document_id: int):
                         error_message=str(structured_exc),
                         error_data={
                             'context': context,
-                            'text_length': len(extraction_result['text'])
+                            'text_length': text_length
                         }
                     )
                     
@@ -668,7 +685,7 @@ def process_document_async(self, document_id: int):
                 # if not structured_extraction:
                 #     logger.error(f"STRUCTURED EXTRACTION FAILED for document {document_id}, using legacy fallback")
                 #     ai_result = ai_analyzer.analyze_document(
-                #         document_content=extraction_result['text'],
+                #         document_content=extracted_text,
                 #         context=context
                 #     )
                 
@@ -746,27 +763,9 @@ def process_document_async(self, document_id: int):
                             
                             logger.info(f"StructuredDataConverter created {len(fhir_resources)} resources from structured data")
                             
-                            # PORTHOLE: Capture FHIR conversion output from StructuredDataConverter
-                            # Note: Resources are still Pydantic models at this point, will be serialized later
-                            try:
-                                # Serialize for porthole capture (same logic as main serialization)
-                                porthole_resources = []
-                                for resource in fhir_resources:
-                                    if hasattr(resource, 'dict'):
-                                        porthole_resources.append(json.loads(json.dumps(resource.dict(exclude_none=True), default=str)))
-                                    elif hasattr(resource, 'model_dump'):
-                                        porthole_resources.append(json.loads(json.dumps(resource.model_dump(exclude_none=True), default=str)))
-                                    elif isinstance(resource, dict):
-                                        porthole_resources.append(json.loads(json.dumps(resource, default=str)))
-                                
-                                capture_fhir_data(
-                                    document_id=document_id,
-                                    fhir_resources=porthole_resources,
-                                    patient_id=patient_id,
-                                    stage="structured_fhir_conversion"
-                                )
-                            except Exception as porthole_exc:
-                                logger.warning(f"Porthole FHIR capture failed (non-critical): {porthole_exc}")
+                            # PORTHOLE: Log FHIR conversion summary (skip full serialization to save memory)
+                            # Full serialization happens once later at the main FHIR serialization step
+                            logger.info(f"Porthole: StructuredDataConverter produced {len(fhir_resources)} FHIR resources for document {document_id}")
                             
                         except Exception as struct_conv_exc:
                             logger.warning(f"StructuredDataConverter failed, falling back to legacy: {struct_conv_exc}")
@@ -880,8 +879,20 @@ def process_document_async(self, document_id: int):
                         
                         # Prepare structured data for storage (serialize if available)
                         structured_data_dict = None
+                        structured_data_counts = {}
                         if structured_extraction:
                             structured_data_dict = structured_extraction.model_dump()
+                            # MEMORY FIX: Capture counts now, then free the Pydantic model
+                            structured_data_counts = {
+                                'conditions': len(structured_extraction.conditions),
+                                'medications': len(structured_extraction.medications),
+                                'vital_signs': len(structured_extraction.vital_signs),
+                                'lab_results': len(structured_extraction.lab_results),
+                                'procedures': len(structured_extraction.procedures),
+                                'providers': len(structured_extraction.providers),
+                            }
+                            del structured_extraction
+                            force_memory_cleanup("after structured_extraction model_dump")
                         
                         # Serialize FHIR resources to JSON-compatible dicts
                         # StructuredDataConverter returns FHIR resource models that need serialization
@@ -1072,6 +1083,14 @@ def process_document_async(self, document_id: int):
                             # Don't fail the entire task - data is still saved in ParsedData
                             # It can be merged later manually or via retry
                         
+                        # MEMORY FIX: Free large data structures after ParsedData save + merge
+                        # These are now persisted in the database and no longer needed in memory
+                        del serialized_fhir_resources
+                        del structured_data_dict
+                        del fields_data
+                        del snippets_data
+                        force_memory_cleanup("after ParsedData save and merge")
+                        
                     except DataValidationError as validation_exc:
                         # Specific handling for data validation errors during ParsedData creation
                         error_info = validation_exc.to_dict()
@@ -1243,21 +1262,15 @@ def process_document_async(self, document_id: int):
         
         logger.info(f"Document {document_id} processed successfully - status: {document.status}")
         
-        # Prepare comprehensive result
+        # Prepare comprehensive result (uses extraction_result_meta saved earlier)
         result = {
             'success': True,
             'document_id': document_id,
             'status': 'review',
             'task_id': self.request.id,
-            'pdf_extraction': {
-                'success': extraction_result['success'],
-                'text_length': len(extraction_result['text']),
-                'page_count': extraction_result['page_count'],
-                'file_size_mb': extraction_result['file_size'],
-                'metadata': extraction_result['metadata']
-            },
+            'pdf_extraction': extraction_result_meta,
             'ai_analysis': ai_result if ai_result else {'success': False, 'error': 'AI analysis skipped - no content or no API keys'},
-            'message': f'Document processing completed successfully - {extraction_result["page_count"]} pages processed'
+            'message': f'Document processing completed successfully - {extraction_result_meta["page_count"]} pages processed'
         }
         
         # Add AI-specific info to result if successful
@@ -1268,15 +1281,8 @@ def process_document_async(self, document_id: int):
                 'processing_method': ai_result.get('processing_method'),
                 'tokens_used': ai_result.get('usage', {}).get('total_tokens', 0),
                 'fhir_resources_created': len(fhir_resources) if fhir_resources else 0,
-                'structured_extraction_used': structured_extraction is not None,
-                'structured_data_types': {
-                    'conditions': len(structured_extraction.conditions) if structured_extraction else 0,
-                    'medications': len(structured_extraction.medications) if structured_extraction else 0,
-                    'vital_signs': len(structured_extraction.vital_signs) if structured_extraction else 0,
-                    'lab_results': len(structured_extraction.lab_results) if structured_extraction else 0,
-                    'procedures': len(structured_extraction.procedures) if structured_extraction else 0,
-                    'providers': len(structured_extraction.providers) if structured_extraction else 0
-                } if structured_extraction else {}
+                'structured_extraction_used': bool(structured_data_counts),
+                'structured_data_types': structured_data_counts if structured_data_counts else {}
             })
         
         logger.info(f"Document {document_id} processing completed successfully")

@@ -98,13 +98,14 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
-    # Memory limit to prevent OOM crashes - worker will be killed if exceeds 2GB
+    # Memory limit for large document processing - uses swap as safety net
+    # Instance has 4GB RAM + 2GB swap; allow worker to use up to 3GB
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 3G
         reservations:
-          memory: 768M
+          memory: 1G
     environment:
       - DJANGO_SETTINGS_MODULE=meddocparser.settings.development
       - DB_ENGINE=postgresql
