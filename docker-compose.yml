@@ -98,16 +98,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
-    # Memory limit for large document processing - uses swap as safety net
-    # Instance has 4GB RAM + 2GB swap; allow worker to use up to 3GB
-    deploy:
-      resources:
-        limits:
-          memory: 3G
-        reservations:
-          memory: 1G
+    # MEMORY: No Docker hard cap - let the process use RAM + swap (4GB + 2GB)
+    # The Docker memory limit was causing SIGKILL before our cleanup code could run.
+    # max-memory-per-child in the celery command handles process recycling.
     environment:
       - DJANGO_SETTINGS_MODULE=meddocparser.settings.development
+      - PYTHONUNBUFFERED=1
       - DB_ENGINE=postgresql
       - DB_NAME=meddocparser
       - DB_USER=postgres
