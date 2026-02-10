@@ -3,6 +3,7 @@ Celery tasks for document processing.
 Handles async document parsing and FHIR data extraction.
 
 Enhanced with comprehensive error handling and logging for Task 34.5.
+Memory optimizations added for large document processing (OOM fix).
 """
 
 from celery import shared_task
@@ -10,9 +11,26 @@ from meddocparser.celery import app
 import time
 import logging
 import json
+import gc
 from django.conf import settings
 from django.utils import timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+
+def force_memory_cleanup(context: str = "unknown"):
+    """
+    Force garbage collection to free memory.
+    
+    Call this between major processing steps to prevent memory accumulation,
+    especially important for large documents where multiple copies of data
+    exist simultaneously.
+    
+    Args:
+        context: Description of when/why cleanup is happening for logging
+    """
+    collected = gc.collect()
+    if collected > 0:
+        logger.debug(f"[Memory cleanup - {context}] Collected {collected} objects")
 
 # Import custom exceptions for enhanced error handling
 from .exceptions import (
@@ -509,14 +527,35 @@ def process_document_async(self, document_id: int):
                     
                     if len(chunks) > 1:
                         # Process in chunks and aggregate
+                        # MEMORY FIX: Only keep serialized dicts, clear Pydantic models immediately
                         all_chunk_data = []
-                        for chunk in chunks:
+                        total_chunks = len(chunks)
+                        
+                        for chunk_idx, chunk in enumerate(chunks):
+                            logger.info(f"[{task_id}] Processing chunk {chunk_idx + 1}/{total_chunks}")
+                            
+                            # Extract data for this chunk
                             chunk_result = extract_medical_data_structured(chunk['text'], context=context)
-                            all_chunk_data.append(chunk_result.model_dump())
+                            
+                            # MEMORY FIX: Convert to dict immediately and discard Pydantic model
+                            chunk_data = chunk_result.model_dump()
+                            all_chunk_data.append(chunk_data)
+                            
+                            # Clear the Pydantic model reference
+                            del chunk_result
+                            
+                            # MEMORY FIX: Force garbage collection between chunks
+                            if chunk_idx < total_chunks - 1:
+                                force_memory_cleanup(f"after chunk {chunk_idx + 1}")
                         
                         # Aggregate results
                         structured_extraction = _aggregate_chunked_extractions(all_chunk_data)
-                        logger.info(f"[{task_id}] Chunked processing completed: {len(chunks)} chunks processed")
+                        
+                        # MEMORY FIX: Clear chunk data after aggregation
+                        del all_chunk_data
+                        force_memory_cleanup("after chunk aggregation")
+                        
+                        logger.info(f"[{task_id}] Chunked processing completed: {total_chunks} chunks processed")
                     else:
                         # Single chunk, process normally
                         structured_extraction = ai_analyzer.analyze_document_structured(
@@ -846,13 +885,20 @@ def process_document_async(self, document_id: int):
                         
                         # Serialize FHIR resources to JSON-compatible dicts
                         # StructuredDataConverter returns FHIR resource models that need serialization
+                        # MEMORY FIX: Process one at a time and clear references
                         serialized_fhir_resources = []
                         if fhir_resources:
-                            logger.info(f"Starting serialization of {len(fhir_resources)} FHIR resources for document {document_id}")
-                            for i, resource in enumerate(fhir_resources):
+                            total_resources = len(fhir_resources)
+                            logger.info(f"Starting serialization of {total_resources} FHIR resources for document {document_id}")
+                            
+                            # MEMORY FIX: Pop resources from list to avoid holding both list and serialized copies
+                            while fhir_resources:
+                                resource = fhir_resources.pop(0)  # Remove from original list
+                                resource_num = total_resources - len(fhir_resources)
+                                
                                 try:
                                     # Log the resource type for debugging
-                                    logger.debug(f"Serializing resource #{i+1}, type: {type(resource).__name__}")
+                                    logger.debug(f"Serializing resource #{resource_num}, type: {type(resource).__name__}")
                                     
                                     if hasattr(resource, 'dict'):
                                         # FHIR resource model (fhir.resources) - serialize it
@@ -860,10 +906,12 @@ def process_document_async(self, document_id: int):
                                         resource_dict = resource.dict(exclude_none=True)
                                         # Convert datetime objects to ISO format strings for JSON compatibility
                                         serialized_fhir_resources.append(json.loads(json.dumps(resource_dict, default=str)))
+                                        del resource_dict  # MEMORY FIX: Clear intermediate dict
                                     elif hasattr(resource, 'model_dump'):
                                         # Pydantic v2 model - serialize it
                                         resource_dict = resource.model_dump(exclude_none=True)
                                         serialized_fhir_resources.append(json.loads(json.dumps(resource_dict, default=str)))
+                                        del resource_dict  # MEMORY FIX: Clear intermediate dict
                                     elif isinstance(resource, dict):
                                         # Already a dict - ensure JSON compatibility
                                         serialized_fhir_resources.append(json.loads(json.dumps(resource, default=str)))
@@ -872,10 +920,14 @@ def process_document_async(self, document_id: int):
                                         logger.warning(f"Unexpected FHIR resource type: {type(resource)}, skipping serialization")
                                 except Exception:
                                     # Use logger.exception to capture full traceback
-                                    logger.exception(f"Failed to serialize FHIR resource #{i+1} of type {type(resource)}")
+                                    logger.exception(f"Failed to serialize FHIR resource #{resource_num} of type {type(resource)}")
                                     # Continue with other resources
+                                finally:
+                                    del resource  # MEMORY FIX: Clear reference
                             
-                            logger.info(f"Successfully serialized {len(serialized_fhir_resources)}/{len(fhir_resources)} FHIR resources for document {document_id}")
+                            # MEMORY FIX: Force cleanup after serialization loop
+                            force_memory_cleanup("after FHIR serialization")
+                            logger.info(f"Successfully serialized {len(serialized_fhir_resources)}/{total_resources} FHIR resources for document {document_id}")
                         
                         parsed_data, created = ParsedData.objects.update_or_create(
                             document=document,

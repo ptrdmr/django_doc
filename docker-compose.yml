@@ -98,6 +98,13 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
+    # Memory limit to prevent OOM crashes - worker will be killed if exceeds 1GB
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
     environment:
       - DJANGO_SETTINGS_MODULE=meddocparser.settings.development
       - DB_ENGINE=postgresql
@@ -128,7 +135,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A meddocparser worker --loglevel=info --queues=document_processing,fhir_processing
+    # MEMORY FIX: Reduced concurrency to 1 to prevent OOM, added max-memory-per-child
+    command: celery -A meddocparser worker --loglevel=info --queues=document_processing,fhir_processing --concurrency=1 --max-memory-per-child=400000
     healthcheck:
       test: ["CMD", "sh", "-c", "ps aux | grep 'celery worker' | grep -v grep"]
       interval: 30s

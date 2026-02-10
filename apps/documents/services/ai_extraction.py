@@ -6,6 +6,7 @@ to provide structured medical data extraction from clinical documents with Pydan
 Follows the project's established AI service patterns and configuration.
 
 Enhanced with comprehensive error handling and logging for Task 34.5.
+Memory optimizations added for large document processing (OOM fix).
 """
 
 import logging
@@ -13,12 +14,24 @@ import json
 import instructor
 import time
 import re
+import gc
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from pydantic import BaseModel, Field, validator, ValidationError
 from django.conf import settings
 import anthropic
 from openai import OpenAI
+
+
+def _cleanup_large_variables(*vars_to_delete):
+    """
+    Clean up large variables and force garbage collection.
+    Call after processing large AI responses to prevent memory accumulation.
+    """
+    for var in vars_to_delete:
+        if var is not None:
+            del var
+    gc.collect()
 
 # Import custom exceptions for enhanced error handling
 from apps.documents.exceptions import (
@@ -881,8 +894,10 @@ CRITICAL FIELD NAME REQUIREMENTS:
                     )
                 
                 # Parse Claude's manual JSON response
+                # MEMORY FIX: Extract response and clear the full response object
                 try:
                     response_text = response.content[0].text
+                    del response  # Clear the full Anthropic response object
                     logger.debug(f"[{extraction_id}] Claude manual response length: {len(response_text)} chars")
                     
                     # PORTHOLE: Capture raw Claude response for debugging
@@ -912,6 +927,9 @@ CRITICAL FIELD NAME REQUIREMENTS:
                     
                     json_data = json.loads(json_match.group())
                     
+                    # MEMORY FIX: Clear the matched string immediately after parsing
+                    del json_match
+                    
                     # Set extraction timestamp and document type
                     json_data['extraction_timestamp'] = datetime.now().isoformat()
                     json_data['document_type'] = context
@@ -919,6 +937,8 @@ CRITICAL FIELD NAME REQUIREMENTS:
                     # Parse into Pydantic model with detailed error handling
                     try:
                         extraction = StructuredMedicalExtraction(**json_data)
+                        # MEMORY FIX: Clear the raw dict after creating model
+                        del json_data
                     except ValidationError as ve:
                         raise PydanticModelError(
                             f"Claude response failed Pydantic validation: {str(ve)}",
