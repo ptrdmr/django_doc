@@ -17,10 +17,8 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libpq-dev \
     curl \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
+# NOTE: tesseract-ocr and poppler-utils removed (Task 42.22) - OCR handled by AWS Textract
 
 # Create non-root user for security (HIPAA best practice)
 RUN groupadd -r django && useradd -r -g django django

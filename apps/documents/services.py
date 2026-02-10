@@ -287,9 +287,16 @@ class PDFTextExtractor:
                     
                     if use_sync:
                         # Single-page document under 5MB: use Textract sync API
-                        ocr_text, textract_metadata = self._extract_with_textract_sync(
-                            file_path, file_size
-                        )
+                        try:
+                            ocr_text, textract_metadata = self._extract_with_textract_sync(
+                                file_path, file_size
+                            )
+                        except Exception as sync_ocr_exc:
+                            logger.error(
+                                f"Textract sync OCR failed for {file_path}: {sync_ocr_exc}"
+                            )
+                            ocr_text = None
+                            textract_metadata = None
                         
                         if ocr_text:
                             if extraction_method == 'ocr':
@@ -297,9 +304,32 @@ class PDFTextExtractor:
                             logger.info(
                                 f"Textract sync OCR recovered {len(ocr_text)} characters"
                             )
+                        elif extraction_method == 'ocr':
+                            # Pure image document where OCR failed -- mark as failed
+                            # so the user gets a clear error instead of empty text
+                            logger.error(
+                                f"Textract sync OCR failed for single-page image document: {file_path}"
+                            )
+                            return {
+                                'success': False,
+                                'text': '',
+                                'page_count': page_count,
+                                'file_size': round(file_size, 2),
+                                'error_message': (
+                                    'OCR failed: Could not extract text from scanned document. '
+                                    'The document may be a non-standard format or corrupted image.'
+                                ),
+                                'metadata': {
+                                    'extraction_method': 'ocr_failed',
+                                    'total_pages': page_count,
+                                    'image_pages': image_pages,
+                                }
+                            }
                         else:
+                            # Hybrid doc where OCR failed on image pages -- continue with text pages
                             logger.warning(
-                                "Textract sync OCR returned no text for single-page document"
+                                "Textract sync OCR returned no text for image pages, "
+                                "continuing with embedded text only"
                             )
                     else:
                         # Multi-page or large document: requires async Textract via S3
@@ -482,69 +512,9 @@ class PDFTextExtractor:
         
         return text.strip()
     
-    def extract_with_ocr(self, file_path: str, page_count: int) -> str:
-        """
-        Extract text from scanned PDF using OCR (Tesseract).
-        Used as fallback when pdfplumber finds no embedded text.
-        
-        Args:
-            file_path: Path to PDF file
-            page_count: Number of pages in PDF
-            
-        Returns:
-            str: OCR-extracted text or empty string if OCR fails
-        """
-        try:
-            import pytesseract
-            from pdf2image import convert_from_path
-            from PIL import Image
-            
-            logger.info(f"Starting OCR extraction for {file_path} ({page_count} pages)")
-            
-        except ImportError as import_error:
-            logger.error(f"OCR libraries not available: {import_error}")
-            logger.error("Install with: pip install pytesseract pdf2image")
-            return ""
-        
-        try:
-            # Convert PDF pages to images at 300 DPI for good text recognition
-            images = convert_from_path(file_path, dpi=300)
-            
-            ocr_text_pages = []
-            for page_num, image in enumerate(images, 1):
-                try:
-                    # Run Tesseract OCR on the image
-                    # PSM 1 = Automatic page segmentation with OSD (best for documents)
-                    page_text = pytesseract.image_to_string(
-                        image,
-                        lang='eng',
-                        config='--psm 1'
-                    )
-                    
-                    if page_text and page_text.strip():
-                        # Clean the OCR text
-                        cleaned_text = self._clean_text(page_text)
-                        if cleaned_text:
-                            ocr_text_pages.append(f"--- Page {page_num} (OCR) ---\n{cleaned_text}")
-                            logger.info(f"OCR extracted {len(cleaned_text)} chars from page {page_num}")
-                    
-                except Exception as page_error:
-                    logger.warning(f"OCR failed for page {page_num}: {page_error}")
-                    continue
-            
-            # Combine all OCR pages
-            full_ocr_text = '\n\n'.join(ocr_text_pages)
-            
-            if full_ocr_text:
-                logger.info(f"OCR extraction successful: {len(full_ocr_text)} total characters from {len(ocr_text_pages)} pages")
-            else:
-                logger.warning(f"OCR extraction produced no text for {file_path}")
-            
-            return full_ocr_text
-            
-        except Exception as ocr_error:
-            logger.error(f"OCR extraction failed for {file_path}: {ocr_error}")
-            return ""
+    # NOTE: extract_with_ocr() (Tesseract) removed in Task 42.22.
+    # All OCR is now handled by AWS Textract (sync for 1-page, async for multi-page).
+    
     
     def extract_text_with_layout(self, file_path: str) -> Dict[str, any]:
         """
