@@ -393,6 +393,45 @@ def process_document_async(self, document_id: int):
                     }
                 )
             
+            # ASYNC OCR HANDOFF: If document needs async Textract (multi-page scanned PDF),
+            # trigger the async Textract chain and return early. The chain will:
+            #   start_textract_async_job → poll_textract_job → continue_document_processing
+            if extraction_result.get('ocr_pending'):
+                page_count_info = extraction_result.get('page_count', 0)
+                image_pages_info = extraction_result.get('metadata', {}).get('image_pages', [])
+                
+                logger.info(
+                    f"[{task_id}] Document {document_id} requires async Textract OCR "
+                    f"({page_count_info} pages, {len(image_pages_info)} image pages). "
+                    f"Handing off to async Textract chain."
+                )
+                
+                # Update document status to reflect OCR pending
+                document.status = 'ocr_pending'
+                document.processing_message = (
+                    f"Document has {page_count_info} scanned pages. "
+                    f"Sending to AWS Textract for OCR processing..."
+                )
+                document.save(update_fields=['status', 'processing_message'])
+                
+                # Trigger the async Textract chain (already built in 42.10/42.11/42.12)
+                from .tasks import start_textract_async_job
+                start_textract_async_job.delay(document_id)
+                
+                logger.info(
+                    f"[{task_id}] Async Textract job queued for document {document_id}. "
+                    f"This task is complete; processing continues via async chain."
+                )
+                
+                return {
+                    'success': True,
+                    'document_id': document_id,
+                    'status': 'ocr_pending',
+                    'task_id': task_id,
+                    'message': f'Document handed off to async Textract OCR ({page_count_info} pages)',
+                    'processing_time': time.time() - start_time,
+                }
+            
             # Validate extraction results
             extracted_text = extraction_result.get('text', '')
             if not extracted_text or not extracted_text.strip():

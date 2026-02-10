@@ -269,7 +269,7 @@ class PDFTextExtractor:
                 # Track Textract metadata for audit logging
                 textract_metadata = None
                 
-                # OCR fallback: If image pages detected, try OCR extraction
+                # OCR routing: If image pages detected, use AWS Textract
                 if image_pages and extraction_method in ('ocr', 'hybrid'):
                     logger.info(
                         f"Document has {len(image_pages)} image pages requiring OCR: {image_pages}"
@@ -277,51 +277,67 @@ class PDFTextExtractor:
                     
                     ocr_text = None
                     
-                    # Route based on file size: sync Textract for <5MB, async for >=5MB
-                    if file_size < self.ocr_async_threshold_mb:
-                        # Use AWS Textract synchronous API for smaller documents
+                    # Textract sync API only supports single-page documents.
+                    # Route multi-page or large documents to async Textract via S3.
+                    use_sync = (
+                        len(image_pages) == 1 
+                        and page_count == 1 
+                        and file_size < self.ocr_async_threshold_mb
+                    )
+                    
+                    if use_sync:
+                        # Single-page document under 5MB: use Textract sync API
                         ocr_text, textract_metadata = self._extract_with_textract_sync(
                             file_path, file_size
                         )
                         
                         if ocr_text:
-                            # Update extraction method to reflect Textract usage
                             if extraction_method == 'ocr':
                                 extraction_method = 'external_ocr'
-                            # Note: hybrid stays as 'hybrid' but will use external OCR data
-                            
                             logger.info(
                                 f"Textract sync OCR recovered {len(ocr_text)} characters"
                             )
                         else:
                             logger.warning(
-                                "Textract sync OCR returned no text, falling back to local OCR"
+                                "Textract sync OCR returned no text for single-page document"
                             )
                     else:
-                        # Document too large for sync - async flow (subtask 42.15) not yet integrated
+                        # Multi-page or large document: requires async Textract via S3
+                        # Return early with ocr_pending flag so the Celery task can
+                        # trigger the async Textract chain (upload S3 → start job → poll)
                         logger.info(
-                            f"Document size ({file_size:.2f}MB) requires async OCR flow "
-                            f"(threshold: {self.ocr_async_threshold_mb}MB)"
+                            f"Document requires async Textract OCR: "
+                            f"{page_count} pages, {len(image_pages)} image pages, "
+                            f"{file_size:.2f}MB (sync limit: 1 page, <{self.ocr_async_threshold_mb}MB)"
                         )
+                        
+                        metadata['extraction_method'] = extraction_method
+                        metadata['total_pages'] = page_count
+                        metadata['text_pages'] = text_pages
+                        metadata['image_pages'] = image_pages
+                        metadata['chars_per_page'] = chars_per_page
+                        metadata['ocr_text_threshold'] = self.ocr_text_threshold
+                        metadata['ocr_pending'] = True
+                        
+                        return {
+                            'success': True,
+                            'text': full_text,  # May have partial text from text_pages
+                            'page_count': page_count,
+                            'file_size': round(file_size, 2),
+                            'error_message': '',
+                            'metadata': metadata,
+                            'ocr_pending': True,
+                        }
                     
-                    # Fallback to local OCR if Textract didn't produce results
-                    if not ocr_text:
-                        ocr_text = self.extract_with_ocr(file_path, page_count)
-                        if ocr_text:
-                            logger.info(f"Local OCR fallback recovered {len(ocr_text)} characters")
-                    
-                    # Apply OCR text to result
+                    # Apply sync OCR text to result (single-page path only)
                     if ocr_text:
                         if extraction_method in ('ocr', 'external_ocr'):
-                            # Full OCR - replace all text
                             full_text = ocr_text
                         else:
-                            # Hybrid - OCR text will be merged in future subtask (42.16)
-                            # For now, append OCR text to embedded text
                             full_text = full_text + '\n\n' + ocr_text if full_text else ocr_text
                     else:
                         logger.warning(
-                            f"All OCR extraction failed for {len(image_pages)} image pages in {file_path}"
+                            f"Textract OCR produced no text for {len(image_pages)} image pages in {file_path}"
                         )
                 
                 # Add page classification to metadata
