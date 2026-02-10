@@ -2159,11 +2159,11 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
             ai_result = {
                 'success': True,
                 'fields': [
-                    *[{'label': f'condition_{i}', 'value': c.condition_name, 'confidence': c.confidence, 'type': 'condition'}
+                    *[{'label': f'condition_{i}', 'value': c.name, 'confidence': c.confidence, 'type': 'condition'}
                       for i, c in enumerate(structured_extraction.conditions)],
-                    *[{'label': f'medication_{i}', 'value': m.medication_name, 'confidence': m.confidence, 'type': 'medication'}
+                    *[{'label': f'medication_{i}', 'value': m.name, 'confidence': m.confidence, 'type': 'medication'}
                       for i, m in enumerate(structured_extraction.medications)],
-                    *[{'label': f'vital_{i}', 'value': f'{v.vital_name}: {v.value}', 'confidence': v.confidence, 'type': 'vital_sign'}
+                    *[{'label': f'vital_{i}', 'value': f'{v.measurement}: {v.value}', 'confidence': v.confidence, 'type': 'vital_sign'}
                       for i, v in enumerate(structured_extraction.vital_signs)],
                     *[{'label': f'lab_{i}', 'value': f'{l.test_name}: {l.value}', 'confidence': l.confidence, 'type': 'lab_result'}
                       for i, l in enumerate(structured_extraction.lab_results)],
