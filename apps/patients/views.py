@@ -605,8 +605,8 @@ class SetPrimaryDiagnosisView(LoginRequiredMixin, View):
         Returns:
             JsonResponse: Success or error message
         """
+        patient = get_object_or_404(Patient, pk=pk)
         try:
-            patient = get_object_or_404(Patient, pk=pk)
             condition_id = request.POST.get('condition_id')
             
             if not condition_id:
@@ -674,9 +674,8 @@ class PatientFHIRExportView(LoginRequiredMixin, View):
         Returns:
             HttpResponse: JSON file download
         """
+        patient = get_object_or_404(Patient, pk=pk)
         try:
-            patient = get_object_or_404(Patient, pk=pk)
-            
             # Create FHIR bundle
             fhir_bundle = self.create_fhir_bundle(patient)
             
@@ -780,6 +779,62 @@ class PatientFHIRExportView(LoginRequiredMixin, View):
 
 
 @method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
+class PatientSummaryDataView(LoginRequiredMixin, View):
+    """
+    Return patient summary report data as JSON for the side panel.
+    Uses get_comprehensive_report() for consistency with Reports module.
+    """
+
+    def get(self, request, pk):
+        """Return comprehensive report data as JSON."""
+        patient = get_object_or_404(Patient, pk=pk)
+        try:
+            report_data = patient.get_comprehensive_report()
+            report_data.setdefault('report_metadata', {})['report_type'] = 'patient_summary'
+            return JsonResponse(report_data, json_dumps_params={'default': str})
+        except Exception as e:
+            logger.error(f"Error generating summary data for patient {pk}: {e}")
+            return JsonResponse({'error': 'Unable to retrieve patient summary'}, status=500)
+
+
+@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
+class PatientSummaryPDFView(LoginRequiredMixin, View):
+    """
+    Generate and return patient summary report as PDF download.
+    Reuses existing report templates and PDF generation logic.
+    """
+
+    def get(self, request, pk):
+        """Generate PDF and return as file download."""
+        import tempfile
+        import os
+        from apps.reports.generators import PDFGenerator
+
+        patient = get_object_or_404(Patient, pk=pk)
+        try:
+            report_data = patient.get_comprehensive_report()
+            report_data.setdefault('report_metadata', {})['report_type'] = 'patient_summary'
+            report_data['report_metadata']['title'] = 'Patient Summary Report'
+
+            generator = PDFGenerator(template='reports/pdf/patient_summary.html')
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                tmp_path = tmp.name
+            try:
+                generator.generate(report_data, tmp_path, 'Patient Summary Report')
+                with open(tmp_path, 'rb') as f:
+                    response = HttpResponse(f.read(), content_type='application/pdf')
+                safe_name = f"{patient.first_name}_{patient.last_name}_Patient_Summary.pdf".replace(' ', '_')
+                response['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+                return response
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+        except Exception as e:
+            logger.error(f"Error generating summary PDF for patient {pk}: {e}")
+            return HttpResponse('Unable to generate PDF', status=500)
+
+
+@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
 class PatientFHIRJSONView(LoginRequiredMixin, View):
     """
     Return patient FHIR data as JSON (for API access).
@@ -796,9 +851,8 @@ class PatientFHIRJSONView(LoginRequiredMixin, View):
         Returns:
             JsonResponse: FHIR data
         """
+        patient = get_object_or_404(Patient, pk=pk)
         try:
-            patient = get_object_or_404(Patient, pk=pk)
-            
             return JsonResponse({
                 'patient_id': str(patient.id),
                 'mrn': patient.mrn,
@@ -909,9 +963,8 @@ class PatientDeleteView(LoginRequiredMixin, View):
     
     def get(self, request, pk):
         """Show confirmation page for patient deletion."""
+        patient = get_object_or_404(Patient, pk=pk)
         try:
-            patient = get_object_or_404(Patient, pk=pk)
-            
             # Get related data counts for confirmation
             related_data = {
                 'documents': patient.documents.count(),
@@ -932,9 +985,9 @@ class PatientDeleteView(LoginRequiredMixin, View):
     
     def post(self, request, pk):
         """Handle patient deletion with cascade cleanup."""
+        patient = get_object_or_404(Patient, pk=pk)
         try:
             with transaction.atomic():
-                patient = get_object_or_404(Patient, pk=pk)
                 patient_name = f"{patient.first_name} {patient.last_name}"
                 patient_mrn = patient.mrn
                 
@@ -1267,11 +1320,10 @@ class PatientMergeView(LoginRequiredMixin, TemplateView):
         Returns:
             HttpResponse: Redirect to target patient
         """
+        source_patient = get_object_or_404(Patient, pk=source_pk)
+        target_patient = get_object_or_404(Patient, pk=target_pk)
         try:
             with transaction.atomic():
-                source_patient = get_object_or_404(Patient, pk=source_pk)
-                target_patient = get_object_or_404(Patient, pk=target_pk)
-                
                 # Merge FHIR data
                 self.merge_fhir_data(source_patient, target_patient)
                 

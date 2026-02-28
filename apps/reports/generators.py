@@ -176,50 +176,72 @@ class PDFGenerator:
         return output_path
     
     def _generate_with_reportlab(self, data: Dict[str, Any], output_path: str, title: str) -> str:
-        """Generate PDF using ReportLab (programmatic PDF creation)."""
-        # Create PDF document
+        """Generate PDF using ReportLab with all 7 clinical summary sections."""
         doc = SimpleDocTemplate(output_path, pagesize=letter,
                                topMargin=0.75*inch, bottomMargin=0.75*inch)
-        
-        # Container for content
+
         story = []
         styles = getSampleStyleSheet()
-        
-        # Add custom styles
+
         styles.add(ParagraphStyle(
-            name='CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=20,
-            textColor=colors.HexColor('#2563eb'),
-            spaceAfter=12
+            name='CustomTitle', parent=styles['Heading1'],
+            fontSize=20, textColor=colors.HexColor('#2563eb'), spaceAfter=12
         ))
-        
         styles.add(ParagraphStyle(
-            name='SectionHeader',
-            parent=styles['Heading2'],
-            fontSize=14,
-            textColor=colors.HexColor('#1e40af'),
-            spaceBefore=12,
-            spaceAfter=6
+            name='SectionHeader', parent=styles['Heading2'],
+            fontSize=14, textColor=colors.HexColor('#1e40af'),
+            spaceBefore=12, spaceAfter=6
         ))
-        
+        styles.add(ParagraphStyle(
+            name='EmptyState', parent=styles['Normal'],
+            fontSize=10, textColor=colors.HexColor('#888888'),
+            fontName='Helvetica-Oblique', spaceBefore=4, spaceAfter=4
+        ))
+
+        header_style = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+        ])
+
+        def _fmt_date(val):
+            if not val:
+                return 'N/A'
+            if hasattr(val, 'strftime'):
+                return val.strftime('%m/%d/%Y')
+            return str(val)[:10]
+
         # Title
         story.append(Paragraph(title, styles['CustomTitle']))
         story.append(Spacer(1, 0.2*inch))
-        
-        # Patient Info
+
         patient_info = data.get('patient_info', {})
-        story.append(Paragraph("Patient Information", styles['SectionHeader']))
-        
+        clinical = data.get('clinical_summary', {})
+
+        # --- Section 1: Demographics & Context ---
+        story.append(Paragraph("1. Demographics &amp; Context", styles['SectionHeader']))
+        primary_dx = patient_info.get('primary_diagnosis')
+        dx_name = primary_dx.get('display_name', 'N/A') if primary_dx else 'Not specified'
+        dx_code = ''
+        if primary_dx and primary_dx.get('codes'):
+            dx_code = primary_dx['codes'][0].get('code', 'N/A')
+
         info_data = [
-            ['MRN:', patient_info.get('mrn', 'N/A')],
-            ['Name:', patient_info.get('name', 'N/A')],
+            ['MRN:', str(patient_info.get('mrn', 'N/A'))],
+            ['Name:', str(patient_info.get('name', 'N/A'))],
             ['Age:', str(patient_info.get('age', 'N/A'))],
-            ['Gender:', patient_info.get('gender', 'N/A')],
-            ['DOB:', patient_info.get('date_of_birth', 'N/A')],
+            ['Gender:', str(patient_info.get('gender', 'N/A'))],
+            ['DOB:', _fmt_date(patient_info.get('date_of_birth'))],
+            ['Living Setting:', str(patient_info.get('living_setting', 'N/A'))],
+            ['Primary Diagnosis:', str(dx_name)],
+            ['ICD-10:', str(dx_code or 'N/A')],
+            ['Initial Diagnosis Date:', _fmt_date(patient_info.get('initial_diagnosis_date'))],
         ]
-        
-        info_table = Table(info_data, colWidths=[1.5*inch, 4.5*inch])
+        info_table = Table(info_data, colWidths=[1.8*inch, 4.2*inch])
         info_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
             ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#475569')),
@@ -229,70 +251,143 @@ class PDFGenerator:
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ]))
         story.append(info_table)
-        story.append(Spacer(1, 0.2*inch))
-        
-        # Clinical Summary Sections
-        clinical = data.get('clinical_summary', {})
-        
-        # Conditions
+
+        comorbidities = patient_info.get('comorbidities', [])
+        if comorbidities:
+            names = '; '.join(c.get('display_name', '') for c in comorbidities if c.get('display_name'))
+            story.append(Spacer(1, 0.05*inch))
+            story.append(Paragraph(f"<b>Comorbidities:</b> {names}", styles['Normal']))
+        story.append(Spacer(1, 0.15*inch))
+
+        # --- Section 2: Diagnoses with Onset Dates ---
+        story.append(Paragraph("2. Diagnoses with Clinical Onset Dates", styles['SectionHeader']))
         conditions = clinical.get('conditions', [])
         if conditions:
-            story.append(Paragraph("Conditions", styles['SectionHeader']))
-            cond_data = [['Condition', 'Status', 'Onset Date']]
-            for cond in conditions[:10]:  # Limit for PDF space
+            cond_data = [['Condition', 'ICD-10', 'Onset Date']]
+            for c in conditions:
                 cond_data.append([
-                    cond.get('display_name', 'Unknown')[:40],
-                    cond.get('status', 'N/A'),
-                    cond.get('onset_date', 'N/A')
+                    str(c.get('display_name', 'Unknown'))[:50],
+                    str(c.get('codes', [{}])[0].get('code', 'N/A') if c.get('codes') else 'N/A'),
+                    _fmt_date(c.get('onset_date')),
                 ])
-            
-            cond_table = Table(cond_data, colWidths=[3*inch, 1.5*inch, 1.5*inch])
-            cond_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('PADDING', (0, 0), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
-            ]))
+            cond_table = Table(cond_data, colWidths=[3*inch, 1.2*inch, 1.8*inch])
+            cond_table.setStyle(header_style)
             story.append(cond_table)
-            story.append(Spacer(1, 0.15*inch))
-        
-        # Medications
+        else:
+            story.append(Paragraph("No diagnoses recorded", styles['EmptyState']))
+        story.append(Spacer(1, 0.15*inch))
+
+        # --- Section 3: Weight Tracking ---
+        story.append(Paragraph("3. Weight Tracking", styles['SectionHeader']))
+        weight = clinical.get('weight_timeline', {})
+        if weight.get('has_data') and weight.get('data_points'):
+            unit = weight.get('unit', '')
+            wt_data = [['Date', f'Weight ({unit})']]
+            for pt in weight['data_points']:
+                wt_data.append([_fmt_date(pt.get('date')), str(pt.get('weight', '—'))])
+            wt_table = Table(wt_data, colWidths=[3*inch, 3*inch])
+            wt_table.setStyle(header_style)
+            story.append(wt_table)
+        else:
+            story.append(Paragraph("No weight data recorded", styles['EmptyState']))
+        story.append(Spacer(1, 0.15*inch))
+
+        # --- Section 4: Hospitalizations ---
+        story.append(Paragraph("4. Hospitalizations", styles['SectionHeader']))
+        encounters = clinical.get('encounters', [])
+        if encounters:
+            enc_data = [['Dates', 'Reason', 'Type']]
+            for e in encounters:
+                period = e.get('period', {})
+                start = _fmt_date(period.get('start'))
+                end = _fmt_date(period.get('end')) if period.get('end') else 'Ongoing'
+                reasons = e.get('reason', [])
+                reason_text = reasons[0].get('display', reasons[0].get('code', 'N/A')) if reasons else 'Not specified'
+                enc_data.append([
+                    f"{start} - {end}",
+                    str(reason_text)[:40],
+                    str(e.get('class', 'Visit')),
+                ])
+            enc_table = Table(enc_data, colWidths=[2.2*inch, 2.5*inch, 1.3*inch])
+            enc_table.setStyle(header_style)
+            story.append(enc_table)
+        else:
+            story.append(Paragraph("No hospitalizations recorded", styles['EmptyState']))
+        story.append(Spacer(1, 0.15*inch))
+
+        # --- Section 5: Labs ---
+        story.append(Paragraph("5. Labs", styles['SectionHeader']))
+        observations = clinical.get('observations', [])
+        if observations:
+            obs_data = [['Test', 'Result', 'Date']]
+            for o in observations:
+                val = o.get('value', '—')
+                unit_str = f" {o['unit']}" if o.get('unit') else ''
+                obs_data.append([
+                    str(o.get('display_name', 'Unknown'))[:40],
+                    f"{val}{unit_str}",
+                    _fmt_date(o.get('effective_date')),
+                ])
+            obs_table = Table(obs_data, colWidths=[2.5*inch, 2*inch, 1.5*inch])
+            obs_table.setStyle(header_style)
+            story.append(obs_table)
+        else:
+            story.append(Paragraph("No lab results recorded", styles['EmptyState']))
+        story.append(Spacer(1, 0.15*inch))
+
+        # --- Section 6: Medications ---
+        story.append(Paragraph("6. Medications", styles['SectionHeader']))
         medications = clinical.get('medications', [])
         if medications:
-            story.append(Paragraph("Medications", styles['SectionHeader']))
-            med_data = [['Medication', 'Status']]
-            for med in medications[:10]:
+            med_data = [['Medication', 'Dosage', 'Started', 'Status']]
+            for m in medications:
+                dosage_list = m.get('dosage', [])
+                dose_text = 'N/A'
+                if dosage_list:
+                    dose_text = dosage_list[0].get('text', dosage_list[0].get('dose', 'N/A'))
+                period = m.get('effective_period') or {}
                 med_data.append([
-                    med.get('display_name', 'Unknown')[:50],
-                    med.get('status', 'N/A')
+                    str(m.get('display_name', 'Unknown'))[:35],
+                    str(dose_text)[:25],
+                    _fmt_date(period.get('start')),
+                    str(m.get('status', 'N/A')),
                 ])
-            
-            med_table = Table(med_data, colWidths=[4.5*inch, 1.5*inch])
-            med_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('PADDING', (0, 0), (-1, -1), 6),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
-            ]))
+            med_table = Table(med_data, colWidths=[2*inch, 1.6*inch, 1.2*inch, 1.2*inch])
+            med_table.setStyle(header_style)
             story.append(med_table)
-            story.append(Spacer(1, 0.15*inch))
-        
+        else:
+            story.append(Paragraph("No medications recorded", styles['EmptyState']))
+        story.append(Spacer(1, 0.15*inch))
+
+        # --- Section 7: Procedures ---
+        story.append(Paragraph("7. Procedures", styles['SectionHeader']))
+        procedures = clinical.get('procedures', [])
+        if procedures:
+            proc_data = [['Procedure', 'Date', 'Outcome']]
+            for p in procedures:
+                proc_data.append([
+                    str(p.get('display_name', 'Unknown'))[:40],
+                    _fmt_date(p.get('performed_date')),
+                    str(p.get('outcome', 'Completed'))[:25],
+                ])
+            proc_table = Table(proc_data, colWidths=[3*inch, 1.5*inch, 1.5*inch])
+            proc_table.setStyle(header_style)
+            story.append(proc_table)
+        else:
+            story.append(Paragraph("No procedures recorded", styles['EmptyState']))
+
         # Footer
         story.append(Spacer(1, 0.3*inch))
         story.append(Paragraph(
-            "CONFIDENTIAL - HIPAA Protected Health Information",
+            "<i>This report contains Protected Health Information (PHI). "
+            "Handle in accordance with HIPAA regulations. "
+            "CONFIDENTIAL — For authorized personnel only.</i>",
             styles['Normal']
         ))
-        
-        # Build PDF
+        generated_at = data.get('report_metadata', {}).get('generated_at', '')
+        story.append(Paragraph(f"<i>Generated: {generated_at}</i>", styles['Normal']))
+
         doc.build(story)
-        
         return output_path
     
     def generate_weight_chart_image(self, weight_data: Dict[str, Any]) -> Optional[str]:
