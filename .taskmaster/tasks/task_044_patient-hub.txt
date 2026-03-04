@@ -1,0 +1,49 @@
+# Task ID: 44
+# Title: Inline Document Upload
+# Status: pending
+# Dependencies: 43
+# Priority: high
+# Description: Enable document upload directly from the patient detail page without navigating away. Uses htmx to POST to patient-scoped endpoint, returns document row partial.
+# Details:
+See .taskmaster/docs/patient-hub/02-inline-upload-prd.md. Prerequisite: Task 43 (layout). Key deliverables: POST /patients/<pk>/upload-document/, _upload_zone.html, _document_row.html partial, htmx wiring, progress indicator, validation errors inline. Reuse DocumentUploadForm validation.
+
+# Test Strategy:
+Unit tests for upload endpoint. Integration test: upload file, verify Document created, Celery task triggered. Test validation errors (file type, size).
+
+# Subtasks:
+## 1. Design and Implement Document Upload Form [pending]
+### Dependencies: None
+### Description: Create a form on the patient detail page that allows users to select and upload documents directly. This form should include a file input field and a submit button, and should be styled to match the existing page layout.
+### Details:
+Utilize Django's form handling capabilities to create a form that includes a file input field for document selection. Ensure the form is styled consistently with the patient detail page. Implement client-side validation to check for file type and size before submission.
+
+## 2. Set Up HTMX for Asynchronous Document Upload [pending]
+### Dependencies: 44.1
+### Description: Configure the document upload form to submit asynchronously using HTMX, preventing page reloads and enhancing user experience.
+### Details:
+Add the 'hx-post' attribute to the form element, pointing to the appropriate endpoint for document upload. Set 'hx-target' to specify where the response should be rendered, and 'hx-swap' to define how the content should be swapped. Ensure the form's 'enctype' is set to 'multipart/form-data' to handle file uploads. Refer to HTMX documentation for detailed implementation guidance. ([four.htmx.org](https://four.htmx.org/docs/?utm_source=openai))
+
+## 3. Implement Document Upload Endpoint in Django [pending]
+### Dependencies: 44.2
+### Description: Create a Django view to handle the document upload request, process the uploaded file, and return the updated document row partial.
+### Details:
+Define a view function that accepts POST requests at the '/patients/<pk>/upload-document/' endpoint. In this view, handle the uploaded file, perform necessary validations, and save the document. After processing, render the '_document_row.html' partial with the new document information and return it as the response. Ensure that the view handles errors gracefully and returns appropriate error messages when validation fails. ([docs.djangoproject.com](https://docs.djangoproject.com/en/3.2/topics/http/file-uploads/?utm_source=openai))
+
+## 4. Create and Integrate Document Row Partial Template [pending]
+### Dependencies: 44.3
+### Description: Develop the '_document_row.html' partial template to display the uploaded document in the patient detail page, and integrate it into the response from the upload endpoint.
+### Details:
+Design the '_document_row.html' partial to display document details such as name, upload date, and a link to view or download the document. Ensure the partial is styled consistently with the rest of the patient detail page. In the upload endpoint view, render this partial with the new document information and include it in the response to be swapped into the page by HTMX. ([htmx.org](https://htmx.org/examples/file-upload/?utm_source=openai))
+
+## 5. Implement Progress Indicator for Document Upload [pending]
+### Dependencies: 44.2
+### Description: Add a progress indicator to the document upload form to provide real-time feedback to users during the upload process.
+### Details:
+Include a 'progress' element in the form to display upload progress. Use HTMX's 'htmx:xhr:progress' event to listen for progress updates and adjust the progress bar's value accordingly. Ensure the progress bar is styled appropriately and provides clear feedback to the user. ([htmx.org](https://htmx.org/examples/file-upload/?utm_source=openai))
+
+## 6. Handle Validation Errors and Display Inline Messages [pending]
+### Dependencies: 44.3
+### Description: Implement validation for the uploaded document and display any error messages inline within the form, ensuring a user-friendly experience.
+### Details:
+In the document upload view, perform validation checks on the uploaded file, such as verifying file type and size. If validation fails, return error messages in the response. Use HTMX's 'hx-swap' attribute to replace the form's content with the error messages, displaying them inline within the form. Ensure that error messages are clear and provide guidance on how to correct the issues. ([htmx.org](https://htmx.org/examples/file-upload-input?utm_source=openai))
+

@@ -43,7 +43,7 @@ if db_engine == 'postgresql':
             'CONN_MAX_AGE': 60,
         }
     }
-    print("💾 Using PostgreSQL database for development")
+    print("[DB] Using PostgreSQL database for development")
 else:
     # SQLite fallback (NOT RECOMMENDED for medical data)
     # Only use for quick testing of non-medical features
@@ -53,7 +53,7 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-    print("⚠️  WARNING: Using SQLite database (NOT suitable for medical data or JSONB features)")
+    print("[WARN] Using SQLite database (NOT suitable for medical data or JSONB features)")
 
 # Development-friendly security settings (less strict)
 SECURE_SSL_REDIRECT = False
@@ -97,9 +97,28 @@ LOGGING['loggers']['meddocparser']['handlers'].append('console')
 #     MIDDLEWARE.insert(0, 'debug_toolbar.middleware.DebugToolbarMiddleware')
 #     INTERNAL_IPS = ['127.0.0.1']
 
-# Celery settings for development (if using Redis locally)
+# Redis/Cache: When running locally (not in Docker), "redis" hostname doesn't resolve.
+# Use in-memory cache so login/sessions work without Redis. Celery tasks won't run async.
+if 'redis:6379' in REDIS_URL or '@redis/' in REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'meddocparser-default',
+        },
+        'ai_extraction': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'meddocparser-ai',
+        },
+    }
+    REDIS_URL = 'memory://'  # Celery broker for eager mode
+    CELERY_TASK_ALWAYS_EAGER = True  # Run tasks synchronously, no broker needed
+    # Result backend: cache+memory:// (Celery has no built-in 'memory' backend; memory:// fails)
+    CELERY_RESULT_BACKEND = 'cache+memory://'
+
+# Celery settings for development
 CELERY_BROKER_URL = REDIS_URL
-CELERY_RESULT_BACKEND = REDIS_URL
+# Celery has no built-in 'memory' result backend; use cache+memory:// when broker is memory://
+CELERY_RESULT_BACKEND = 'cache+memory://' if REDIS_URL == 'memory://' else REDIS_URL
 # CELERY_TASK_ALWAYS_EAGER = True  # Execute tasks synchronously in development
 
 # Use Redis for Celery in development (needed for async document processing)

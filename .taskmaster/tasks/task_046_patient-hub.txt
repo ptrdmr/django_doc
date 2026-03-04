@@ -1,0 +1,43 @@
+# Task ID: 46
+# Title: Patient Hub Polish and Integration
+# Status: pending
+# Dependencies: 43, 44, 45
+# Priority: medium
+# Description: Cross-feature polish: keyboard shortcuts, panel auto-refresh on document complete, success toast, audit logging, rate limiting, performance testing, accessibility.
+# Details:
+See .taskmaster/docs/patient-hub/04-polish-integration-prd.md. Prerequisite: Tasks 43, 44, 45. Key deliverables: Cmd/Ctrl+S panel toggle, Escape to close, panel refresh when doc completes, audit logging for new endpoints, rate limit 60 req/min on polling, ARIA/focus trap, screen reader support.
+
+# Test Strategy:
+Manual accessibility review. Verify keyboard shortcuts. Test rate limiting. Performance test with 100+ FHIR resources.
+
+# Subtasks:
+## 1. Add Keyboard Shortcuts for Panel [pending]
+### Dependencies: None
+### Description: Implement Cmd/Ctrl+S for panel toggle, Escape to close.
+### Details:
+Add keydown listener in patientSummaryPanel(). Check for metaKey/ctrlKey + S and Escape. Prevent default for S when panel toggles.
+
+## 2. Panel Auto-Refresh and Success Toast [pending]
+### Dependencies: None
+### Description: Refresh panel when document completes. Show success toast on completion.
+### Details:
+Use htmx events or Alpine to detect when document row updates to completed. Trigger panel refetch and show toast notification.
+
+## 3. Audit Logging for New Endpoints [pending]
+### Dependencies: None
+### Description: Ensure all new endpoints create audit log entries for PHI access.
+### Details:
+Add audit logging to summary-data, summary-pdf, upload-document, status-partial. Follow existing audit patterns.
+
+## 4. Rate Limiting on Polling Endpoints [pending]
+### Dependencies: None
+### Description: Add 60 req/min per user limit on status-partial endpoint.
+### Details:
+Use django-ratelimit or similar. Apply to GET /documents/<pk>/status-partial/.
+
+## 5. Accessibility Review and Fixes [pending]
+### Dependencies: None
+### Description: ARIA labels, focus trap, screen reader support for panel.
+### Details:
+Add aria-label to toggle, aria-expanded, focus trap when panel open, announce status changes to screen readers.
+

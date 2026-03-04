@@ -1,0 +1,43 @@
+# Task ID: 45
+# Title: Real-Time Document Status Updates
+# Status: pending
+# Dependencies: 44
+# Priority: medium
+# Description: Documents table updates automatically as processing progresses. htmx polling every 5s on non-terminal rows. Status badges update in place without page refresh.
+# Details:
+See .taskmaster/docs/patient-hub/03-realtime-status-prd.md. Prerequisite: Task 44 (_document_row.html). Key deliverables: GET /documents/<pk>/status-partial/, hx-trigger="every 5s", conditional polling (stop when completed/failed), visual indicators.
+
+# Test Strategy:
+Unit tests for status endpoint. Verify polling stops on completion. Test with processing document.
+
+# Subtasks:
+## 1. Create Document Status Partial Endpoint [pending]
+### Dependencies: None
+### Description: Implement GET /documents/<pk>/status-partial/ that returns current document row HTML.
+### Details:
+Create Django view that fetches document, checks PHI access, renders _document_row.html partial. Reuse partial from Task 44.
+
+## 2. Add htmx Polling Attributes to Document Rows [pending]
+### Dependencies: 45.1
+### Description: Add hx-trigger="every 5s" and hx-get to document rows with non-terminal status.
+### Details:
+In _document_row.html or patient_detail, add hx-trigger and hx-get only when status is pending or processing. Use hx-swap="outerHTML".
+
+## 3. Implement Conditional Polling Logic [pending]
+### Dependencies: 45.2
+### Description: Ensure polling stops when document reaches completed, failed, or cancelled.
+### Details:
+When status partial returns row with terminal status, the replacement row should not have hx-trigger. Polling stops naturally.
+
+## 4. Add Visual Processing Indicators [pending]
+### Dependencies: 45.2
+### Description: Add spinner or progress indicator for documents in processing state.
+### Details:
+In _document_row.html, show spinner/progress when status is processing. Use Tailwind or existing CSS.
+
+## 5. Handle Error States with Retry Option [pending]
+### Dependencies: 45.3
+### Description: Display failed status with optional retry action.
+### Details:
+When status is failed, show error message and retry button if applicable. Stop polling.
+

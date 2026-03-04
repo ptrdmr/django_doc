@@ -3512,7 +3512,7 @@
             "title": "Integrate async OCR flow into PDFTextExtractor",
             "description": "Update PDFTextExtractor to detect documents >=5MB needing OCR, trigger start_textract_async_job.delay(), and return early with 'ocr_pending' status",
             "details": "Modify PDFTextExtractor: 1) When image_pages detected and file_size >= OCR_ASYNC_THRESHOLD_MB*1024*1024, 2) Call start_textract_async_job.delay(document_id), 3) Set Document.status='ocr_pending', 4) Return early from extract_text() with partial result. process_document_async must handle this early return - don't proceed to DocumentAnalyzer, the async chain will continue later.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               "42.10",
               "42.13",
@@ -3538,7 +3538,7 @@
             "title": "Implement OCR error handling with review queue",
             "description": "Add error handling for Textract failures: raise PDFExtractionError, set document status to 'failed', populate processing_message, create review queue entry with 'OCR failed - manual review needed'",
             "details": "Implement comprehensive error handling: 1) Catch Textract exceptions (ThrottlingException, ProvisionedThroughputExceededException, InvalidS3ObjectException, UnsupportedDocumentException), 2) Raise PDFExtractionError with error details, 3) Set Document.status='failed' and Document.processing_message with user-friendly error, 4) Create review queue entry via existing mechanism with message 'OCR failed - manual review needed', 5) Audit log entry with error code (no PHI). No fallback to Tesseract - failed documents go to review queue.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               "42.14",
               "42.15"
@@ -3602,7 +3602,7 @@
             "title": "Remove local Tesseract OCR code",
             "description": "Delete extract_with_ocr() method from PDFTextExtractor and remove pytesseract/pdf2image imports. Update requirements.txt to remove pytesseract and pdf2image dependencies",
             "details": "Final cleanup after all tests pass: 1) Remove extract_with_ocr() method from PDFTextExtractor in apps/documents/services.py, 2) Remove imports: pytesseract, pdf2image, 3) Remove from requirements.txt: pytesseract, pdf2image, Pillow (if only used for OCR), 4) Update any documentation referencing local OCR, 5) Run full test suite to confirm no regressions. This completes the migration to AWS Textract.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               "42.21"
             ],
@@ -3613,8 +3613,320 @@
     ],
     "metadata": {
       "created": "2025-07-02T05:05:43.706Z",
-      "updated": "2026-02-05T05:35:27.166Z",
+      "updated": "2026-02-10T23:54:17.598Z",
       "description": "Tasks for master context"
+    }
+  },
+  "patient-hub": {
+    "tasks": [
+      {
+        "id": 43,
+        "title": "Patient Summary Side Panel",
+        "description": "Add a collapsible right-side panel to the patient detail page that displays the comprehensive patient summary report. Eliminates navigation to Reports module. Includes JSON endpoint, PDF endpoint, Alpine.js component, and cleanup of old Reports flow.",
+        "details": "See .taskmaster/docs/patient-hub/01-summary-panel-prd.md. Key deliverables: GET /patients/<pk>/summary-data/, GET /patients/<pk>/summary-pdf/, _summary_panel.html partial, patientSummaryPanel() Alpine component, toggle button, slide animation (z-index: panel 40, modals 50), localStorage persistence, mobile responsive. Cleanup: deprecate old Reports flow for patient summaries.",
+        "testStrategy": "Unit tests for both endpoints. Verify panel opens/closes, fetches JSON, renders 7 sections, PDF download works. Test z-index hierarchy with existing modals. Test mobile full-screen overlay.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design Collapsible Right-Side Panel",
+            "description": "Create a detailed design for the collapsible right-side panel, ensuring it displays the comprehensive patient summary report. The design should include specifications for the panel's dimensions, positioning, and responsiveness across different devices.",
+            "dependencies": [],
+            "details": "Utilize design tools like Figma or Sketch to create wireframes and mockups of the panel. Ensure the design aligns with the existing patient detail page aesthetics and provides a seamless user experience.",
+            "status": "done",
+            "testStrategy": "Conduct design reviews with stakeholders and gather feedback to refine the design before implementation."
+          },
+          {
+            "id": 2,
+            "title": "Implement GET Endpoint for Patient Summary Data",
+            "description": "Develop the GET /patients/<pk>/summary-data/ endpoint to retrieve the patient's summary data in JSON format. This endpoint should handle authentication, data retrieval, and error handling appropriately.",
+            "dependencies": [],
+            "details": "Use the existing backend framework (e.g., Django, Flask) to create the endpoint. Ensure it fetches the necessary data from the database and returns it in a structured JSON format. Implement appropriate error handling for scenarios like unauthorized access or data not found.",
+            "status": "done",
+            "testStrategy": "Write unit tests to verify the endpoint's functionality, including authentication checks and data retrieval accuracy."
+          },
+          {
+            "id": 3,
+            "title": "Implement GET Endpoint for Patient Summary PDF",
+            "description": "Develop the GET /patients/<pk>/summary-pdf/ endpoint to generate and serve the patient's summary report as a PDF file. Ensure the PDF is generated dynamically based on the patient's data.",
+            "dependencies": [
+              2
+            ],
+            "details": "Utilize a library like ReportLab (for Python) to generate the PDF. The endpoint should fetch the patient's data, format it appropriately, and return the PDF file as a response. Implement caching mechanisms to improve performance for frequently accessed reports.",
+            "status": "done",
+            "testStrategy": "Write integration tests to ensure the PDF is generated correctly and matches the patient's data."
+          },
+          {
+            "id": 4,
+            "title": "Develop _summary_panel.html Partial",
+            "description": "Create the _summary_panel.html partial to render the patient summary panel's HTML structure. This partial should be reusable and include placeholders for dynamic data insertion.",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Use the existing templating engine (e.g., Jinja2, Django Templates) to create the partial. Ensure it includes all necessary HTML elements, such as headings, tables, and sections, with placeholders for dynamic content. Implement logic to handle the panel's collapsible behavior using Alpine.js.",
+            "status": "done",
+            "testStrategy": "Perform manual testing to verify the partial renders correctly and integrates seamlessly with the patient detail page."
+          },
+          {
+            "id": 5,
+            "title": "Implement patientSummaryPanel() Alpine Component",
+            "description": "Develop the patientSummaryPanel() Alpine.js component to manage the panel's state, including toggling visibility and handling animations. Ensure the component is modular and reusable.",
+            "dependencies": [
+              4
+            ],
+            "details": "Utilize Alpine.js's reactive data and directives to manage the panel's state. Implement methods to toggle the panel's visibility and handle slide animations. Ensure the component is responsive and adapts to different screen sizes.",
+            "status": "done",
+            "testStrategy": "Use Alpine.js DevTools to inspect the component's state and behavior during development. Conduct manual testing to ensure the component functions as expected across various devices."
+          },
+          {
+            "id": 6,
+            "title": "Add Toggle Button and Slide Animation",
+            "description": "Integrate a toggle button to control the panel's visibility and implement slide animations with appropriate z-index values to ensure the panel overlays correctly over other page elements.",
+            "dependencies": [
+              5
+            ],
+            "details": "Add a button element that triggers the patientSummaryPanel() component's toggle method. Implement CSS animations to create a smooth sliding effect for the panel. Set the panel's z-index to 40 and modals to 50 to ensure proper layering. Refer to CSS animation techniques for slide effects and z-index management.",
+            "status": "done",
+            "testStrategy": "Test the toggle functionality and animation smoothness across different browsers and devices to ensure consistent behavior."
+          },
+          {
+            "id": 7,
+            "title": "Implement localStorage Persistence and Mobile Responsiveness",
+            "description": "Ensure the panel's state (open or closed) persists across page reloads using localStorage. Additionally, make the panel responsive to different screen sizes, ensuring usability on mobile devices.",
+            "dependencies": [
+              6
+            ],
+            "details": "Use JavaScript's localStorage API to store the panel's state and retrieve it upon page load. Implement CSS media queries to adjust the panel's size and positioning on mobile devices. Ensure touch events are handled appropriately for mobile interactions.",
+            "status": "done",
+            "testStrategy": "Test the panel's state persistence across page reloads and verify its responsiveness on various devices using browser developer tools and real devices."
+          },
+          {
+            "id": 8,
+            "title": "Deprecate Old Reports Flow and Final Cleanup",
+            "description": "Remove the old Reports flow for patient summaries from the application to streamline the user experience. Perform final cleanup tasks, including code refactoring and documentation updates.",
+            "dependencies": [
+              7
+            ],
+            "details": "Identify and remove all code, routes, and UI elements related to the old Reports flow. Refactor any remaining code that depended on the old flow. Update documentation to reflect the new patient summary panel implementation and ensure all code is well-commented and maintainable.",
+            "status": "pending",
+            "testStrategy": "Conduct thorough testing to ensure the old Reports flow is completely removed and that the new patient summary panel functions correctly without any regressions."
+          }
+        ]
+      },
+      {
+        "id": 44,
+        "title": "Inline Document Upload",
+        "description": "Enable document upload directly from the patient detail page without navigating away. Uses htmx to POST to patient-scoped endpoint, returns document row partial.",
+        "details": "See .taskmaster/docs/patient-hub/02-inline-upload-prd.md. Prerequisite: Task 43 (layout). Key deliverables: POST /patients/<pk>/upload-document/, _upload_zone.html, _document_row.html partial, htmx wiring, progress indicator, validation errors inline. Reuse DocumentUploadForm validation.",
+        "testStrategy": "Unit tests for upload endpoint. Integration test: upload file, verify Document created, Celery task triggered. Test validation errors (file type, size).",
+        "priority": "high",
+        "dependencies": [
+          43
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design and Implement Document Upload Form",
+            "description": "Create a form on the patient detail page that allows users to select and upload documents directly. This form should include a file input field and a submit button, and should be styled to match the existing page layout.",
+            "dependencies": [],
+            "details": "Utilize Django's form handling capabilities to create a form that includes a file input field for document selection. Ensure the form is styled consistently with the patient detail page. Implement client-side validation to check for file type and size before submission.",
+            "status": "pending",
+            "testStrategy": "Test the form to ensure it accepts only valid file types and sizes, and that it integrates seamlessly with the existing page layout."
+          },
+          {
+            "id": 2,
+            "title": "Set Up HTMX for Asynchronous Document Upload",
+            "description": "Configure the document upload form to submit asynchronously using HTMX, preventing page reloads and enhancing user experience.",
+            "dependencies": [
+              1
+            ],
+            "details": "Add the 'hx-post' attribute to the form element, pointing to the appropriate endpoint for document upload. Set 'hx-target' to specify where the response should be rendered, and 'hx-swap' to define how the content should be swapped. Ensure the form's 'enctype' is set to 'multipart/form-data' to handle file uploads. Refer to HTMX documentation for detailed implementation guidance. ([four.htmx.org](https://four.htmx.org/docs/?utm_source=openai))",
+            "status": "pending",
+            "testStrategy": "Verify that the form submits asynchronously and that the response is rendered in the specified target without a full page reload."
+          },
+          {
+            "id": 3,
+            "title": "Implement Document Upload Endpoint in Django",
+            "description": "Create a Django view to handle the document upload request, process the uploaded file, and return the updated document row partial.",
+            "dependencies": [
+              2
+            ],
+            "details": "Define a view function that accepts POST requests at the '/patients/<pk>/upload-document/' endpoint. In this view, handle the uploaded file, perform necessary validations, and save the document. After processing, render the '_document_row.html' partial with the new document information and return it as the response. Ensure that the view handles errors gracefully and returns appropriate error messages when validation fails. ([docs.djangoproject.com](https://docs.djangoproject.com/en/3.2/topics/http/file-uploads/?utm_source=openai))",
+            "status": "pending",
+            "testStrategy": "Test the view to ensure it correctly processes uploaded files, handles validation errors, and returns the expected partial template."
+          },
+          {
+            "id": 4,
+            "title": "Create and Integrate Document Row Partial Template",
+            "description": "Develop the '_document_row.html' partial template to display the uploaded document in the patient detail page, and integrate it into the response from the upload endpoint.",
+            "dependencies": [
+              3
+            ],
+            "details": "Design the '_document_row.html' partial to display document details such as name, upload date, and a link to view or download the document. Ensure the partial is styled consistently with the rest of the patient detail page. In the upload endpoint view, render this partial with the new document information and include it in the response to be swapped into the page by HTMX. ([htmx.org](https://htmx.org/examples/file-upload/?utm_source=openai))",
+            "status": "pending",
+            "testStrategy": "Verify that the partial template displays document information correctly and integrates seamlessly into the patient detail page."
+          },
+          {
+            "id": 5,
+            "title": "Implement Progress Indicator for Document Upload",
+            "description": "Add a progress indicator to the document upload form to provide real-time feedback to users during the upload process.",
+            "dependencies": [
+              2
+            ],
+            "details": "Include a 'progress' element in the form to display upload progress. Use HTMX's 'htmx:xhr:progress' event to listen for progress updates and adjust the progress bar's value accordingly. Ensure the progress bar is styled appropriately and provides clear feedback to the user. ([htmx.org](https://htmx.org/examples/file-upload/?utm_source=openai))",
+            "status": "pending",
+            "testStrategy": "Test the progress indicator to ensure it updates correctly during file uploads and provides accurate feedback to the user."
+          },
+          {
+            "id": 6,
+            "title": "Handle Validation Errors and Display Inline Messages",
+            "description": "Implement validation for the uploaded document and display any error messages inline within the form, ensuring a user-friendly experience.",
+            "dependencies": [
+              3
+            ],
+            "details": "In the document upload view, perform validation checks on the uploaded file, such as verifying file type and size. If validation fails, return error messages in the response. Use HTMX's 'hx-swap' attribute to replace the form's content with the error messages, displaying them inline within the form. Ensure that error messages are clear and provide guidance on how to correct the issues. ([htmx.org](https://htmx.org/examples/file-upload-input?utm_source=openai))",
+            "status": "pending",
+            "testStrategy": "Test the validation logic to ensure it correctly identifies invalid files and displays appropriate error messages inline within the form."
+          }
+        ]
+      },
+      {
+        "id": 45,
+        "title": "Real-Time Document Status Updates",
+        "description": "Documents table updates automatically as processing progresses. htmx polling every 5s on non-terminal rows. Status badges update in place without page refresh.",
+        "details": "See .taskmaster/docs/patient-hub/03-realtime-status-prd.md. Prerequisite: Task 44 (_document_row.html). Key deliverables: GET /documents/<pk>/status-partial/, hx-trigger=\"every 5s\", conditional polling (stop when completed/failed), visual indicators.",
+        "testStrategy": "Unit tests for status endpoint. Verify polling stops on completion. Test with processing document.",
+        "priority": "medium",
+        "dependencies": [
+          44
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Document Status Partial Endpoint",
+            "description": "Implement GET /documents/<pk>/status-partial/ that returns current document row HTML.",
+            "dependencies": [],
+            "details": "Create Django view that fetches document, checks PHI access, renders _document_row.html partial. Reuse partial from Task 44.",
+            "status": "pending",
+            "testStrategy": "Unit test: verify endpoint returns 200 and valid HTML for processing document."
+          },
+          {
+            "id": 2,
+            "title": "Add htmx Polling Attributes to Document Rows",
+            "description": "Add hx-trigger=\"every 5s\" and hx-get to document rows with non-terminal status.",
+            "dependencies": [
+              1
+            ],
+            "details": "In _document_row.html or patient_detail, add hx-trigger and hx-get only when status is pending or processing. Use hx-swap=\"outerHTML\".",
+            "status": "pending",
+            "testStrategy": "Verify polling attributes present on processing rows, absent on completed rows."
+          },
+          {
+            "id": 3,
+            "title": "Implement Conditional Polling Logic",
+            "description": "Ensure polling stops when document reaches completed, failed, or cancelled.",
+            "dependencies": [
+              2
+            ],
+            "details": "When status partial returns row with terminal status, the replacement row should not have hx-trigger. Polling stops naturally.",
+            "status": "pending",
+            "testStrategy": "Verify no polling requests after document completes."
+          },
+          {
+            "id": 4,
+            "title": "Add Visual Processing Indicators",
+            "description": "Add spinner or progress indicator for documents in processing state.",
+            "dependencies": [
+              2
+            ],
+            "details": "In _document_row.html, show spinner/progress when status is processing. Use Tailwind or existing CSS.",
+            "status": "pending",
+            "testStrategy": "Manual verification of visual feedback."
+          },
+          {
+            "id": 5,
+            "title": "Handle Error States with Retry Option",
+            "description": "Display failed status with optional retry action.",
+            "dependencies": [
+              3
+            ],
+            "details": "When status is failed, show error message and retry button if applicable. Stop polling.",
+            "status": "pending",
+            "testStrategy": "Test with document that fails processing."
+          }
+        ]
+      },
+      {
+        "id": 46,
+        "title": "Patient Hub Polish and Integration",
+        "description": "Cross-feature polish: keyboard shortcuts, panel auto-refresh on document complete, success toast, audit logging, rate limiting, performance testing, accessibility.",
+        "details": "See .taskmaster/docs/patient-hub/04-polish-integration-prd.md. Prerequisite: Tasks 43, 44, 45. Key deliverables: Cmd/Ctrl+S panel toggle, Escape to close, panel refresh when doc completes, audit logging for new endpoints, rate limit 60 req/min on polling, ARIA/focus trap, screen reader support.",
+        "testStrategy": "Manual accessibility review. Verify keyboard shortcuts. Test rate limiting. Performance test with 100+ FHIR resources.",
+        "priority": "medium",
+        "dependencies": [
+          43,
+          44,
+          45
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add Keyboard Shortcuts for Panel",
+            "description": "Implement Cmd/Ctrl+S for panel toggle, Escape to close.",
+            "dependencies": [],
+            "details": "Add keydown listener in patientSummaryPanel(). Check for metaKey/ctrlKey + S and Escape. Prevent default for S when panel toggles.",
+            "status": "pending",
+            "testStrategy": "Manual test: Cmd+S toggles, Escape closes."
+          },
+          {
+            "id": 2,
+            "title": "Panel Auto-Refresh and Success Toast",
+            "description": "Refresh panel when document completes. Show success toast on completion.",
+            "dependencies": [],
+            "details": "Use htmx events or Alpine to detect when document row updates to completed. Trigger panel refetch and show toast notification.",
+            "status": "pending",
+            "testStrategy": "Upload document, verify toast and panel refresh when complete."
+          },
+          {
+            "id": 3,
+            "title": "Audit Logging for New Endpoints",
+            "description": "Ensure all new endpoints create audit log entries for PHI access.",
+            "dependencies": [],
+            "details": "Add audit logging to summary-data, summary-pdf, upload-document, status-partial. Follow existing audit patterns.",
+            "status": "pending",
+            "testStrategy": "Verify audit log entries created for each endpoint call."
+          },
+          {
+            "id": 4,
+            "title": "Rate Limiting on Polling Endpoints",
+            "description": "Add 60 req/min per user limit on status-partial endpoint.",
+            "dependencies": [],
+            "details": "Use django-ratelimit or similar. Apply to GET /documents/<pk>/status-partial/.",
+            "status": "pending",
+            "testStrategy": "Verify 429 after 60 requests in a minute."
+          },
+          {
+            "id": 5,
+            "title": "Accessibility Review and Fixes",
+            "description": "ARIA labels, focus trap, screen reader support for panel.",
+            "dependencies": [],
+            "details": "Add aria-label to toggle, aria-expanded, focus trap when panel open, announce status changes to screen readers.",
+            "status": "pending",
+            "testStrategy": "Manual accessibility audit with screen reader."
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "created": "2026-02-24T03:36:05.004Z",
+      "updated": "2026-02-24T03:49:31.458Z",
+      "description": "Patient-Centric Hub feature"
     }
   }
 }

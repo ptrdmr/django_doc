@@ -2,6 +2,12 @@
 
 > **Purpose:** Transform the patient detail page into a unified command center for all patient-related operations.
 
+> **Granular PRDs:** This PRD has been split into feature-focused sub-PRDs for easier parsing:
+> - [01-summary-panel-prd.md](patient-hub/01-summary-panel-prd.md)
+> - [02-inline-upload-prd.md](patient-hub/02-inline-upload-prd.md)
+> - [03-realtime-status-prd.md](patient-hub/03-realtime-status-prd.md)
+> - [04-polish-integration-prd.md](patient-hub/04-polish-integration-prd.md)
+
 ---
 
 ## Overview

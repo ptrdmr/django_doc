@@ -1,0 +1,61 @@
+# Task ID: 43
+# Title: Patient Summary Side Panel
+# Status: pending
+# Dependencies: None
+# Priority: high
+# Description: Add a collapsible right-side panel to the patient detail page that displays the comprehensive patient summary report. Eliminates navigation to Reports module. Includes JSON endpoint, PDF endpoint, Alpine.js component, and cleanup of old Reports flow.
+# Details:
+See .taskmaster/docs/patient-hub/01-summary-panel-prd.md. Key deliverables: GET /patients/<pk>/summary-data/, GET /patients/<pk>/summary-pdf/, _summary_panel.html partial, patientSummaryPanel() Alpine component, toggle button, slide animation (z-index: panel 40, modals 50), localStorage persistence, mobile responsive. Cleanup: deprecate old Reports flow for patient summaries.
+
+# Test Strategy:
+Unit tests for both endpoints. Verify panel opens/closes, fetches JSON, renders 7 sections, PDF download works. Test z-index hierarchy with existing modals. Test mobile full-screen overlay.
+
+# Subtasks:
+## 1. Design Collapsible Right-Side Panel [done]
+### Dependencies: None
+### Description: Create a detailed design for the collapsible right-side panel, ensuring it displays the comprehensive patient summary report. The design should include specifications for the panel's dimensions, positioning, and responsiveness across different devices.
+### Details:
+Utilize design tools like Figma or Sketch to create wireframes and mockups of the panel. Ensure the design aligns with the existing patient detail page aesthetics and provides a seamless user experience.
+
+## 2. Implement GET Endpoint for Patient Summary Data [done]
+### Dependencies: None
+### Description: Develop the GET /patients/<pk>/summary-data/ endpoint to retrieve the patient's summary data in JSON format. This endpoint should handle authentication, data retrieval, and error handling appropriately.
+### Details:
+Use the existing backend framework (e.g., Django, Flask) to create the endpoint. Ensure it fetches the necessary data from the database and returns it in a structured JSON format. Implement appropriate error handling for scenarios like unauthorized access or data not found.
+
+## 3. Implement GET Endpoint for Patient Summary PDF [done]
+### Dependencies: 43.2
+### Description: Develop the GET /patients/<pk>/summary-pdf/ endpoint to generate and serve the patient's summary report as a PDF file. Ensure the PDF is generated dynamically based on the patient's data.
+### Details:
+Utilize a library like ReportLab (for Python) to generate the PDF. The endpoint should fetch the patient's data, format it appropriately, and return the PDF file as a response. Implement caching mechanisms to improve performance for frequently accessed reports.
+
+## 4. Develop _summary_panel.html Partial [done]
+### Dependencies: 43.2, 43.3
+### Description: Create the _summary_panel.html partial to render the patient summary panel's HTML structure. This partial should be reusable and include placeholders for dynamic data insertion.
+### Details:
+Use the existing templating engine (e.g., Jinja2, Django Templates) to create the partial. Ensure it includes all necessary HTML elements, such as headings, tables, and sections, with placeholders for dynamic content. Implement logic to handle the panel's collapsible behavior using Alpine.js.
+
+## 5. Implement patientSummaryPanel() Alpine Component [done]
+### Dependencies: 43.4
+### Description: Develop the patientSummaryPanel() Alpine.js component to manage the panel's state, including toggling visibility and handling animations. Ensure the component is modular and reusable.
+### Details:
+Utilize Alpine.js's reactive data and directives to manage the panel's state. Implement methods to toggle the panel's visibility and handle slide animations. Ensure the component is responsive and adapts to different screen sizes.
+
+## 6. Add Toggle Button and Slide Animation [done]
+### Dependencies: 43.5
+### Description: Integrate a toggle button to control the panel's visibility and implement slide animations with appropriate z-index values to ensure the panel overlays correctly over other page elements.
+### Details:
+Add a button element that triggers the patientSummaryPanel() component's toggle method. Implement CSS animations to create a smooth sliding effect for the panel. Set the panel's z-index to 40 and modals to 50 to ensure proper layering. Refer to CSS animation techniques for slide effects and z-index management.
+
+## 7. Implement localStorage Persistence and Mobile Responsiveness [done]
+### Dependencies: 43.6
+### Description: Ensure the panel's state (open or closed) persists across page reloads using localStorage. Additionally, make the panel responsive to different screen sizes, ensuring usability on mobile devices.
+### Details:
+Use JavaScript's localStorage API to store the panel's state and retrieve it upon page load. Implement CSS media queries to adjust the panel's size and positioning on mobile devices. Ensure touch events are handled appropriately for mobile interactions.
+
+## 8. Deprecate Old Reports Flow and Final Cleanup [pending]
+### Dependencies: 43.7
+### Description: Remove the old Reports flow for patient summaries from the application to streamline the user experience. Perform final cleanup tasks, including code refactoring and documentation updates.
+### Details:
+Identify and remove all code, routes, and UI elements related to the old Reports flow. Refactor any remaining code that depended on the old flow. Update documentation to reflect the new patient summary panel implementation and ensure all code is well-commented and maintainable.
+

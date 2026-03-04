@@ -1,0 +1,290 @@
+# HIPAA Compliance & Security Hardening PRD
+# Medical Document Parser - Production Readiness
+
+## Overview
+
+This PRD defines the security, compliance, and operational requirements needed to make the Medical Document Parser HIPAA-compliant and production-ready for deployment in healthcare environments.
+
+## Current State
+
+The application has solid core functionality (document processing, FHIR extraction, patient management) but lacks several HIPAA-mandated security controls and operational safeguards required before processing real patient data.
+
+## Target State
+
+A production system that can:
+1. Pass a HIPAA security assessment
+2. Support a Business Associate Agreement (BAA)
+3. Withstand basic security testing
+4. Provide audit evidence for compliance reviews
+
+---
+
+## CATEGORY 1: ACCESS CONTROL (HIPAA § 164.312(a)(1))
+
+### Task: Implement Multi-Factor Authentication (MFA)
+- Add django-otp or django-two-factor-auth package
+- Require MFA for all users accessing PHI
+- Support TOTP (authenticator apps) as primary method
+- Provide backup codes for account recovery
+- Add MFA enrollment flow to user onboarding
+- Log all MFA events (enrollment, success, failure)
+
+### Task: Implement Session Security Controls
+- Set SESSION_COOKIE_AGE to 3600 (1 hour max)
+- Set SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+- Implement automatic logout after 15 minutes of inactivity
+- Add session invalidation on password change
+- Prevent concurrent sessions (optional: configurable per org)
+- Add "active sessions" view for users to see/revoke sessions
+
+### Task: Implement Role-Based Access Control (RBAC)
+- Define permission groups: Admin, Provider, Staff, ReadOnly
+- Create Organization model if not exists
+- Restrict patient access to same-organization users only
+- Implement object-level permissions for Patient, Document models
+- Add permission checks to all views and API endpoints
+- Create admin UI for managing user roles and permissions
+
+### Task: Implement Unique User Identification
+- Ensure every user has unique username/email
+- Add user ID to all audit log entries
+- Track last login IP and timestamp
+- Implement login attempt tracking and lockout after 5 failures
+- Add password complexity requirements (12+ chars, mixed case, numbers, symbols)
+
+---
+
+## CATEGORY 2: AUDIT CONTROLS (HIPAA § 164.312(b))
+
+### Task: Enhance Audit Logging for PHI Access
+- Log every Patient record view with user, timestamp, IP, user-agent
+- Log every Document access (view, download, process)
+- Log all FHIR data exports
+- Log all search queries involving patient data
+- Ensure audit logs are append-only (no delete capability for users)
+- Add audit log retention policy (7 years minimum per HIPAA)
+
+### Task: Implement Audit Log Tamper Protection
+- Store audit logs in separate database or append-only table
+- Add cryptographic checksums to log entries
+- Implement log forwarding to external SIEM (optional: AWS CloudWatch, Datadog)
+- Create audit log export functionality for compliance reviews
+- Add alerting for suspicious access patterns
+
+### Task: Create Audit Dashboard for Administrators
+- Build admin view showing recent PHI access events
+- Add filters by user, patient, date range, action type
+- Show access anomalies (unusual hours, bulk access, failed attempts)
+- Generate audit reports for compliance reviews
+- Export audit data to CSV/PDF for external review
+
+---
+
+## CATEGORY 3: DATA ENCRYPTION (HIPAA § 164.312(a)(2)(iv) & (e)(1))
+
+### Task: Verify Encryption at Rest
+- Confirm PostgreSQL connection uses SSL (sslmode=require)
+- Verify AWS RDS encryption settings if using RDS
+- Document encryption configuration for compliance evidence
+- Ensure django-cryptography fields are properly encrypting PHI fields
+- Add raw SQL test to verify encrypted fields are not plaintext
+
+### Task: Implement Encryption in Transit
+- Enforce HTTPS-only in production (SECURE_SSL_REDIRECT = True)
+- Set SECURE_HSTS_SECONDS = 31536000 (1 year)
+- Configure SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+- Set SECURE_HSTS_PRELOAD = True
+- Verify Celery/Redis connections use TLS
+- Verify S3 uploads use HTTPS (default with boto3)
+
+### Task: Implement Secure Cookie Settings
+- Set SESSION_COOKIE_SECURE = True
+- Set SESSION_COOKIE_HTTPONLY = True
+- Set SESSION_COOKIE_SAMESITE = 'Strict'
+- Set CSRF_COOKIE_SECURE = True
+- Set CSRF_COOKIE_HTTPONLY = True
+
+---
+
+## CATEGORY 4: INTEGRITY CONTROLS (HIPAA § 164.312(c)(1))
+
+### Task: Implement Data Integrity Verification
+- Add checksums to Document model for uploaded files
+- Verify file integrity before and after processing
+- Log any integrity failures as security events
+- Add database backup integrity checks
+- Implement soft delete for all PHI records (no hard delete)
+
+### Task: Implement Input Validation Hardening
+- Review all forms for proper validation
+- Add rate limiting to all API endpoints
+- Implement CSRF protection verification
+- Add Content-Type validation for file uploads
+- Sanitize all user inputs before database storage
+
+---
+
+## CATEGORY 5: TRANSMISSION SECURITY (HIPAA § 164.312(e)(1))
+
+### Task: Harden API Security
+- Implement API authentication (Token or JWT)
+- Add API rate limiting (django-ratelimit)
+- Implement request signing for sensitive operations
+- Add IP allowlisting capability for API access
+- Log all API access attempts
+
+### Task: Secure External Service Connections
+- Verify AWS connections use IAM roles (not hardcoded keys) in production
+- Rotate AWS access keys regularly (document procedure)
+- Use AWS Secrets Manager for sensitive credentials
+- Implement connection timeout and retry policies
+- Log all external service failures
+
+---
+
+## CATEGORY 6: SECURITY INCIDENT PROCEDURES (HIPAA § 164.308(a)(6))
+
+### Task: Implement Breach Detection Capabilities
+- Add alerting for multiple failed login attempts
+- Alert on bulk data access (>50 patient records in 1 hour)
+- Alert on access from new IP addresses/locations
+- Alert on after-hours access to sensitive data
+- Create incident response runbook template
+
+### Task: Implement Security Event Logging
+- Log all authentication events (success, failure, lockout)
+- Log all authorization failures (403 responses)
+- Log all input validation failures
+- Log all rate limit violations
+- Forward security events to monitoring system
+
+---
+
+## CATEGORY 7: CONTINGENCY PLANNING (HIPAA § 164.308(a)(7))
+
+### Task: Implement Backup and Recovery
+- Configure automated daily database backups
+- Store backups in separate AWS region
+- Encrypt all backups at rest
+- Test backup restoration quarterly (document procedure)
+- Define Recovery Time Objective (RTO) and Recovery Point Objective (RPO)
+
+### Task: Document Disaster Recovery Procedures
+- Create DR runbook for system restoration
+- Document failover procedures
+- Create data recovery procedures
+- Define communication plan for outages
+- Test DR procedures annually
+
+---
+
+## CATEGORY 8: ADMINISTRATIVE SAFEGUARDS
+
+### Task: Create Security Policies and Procedures
+- Write Acceptable Use Policy template
+- Write Data Classification Policy (PHI handling)
+- Write Access Control Policy
+- Write Incident Response Policy
+- Write Backup and Recovery Policy
+
+### Task: Implement User Training Tracking
+- Add acknowledgment checkbox for privacy policy
+- Track when users completed HIPAA training
+- Require annual training acknowledgment renewal
+- Log training completion in audit trail
+
+### Task: Prepare for Business Associate Agreement (BAA)
+- Document all third-party services that access PHI
+- Verify AWS BAA is in place (AWS has standard BAA)
+- Document subcontractor chain
+- Create BAA template for customers
+- Document data flow diagrams showing PHI paths
+
+---
+
+## CATEGORY 9: SECURITY TESTING
+
+### Task: Implement Automated Security Scanning
+- Add bandit to CI/CD for Python security scanning
+- Add safety for dependency vulnerability scanning
+- Add OWASP ZAP or similar for dynamic security testing
+- Configure Dependabot or Snyk for dependency monitoring
+- Run security scans on every deployment
+
+### Task: Prepare for Penetration Testing
+- Document application architecture for testers
+- Create test accounts and environments
+- Define scope and rules of engagement template
+- Create remediation tracking process
+- Plan for annual penetration test
+
+---
+
+## CATEGORY 10: PRODUCTION OPERATIONS
+
+### Task: Implement Production Monitoring
+- Set up application performance monitoring (APM)
+- Configure error tracking (Sentry or similar)
+- Add uptime monitoring
+- Create operational dashboards
+- Define SLA targets and alerting thresholds
+
+### Task: Implement Secure Deployment Pipeline
+- Ensure secrets never in code repository
+- Use environment variables or secrets manager
+- Implement deployment approval process
+- Add rollback capability
+- Log all deployments with user attribution
+
+### Task: Create Operational Documentation
+- Document system architecture
+- Create runbook for common operations
+- Document on-call procedures
+- Create troubleshooting guides
+- Maintain change log
+
+---
+
+## Priority Order
+
+**Phase 1 - Critical (Before any real PHI):**
+1. Multi-Factor Authentication
+2. Session Security Controls
+3. Encryption verification (at rest and in transit)
+4. Enhanced Audit Logging
+5. RBAC implementation
+
+**Phase 2 - Required (Before customer deployment):**
+6. Breach detection capabilities
+7. Backup and recovery
+8. Security scanning in CI/CD
+9. Secure cookie settings
+10. Input validation hardening
+
+**Phase 3 - Professional (Before enterprise sales):**
+11. Security policies and procedures
+12. BAA preparation
+13. Penetration testing preparation
+14. Production monitoring
+15. Operational documentation
+
+---
+
+## Success Criteria
+
+- Pass HIPAA Security Risk Assessment
+- All PHI access logged with tamper protection
+- MFA enforced for all users
+- Data encrypted at rest and in transit
+- Automated security scanning in CI/CD
+- Documented policies and procedures
+- Backup and recovery tested
+- Ready to sign BAA with customers
+
+---
+
+## Notes
+
+This PRD focuses on technical and operational controls. Legal review of BAA templates, privacy policies, and terms of service should be conducted by healthcare compliance counsel.
+
+Estimated effort: 40-60 hours of focused development plus documentation time.

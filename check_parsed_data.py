@@ -1,61 +1,34 @@
-import os
-import django
-
+"""Check ParsedData for document 36."""
+import django, os
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'meddocparser.settings.development')
 django.setup()
+from apps.documents.models import Document, ParsedData
 
-from apps.documents.models import ParsedData
-import json
+d = Document.objects.get(id=36)
+print(f"Document {d.id}: status={d.status}, error={d.error_message or '(none)'}")
 
-pd = ParsedData.objects.filter(document_id=69).first()
-if pd:
-    print(f'ParsedData ID: {pd.id}')
-    print(f'AI Model: {pd.ai_model_used}')
-    print(f'Confidence: {pd.extraction_confidence}')
-    print(f'Processing Time: {pd.processing_time_seconds}s')
+pd_list = ParsedData.objects.filter(document=d)
+print(f"ParsedData records: {pd_list.count()}")
+
+for pd in pd_list:
+    print(f"\n--- ParsedData {pd.id} ---")
+    print(f"  review_status: {pd.review_status}")
+    print(f"  auto_approved: {pd.auto_approved}")
+    print(f"  flag_reason: {pd.flag_reason}")
+    print(f"  is_approved: {pd.is_approved}")
+    print(f"  is_merged: {pd.is_merged}")
+    print(f"  merged_at: {pd.merged_at}")
+    print(f"  extraction_confidence: {pd.extraction_confidence}")
+    print(f"  ai_model_used: {pd.ai_model_used}")
+    print(f"  fields count: {len(pd.extraction_json) if pd.extraction_json else 0}")
+    print(f"  fhir_delta_json type: {type(pd.fhir_delta_json).__name__}, len: {len(pd.fhir_delta_json) if pd.fhir_delta_json else 0}")
     
-    if pd.extraction_json:
-        # extraction_json might already be a dict/list
-        if isinstance(pd.extraction_json, (dict, list)):
-            ej = pd.extraction_json
-        else:
-            ej = json.loads(pd.extraction_json)
-        print(f'\nExtraction JSON Summary:')
-        print(f'  Conditions: {len(ej.get("conditions", []))}')
-        print(f'  Medications: {len(ej.get("medications", []))}')
-        print(f'  Vital Signs: {len(ej.get("vital_signs", []))}')
-        print(f'  Lab Results: {len(ej.get("lab_results", []))}')
-        print(f'  Procedures: {len(ej.get("procedures", []))}')
-        print(f'  Providers: {len(ej.get("providers", []))}')
-        print(f'  Encounters: {len(ej.get("encounters", []))}')
-        print(f'  Service Requests: {len(ej.get("service_requests", []))}')
-        print(f'  Diagnostic Reports: {len(ej.get("diagnostic_reports", []))}')
-        print(f'  Allergies: {len(ej.get("allergies", []))}')
-        print(f'  Care Plans: {len(ej.get("care_plans", []))}')
-        print(f'  Organizations: {len(ej.get("organizations", []))}')
-        
-        # Check if encounters and service_requests have correct field names
-        if ej.get("encounters"):
-            enc = ej["encounters"][0]
-            print(f'\n[VERIFICATION] First Encounter Fields:')
-            print(f'  Has "encounter_type": {"encounter_type" in enc}')
-            print(f'  Has "type": {"type" in enc}')
-            if "encounter_type" in enc:
-                print(f'  encounter_type value: {enc["encounter_type"]}')
-            if "type" in enc:
-                print(f'  type value: {enc["type"]}')
-        
-        if ej.get("service_requests"):
-            req = ej["service_requests"][0]
-            print(f'\n[VERIFICATION] First Service Request Fields:')
-            print(f'  Has "request_type": {"request_type" in req}')
-            print(f'  Has "service": {"service" in req}')
-            if "request_type" in req:
-                print(f'  request_type value: {req["request_type"]}')
-            if "service" in req:
-                print(f'  service value: {req["service"]}')
-    else:
-        print('No extraction_json')
-else:
-    print('No ParsedData found for document 69')
-
+    # Show field types breakdown
+    if pd.extraction_json and isinstance(pd.extraction_json, list):
+        from collections import Counter
+        types = Counter(f.get('type', 'unknown') for f in pd.extraction_json if isinstance(f, dict))
+        print(f"  field types: {dict(types)}")
+    
+    # Check capture_metrics
+    if pd.capture_metrics:
+        print(f"  capture_metrics: {pd.capture_metrics}")
