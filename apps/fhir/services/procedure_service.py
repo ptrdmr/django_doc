@@ -50,6 +50,7 @@ class ProcedureService:
             return procedures
         
         # PRIMARY PATH: Handle structured Pydantic data
+        clinical_date = extracted_data.get('clinical_date')
         if 'structured_data' in extracted_data:
             structured_data = extracted_data['structured_data']
             if isinstance(structured_data, dict) and 'procedures' in structured_data:
@@ -58,7 +59,7 @@ class ProcedureService:
                     self.logger.info(f"Processing {len(procedures_list)} procedures via structured path")
                     for procedure_dict in procedures_list:
                         if isinstance(procedure_dict, dict):
-                            procedure_resource = self._create_procedure_from_structured(procedure_dict, patient_id)
+                            procedure_resource = self._create_procedure_from_structured(procedure_dict, patient_id, clinical_date=clinical_date)
                             if procedure_resource:
                                 procedures.append(procedure_resource)
                     self.logger.info(f"Successfully processed {len(procedures)} procedures via structured path")
@@ -82,7 +83,7 @@ class ProcedureService:
         self.logger.info(f"Successfully processed {len(procedures)} procedure resources via legacy path")
         return procedures
     
-    def _create_procedure_from_structured(self, procedure_dict: Dict[str, Any], patient_id: str) -> Optional[Dict[str, Any]]:
+    def _create_procedure_from_structured(self, procedure_dict: Dict[str, Any], patient_id: str, clinical_date=None) -> Optional[Dict[str, Any]]:
         """
         Create a FHIR Procedure resource from structured Pydantic-derived dict.
         
@@ -112,12 +113,22 @@ class ProcedureService:
         raw_date = procedure_dict.get('procedure_date')
         
         if raw_date:
-            # Use ClinicalDateParser for consistent date handling
             extracted_dates = self.date_parser.extract_dates(raw_date)
             if extracted_dates:
                 best_date = max(extracted_dates, key=lambda x: x.confidence)
                 performed_date = best_date.extracted_date.isoformat()
                 self.logger.debug(f"Parsed procedure date {performed_date} with confidence {best_date.confidence}")
+        
+        if not performed_date and clinical_date:
+            from datetime import date as date_type, datetime as datetime_type
+            if isinstance(clinical_date, datetime_type):
+                performed_date = clinical_date.isoformat()
+            elif isinstance(clinical_date, date_type):
+                performed_date = datetime_type.combine(clinical_date, datetime_type.min.time()).isoformat()
+            else:
+                performed_date = str(clinical_date)
+            date_source = "parsed_data_clinical_date"
+            self.logger.debug(f"Using clinical_date fallback for procedure: {performed_date}")
         
         # Create FHIR Procedure resource
         procedure = {
@@ -145,7 +156,7 @@ class ProcedureService:
         
         # Add performed date if available
         if performed_date:
-            procedure["performedDateTime"] = performed_date
+            procedure["occurrenceDateTime"] = performed_date
             procedure["meta"]["tag"].append({
                 "system": "http://terminology.hl7.org/CodeSystem/common-tags",
                 "code": "date-source",
@@ -243,9 +254,9 @@ class ProcedureService:
             }
         }
         
-        # Add performed date if available
+        # Add performed date if available (fhir.resources R5 uses occurrenceDateTime)
         if performed_date:
-            procedure["performedDateTime"] = performed_date
+            procedure["occurrenceDateTime"] = performed_date
         
         # Add extraction confidence if available
         confidence = field.get('confidence')

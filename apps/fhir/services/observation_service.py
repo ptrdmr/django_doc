@@ -66,6 +66,7 @@ class ObservationService:
             return observations
         
         # PRIMARY PATH: Handle structured Pydantic data
+        clinical_date = extracted_data.get('clinical_date')
         if 'structured_data' in extracted_data:
             structured_data = extracted_data['structured_data']
             if isinstance(structured_data, dict):
@@ -75,7 +76,7 @@ class ObservationService:
                     self.logger.info(f"Processing {len(vital_signs)} vital signs via structured path")
                     for vital_dict in vital_signs:
                         if isinstance(vital_dict, dict):
-                            obs_resource = self._create_observation_from_structured(vital_dict, patient_id, 'vital_sign')
+                            obs_resource = self._create_observation_from_structured(vital_dict, patient_id, 'vital_sign', clinical_date=clinical_date)
                             if obs_resource:
                                 observations.append(obs_resource)
                 
@@ -85,7 +86,7 @@ class ObservationService:
                     self.logger.info(f"Processing {len(lab_results)} lab results via structured path")
                     for lab_dict in lab_results:
                         if isinstance(lab_dict, dict):
-                            obs_resource = self._create_observation_from_structured(lab_dict, patient_id, 'lab_result')
+                            obs_resource = self._create_observation_from_structured(lab_dict, patient_id, 'lab_result', clinical_date=clinical_date)
                             if obs_resource:
                                 observations.append(obs_resource)
                 
@@ -111,7 +112,7 @@ class ObservationService:
         self.logger.info(f"Successfully processed {len(observations)} observation resources via legacy path")
         return observations
     
-    def _create_observation_from_structured(self, obs_dict: Dict[str, Any], patient_id: str, obs_type: str) -> Optional[Dict[str, Any]]:
+    def _create_observation_from_structured(self, obs_dict: Dict[str, Any], patient_id: str, obs_type: str, clinical_date=None) -> Optional[Dict[str, Any]]:
         """
         Create a FHIR Observation resource from structured Pydantic-derived dict.
         
@@ -123,6 +124,7 @@ class ObservationService:
                 For LabResult: test_name, value, unit, reference_range, test_date, status, confidence, source
             patient_id: Patient UUID for subject reference
             obs_type: Type indicator - 'vital_sign' or 'lab_result'
+            clinical_date: Optional fallback clinical date from ParsedData
             
         Returns:
             FHIR Observation resource dictionary or None if invalid
@@ -152,6 +154,17 @@ class ObservationService:
                 best_date = max(extracted_dates, key=lambda x: x.confidence)
                 effective_date = best_date.extracted_date.isoformat()
                 self.logger.debug(f"Parsed {obs_type} date {effective_date} with confidence {best_date.confidence}")
+        
+        if not effective_date and clinical_date:
+            from datetime import date as date_type, datetime as datetime_type
+            if isinstance(clinical_date, datetime_type):
+                effective_date = clinical_date.isoformat()
+            elif isinstance(clinical_date, date_type):
+                effective_date = datetime_type.combine(clinical_date, datetime_type.min.time()).isoformat()
+            else:
+                effective_date = str(clinical_date)
+            date_source = "parsed_data_clinical_date"
+            self.logger.debug(f"Using clinical_date fallback for {obs_type}: {effective_date}")
         
         # Get LOINC code if available
         loinc_code = None
