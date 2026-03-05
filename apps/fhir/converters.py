@@ -690,27 +690,70 @@ class StructuredDataConverter(BaseFHIRConverter):
             else:
                 self.logger.debug(f"[{conversion_id}] No ParsedData provided for clinical date lookup")
             
-            # Convert structured data to dictionary format that existing converters expect
+            # Route through FHIRProcessor which has all 12 dual-format services
+            # (Restored from Task 40.20 - was inadvertently reverted in 54aabb9)
             try:
-                converted_data = self._convert_structured_to_dict(structured_data)
-                conversion_time = time.time() - start_time
-                self.logger.debug(f"[{conversion_id}] Data conversion completed in {conversion_time:.3f}s")
-            except Exception as e:
-                raise FHIRConversionError(
-                    f"Failed to convert structured data to dictionary format: {str(e)}",
-                    data_source="structured_medical_extraction",
-                    details={'conversion_id': conversion_id, 'error_type': type(e).__name__}
-                )
-            
-            # Use the existing convert method with the converted data
-            try:
-                resources = self.convert(converted_data, metadata, patient)
+                from apps.fhir.services import FHIRProcessor
+                
+                self.logger.info(f"[{conversion_id}] Using FHIRProcessor with dual-format services for structured data")
+                
+                processor_input = {
+                    'patient_id': str(patient.id),
+                    'structured_data': structured_data.model_dump()
+                }
+                
+                if metadata.get('clinical_date'):
+                    processor_input['clinical_date'] = metadata['clinical_date']
+                
+                fhir_processor = FHIRProcessor()
+                fhir_resources = fhir_processor.process_extracted_data(processor_input)
+                
+                from fhir.resources.condition import Condition
+                from fhir.resources.medicationstatement import MedicationStatement
+                from fhir.resources.observation import Observation
+                from fhir.resources.procedure import Procedure
+                from fhir.resources.practitioner import Practitioner
+                from fhir.resources.encounter import Encounter
+                from fhir.resources.allergyintolerance import AllergyIntolerance
+                from fhir.resources.careplan import CarePlan
+                from fhir.resources.organization import Organization
+                from fhir.resources.servicerequest import ServiceRequest
+                from fhir.resources.diagnosticreport import DiagnosticReport
+                
+                resource_mapping = {
+                    'Condition': Condition,
+                    'MedicationStatement': MedicationStatement,
+                    'Observation': Observation,
+                    'Procedure': Procedure,
+                    'Practitioner': Practitioner,
+                    'Encounter': Encounter,
+                    'AllergyIntolerance': AllergyIntolerance,
+                    'CarePlan': CarePlan,
+                    'Organization': Organization,
+                    'ServiceRequest': ServiceRequest,
+                    'DiagnosticReport': DiagnosticReport
+                }
+                
+                resources = []
+                for fhir_dict in fhir_resources:
+                    resource_type = fhir_dict.get('resourceType')
+                    if resource_type in resource_mapping:
+                        try:
+                            resource_class = resource_mapping[resource_type]
+                            resource_obj = resource_class(**fhir_dict)
+                            resources.append(resource_obj)
+                        except Exception as res_error:
+                            self.logger.warning(f"[{conversion_id}] Could not create {resource_type} resource object: {res_error}")
+                            resources.append(fhir_dict)
+                    else:
+                        self.logger.warning(f"[{conversion_id}] Unknown resource type: {resource_type}")
+                        resources.append(fhir_dict)
+                
                 total_conversion_time = time.time() - start_time
                 
                 self.logger.info(f"[{conversion_id}] Successfully converted to {len(resources)} FHIR resources "
-                               f"in {total_conversion_time:.3f}s")
+                               f"using FHIRProcessor in {total_conversion_time:.3f}s")
                 
-                # Validate that we got reasonable results
                 if total_items > 0 and len(resources) == 0:
                     self.logger.warning(f"[{conversion_id}] No FHIR resources created from {total_items} input items")
                 
@@ -718,8 +761,8 @@ class StructuredDataConverter(BaseFHIRConverter):
                 
             except Exception as e:
                 raise FHIRConversionError(
-                    f"Failed to create FHIR resources from converted data: {str(e)}",
-                    data_source="converted_dictionary",
+                    f"Failed to create FHIR resources via FHIRProcessor: {str(e)}",
+                    data_source="structured_fhir_processor",
                     details={
                         'conversion_id': conversion_id,
                         'error_type': type(e).__name__,

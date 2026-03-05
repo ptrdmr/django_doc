@@ -53,9 +53,9 @@ class ProcedureServiceDualFormatTests(unittest.TestCase):
         self.assertEqual(procedure['subject']['reference'], f'Patient/{self.patient_id}')
         self.assertEqual(procedure['status'], 'completed')
         
-        # Verify performed date
-        self.assertIn('performedDateTime', procedure)
-        self.assertIn('2024-08-15', procedure['performedDateTime'])
+        # Verify performed date (fhir.resources R5 uses occurrenceDateTime)
+        self.assertIn('occurrenceDateTime', procedure)
+        self.assertIn('2024-08-15', procedure['occurrenceDateTime'])
         
         # Verify performer
         self.assertIn('performer', procedure)
@@ -101,7 +101,7 @@ class ProcedureServiceDualFormatTests(unittest.TestCase):
         self.assertEqual(procedure['code']['text'], 'X-ray chest')
         
         # Verify optional fields handled gracefully
-        self.assertNotIn('performedDateTime', procedure)
+        self.assertNotIn('occurrenceDateTime', procedure)
         self.assertNotIn('performer', procedure)
         self.assertNotIn('outcome', procedure)
     
@@ -128,9 +128,9 @@ class ProcedureServiceDualFormatTests(unittest.TestCase):
         self.assertEqual(procedure['code']['text'], 'Appendectomy performed on 2024-06-10')
         self.assertEqual(procedure['subject']['reference'], f'Patient/{self.patient_id}')
         
-        # Verify date was extracted from text
-        self.assertIn('performedDateTime', procedure)
-        self.assertIn('2024-06-10', procedure['performedDateTime'])
+        # Verify date was extracted from text (fhir.resources R5 uses occurrenceDateTime)
+        self.assertIn('occurrenceDateTime', procedure)
+        self.assertIn('2024-06-10', procedure['occurrenceDateTime'])
     
     def test_structured_empty_procedures_list(self):
         """Test handling of empty procedures list in structured data."""

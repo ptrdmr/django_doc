@@ -285,7 +285,7 @@ class DataValidationService:
         
         try:
             # Validate using Pydantic (this will raise ValidationError if invalid)
-            structured_data.dict()  # This triggers full validation
+            structured_data.model_dump()
             
             # Additional business logic validation
             total_resources = (
@@ -294,7 +294,13 @@ class DataValidationService:
                 len(structured_data.vital_signs) + 
                 len(structured_data.lab_results) + 
                 len(structured_data.procedures) + 
-                len(structured_data.providers)
+                len(structured_data.providers) +
+                len(structured_data.encounters) +
+                len(structured_data.service_requests) +
+                len(structured_data.diagnostic_reports) +
+                len(structured_data.allergies) +
+                len(structured_data.care_plans) +
+                len(structured_data.organizations)
             )
             
             if total_resources == 0:

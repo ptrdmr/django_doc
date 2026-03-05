@@ -17,7 +17,7 @@ import re
 import gc
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
-from pydantic import BaseModel, Field, validator, ValidationError
+from pydantic import BaseModel, Field, field_validator, model_validator, ValidationError
 from django.conf import settings
 import anthropic
 from openai import OpenAI
@@ -131,10 +131,12 @@ class SourceContext(BaseModel):
     start_index: int = Field(description="Approximate start position in source text", ge=0, default=0)
     end_index: int = Field(description="Approximate end position in source text", ge=0, default=0)
     
-    @validator('end_index')
-    def end_after_start(cls, v, values):
-        if 'start_index' in values and v < values['start_index'] and v != 0:
-            v = values['start_index'] + len(values.get('text', ''))
+    @field_validator('end_index')
+    @classmethod
+    def end_after_start(cls, v, info):
+        start = info.data.get('start_index', 0)
+        if v < start and v != 0:
+            v = start + len(info.data.get('text', ''))
         return v
 
 
@@ -347,17 +349,19 @@ class StructuredMedicalExtraction(BaseModel):
     document_type: Optional[str] = Field(default=None, description="Type of clinical document")
     confidence_average: Optional[float] = Field(default=None, description="Average confidence")
     
-    @validator('confidence_average', always=True)
-    def calculate_average_confidence(cls, v, values):
+    @model_validator(mode='after')
+    def calculate_average_confidence(self):
         """Calculate average confidence across all extracted items."""
         all_items = []
         for field_name in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers', 'encounters', 'service_requests', 'diagnostic_reports', 'allergies', 'care_plans', 'organizations']:
-            items = values.get(field_name, [])
+            items = getattr(self, field_name, [])
             all_items.extend(item.confidence for item in items)
         
         if all_items:
-            return round(sum(all_items) / len(all_items), 3)
-        return 0.0
+            self.confidence_average = round(sum(all_items) / len(all_items), 3)
+        else:
+            self.confidence_average = 0.0
+        return self
 
 
 def extract_medical_data_structured(text: str, context: Optional[str] = None) -> StructuredMedicalExtraction:
@@ -1145,7 +1149,7 @@ def extract_medical_data(text: str, context: Optional[str] = None) -> Dict[str, 
             ],
             "vital_signs": [
                 {
-                    "type": vital.measurement_type,
+                    "type": vital.measurement,
                     "value": vital.value,
                     "unit": vital.unit or ""
                 }
