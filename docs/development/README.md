@@ -3618,3 +3618,21 @@ text = service.extract_text_from_result(result)
 
 *Updated: 2025-09-17 07:36:02 | Task 34.2 refactoring patterns documented with testing and compatibility strategies*
 *Updated: 2026-02-04 08:54:01 | Added Textract OCR text extraction ordering and page separators (Task 42.7)*
+
+---
+
+#### Patient Summary Side Panel (Task 43 Completed)
+
+**Patient-Centric Hub Initiative** — Collapsible right-side panel on patient detail page replaces old Reports flow for patient summaries.
+
+**Key Endpoints:**
+- `GET /patients/<pk>/summary-data/` — JSON via `Patient.get_comprehensive_report()`
+- `GET /patients/<pk>/summary-pdf/` — PDF download via `PDFGenerator`
+
+**Alpine.js Component:** `patientSummaryPanel(patientId)` — manages toggle, fetch, PDF download, localStorage persistence.
+
+**Deprecation:** Patient summary generation via `/reports/generate/?type=patient_summary` now redirects to patient list. Reports dashboard marks Patient Summary as "Moved to Patient Page". The Reports section on patient detail page has been removed.
+
+**Tests:** `apps/patients/tests/test_summary_panel.py` — 11 tests covering endpoints, auth, deprecation behavior.
+
+*Updated: 2026-03-06 20:34:02 | Task 43 completed — Patient Summary Side Panel with Reports flow deprecation*

@@ -1,6 +1,6 @@
 # Task ID: 43
 # Title: Patient Summary Side Panel
-# Status: pending
+# Status: done
 # Dependencies: None
 # Priority: high
 # Description: Add a collapsible right-side panel to the patient detail page that displays the comprehensive patient summary report. Eliminates navigation to Reports module. Includes JSON endpoint, PDF endpoint, Alpine.js component, and cleanup of old Reports flow.
@@ -53,7 +53,7 @@ Add a button element that triggers the patientSummaryPanel() component's toggle 
 ### Details:
 Use JavaScript's localStorage API to store the panel's state and retrieve it upon page load. Implement CSS media queries to adjust the panel's size and positioning on mobile devices. Ensure touch events are handled appropriately for mobile interactions.
 
-## 8. Deprecate Old Reports Flow and Final Cleanup [pending]
+## 8. Deprecate Old Reports Flow and Final Cleanup [done]
 ### Dependencies: 43.7
 ### Description: Remove the old Reports flow for patient summaries from the application to streamline the user experience. Perform final cleanup tasks, including code refactoring and documentation updates.
 ### Details:

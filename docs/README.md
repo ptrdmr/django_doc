@@ -64,6 +64,7 @@ Django 5.0 healthcare platform that transforms medical documents into FHIR-compa
 | Search-Optimized Fields | Indexed search, <50ms for 10K+ patients |
 | Optimistic Concurrency | Auto-merge, quality flagging, 28 subtasks |
 | Snippet Review | Text snippet validation (backend complete) |
+| Patient Summary Panel | Collapsible side panel on patient detail, JSON + PDF endpoints, localStorage persistence, old Reports flow deprecated |
 
 **Full task breakdown:** [docs/development/task-history.md](./development/task-history.md)
 
@@ -73,6 +74,7 @@ Django 5.0 healthcare platform that transforms medical documents into FHIR-compa
 - Task 9: Integration APIs
 - Task 10: Advanced Security Features
 - Task 42: AWS Textract OCR (in progress)
+- Task 44: Inline Document Upload (patient-hub)
 
 ### Platform Statistics
 - 21,000+ lines of code

@@ -3627,7 +3627,7 @@
         "testStrategy": "Unit tests for both endpoints. Verify panel opens/closes, fetches JSON, renders 7 sections, PDF download works. Test z-index hierarchy with existing modals. Test mobile full-screen overlay.",
         "priority": "high",
         "dependencies": [],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -3711,7 +3711,7 @@
               7
             ],
             "details": "Identify and remove all code, routes, and UI elements related to the old Reports flow. Refactor any remaining code that depended on the old flow. Update documentation to reflect the new patient summary panel implementation and ensure all code is well-commented and maintainable.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Conduct thorough testing to ensure the old Reports flow is completely removed and that the new patient summary panel functions correctly without any regressions."
           }
         ]
@@ -3925,7 +3925,7 @@
     ],
     "metadata": {
       "created": "2026-02-24T03:36:05.004Z",
-      "updated": "2026-02-24T03:49:31.458Z",
+      "updated": "2026-03-07T16:58:10.507Z",
       "description": "Patient-Centric Hub feature"
     }
   }

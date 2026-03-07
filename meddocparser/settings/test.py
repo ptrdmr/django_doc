@@ -49,6 +49,7 @@ CELERY_RESULT_BACKEND = 'cache+memory://'
 SECRET_KEY = 'test-secret-key-not-for-production'
 DEBUG = True
 ALLOWED_HOSTS = ['*']
+SECURE_SSL_REDIRECT = False
 
 # Password validation (simplified for testing)
 AUTH_PASSWORD_VALIDATORS = []

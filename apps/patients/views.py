@@ -360,24 +360,6 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
                 'has_fhir_data': False
             }
     
-    def get_patient_reports(self):
-        """
-        Get reports generated for this patient.
-        
-        Returns:
-            QuerySet: GeneratedReport objects
-        """
-        try:
-            # Import here to avoid circular dependency
-            from apps.reports.models import GeneratedReport
-            
-            return GeneratedReport.objects.filter(
-                parameters_snapshot__patient_id=str(self.object.id)
-            ).order_by('-created_at')
-        except (ImportError, DatabaseError, OperationalError) as e:
-            logger.error(f"Error loading reports for patient {self.object.id}: {e}")
-            return []
-    
     def get_flagged_extractions_count(self):
         """
         Get count of flagged extractions for this patient.
@@ -417,9 +399,6 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             
             # Add patient's documents
             context['patient_documents'] = self.object.documents.select_related('created_by').order_by('-uploaded_at')
-            
-            # Add patient's generated reports
-            context['patient_reports'] = self.get_patient_reports()
             
             # Add count of flagged extractions for this patient
             context['flagged_extractions_count'] = self.get_flagged_extractions_count()

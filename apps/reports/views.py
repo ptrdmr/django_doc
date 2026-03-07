@@ -54,27 +54,28 @@ class ReportDashboardView(LoginRequiredMixin, ListView):
             created_by=self.request.user
         ).select_related('configuration').order_by('-created_at')[:10]
         
-        # Get report type counts
         context['report_types'] = [
             {
                 'value': 'patient_summary',
                 'label': 'Patient Summary',
-                'description': 'Comprehensive patient medical history report',
+                'description': 'Now available directly from the patient detail page via the Summary panel.',
                 'icon': 'user-circle',
+                'disabled': True,
+                'deprecated': True,
             },
             {
                 'value': 'provider_activity',
                 'label': 'Provider Activity',
                 'description': 'Provider statistics and patient list',
                 'icon': 'briefcase',
-                'disabled': True,  # Not yet implemented
+                'disabled': True,
             },
             {
                 'value': 'document_audit',
                 'label': 'Document Audit',
                 'description': 'Document processing metrics and audit trail',
                 'icon': 'document-text',
-                'disabled': True,  # Not yet implemented
+                'disabled': True,
             },
         ]
         
@@ -84,9 +85,22 @@ class ReportDashboardView(LoginRequiredMixin, ListView):
 class GenerateReportView(LoginRequiredMixin, FormView):
     """
     View for generating reports with parameter selection.
+    Patient summary reports are deprecated here; use the patient detail page instead.
     """
     template_name = 'reports/generate.html'
     success_url = reverse_lazy('reports:dashboard')
+    
+    def get(self, request, *args, **kwargs):
+        """Redirect patient_summary requests to the patients list."""
+        report_type = request.GET.get('type', '')
+        if report_type == 'patient_summary':
+            messages.info(
+                request,
+                'Patient summary reports are now accessed directly from each '
+                'patient\'s detail page using the Summary panel.'
+            )
+            return redirect('patients:list')
+        return super().get(request, *args, **kwargs)
     
     def get_form_class(self):
         """Return appropriate form based on report type."""
