@@ -21,6 +21,7 @@ from .models import Patient, PatientHistory
 from .forms import PatientForm
 from apps.accounts.decorators import has_permission, requires_phi_access, provider_required, admin_required
 from apps.core.utils import log_user_activity, ActivityTypes
+from apps.documents.forms import InlineDocumentUploadForm
 from django.utils.decorators import method_decorator
 
 logger = logging.getLogger(__name__)
@@ -399,6 +400,9 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             
             # Add patient's documents
             context['patient_documents'] = self.object.documents.select_related('created_by').order_by('-uploaded_at')
+            
+            # Add inline upload form
+            context['upload_form'] = InlineDocumentUploadForm()
             
             # Add count of flagged extractions for this patient
             context['flagged_extractions_count'] = self.get_flagged_extractions_count()
@@ -811,6 +815,103 @@ class PatientSummaryPDFView(LoginRequiredMixin, View):
         except Exception as e:
             logger.error(f"Error generating summary PDF for patient {pk}: {e}")
             return HttpResponse('Unable to generate PDF', status=500)
+
+
+@method_decorator([provider_required, has_permission('documents.add_document')], name='dispatch')
+class PatientUploadDocumentView(LoginRequiredMixin, View):
+    """
+    Handle inline document upload from the patient detail page.
+
+    Accepts POST with a PDF file, creates a Document record linked to the
+    patient identified by the URL, triggers async processing, and returns
+    an HTML partial for htmx to swap into the documents table.
+    """
+    http_method_names = ['post']
+
+    def post(self, request, pk):
+        patient = get_object_or_404(Patient, pk=pk)
+
+        form = InlineDocumentUploadForm(request.POST, request.FILES)
+        form._patient = patient
+
+        if form.is_valid():
+            return self._handle_valid_upload(request, form, patient)
+        else:
+            logger.error(f"Inline upload form errors: {form.errors.as_json()}")
+            logger.error(f"POST data keys: {list(request.POST.keys())}, FILES keys: {list(request.FILES.keys())}")
+            return self._handle_invalid_upload(request, form, patient)
+
+    def _handle_valid_upload(self, request, form, patient):
+        """Save document, trigger processing, return row partial."""
+        try:
+            document = form.save(commit=False)
+            document.patient = patient
+            document.created_by = request.user
+            document.save()
+
+            logger.info(
+                f"Inline document upload: {document.filename} "
+                f"by user {request.user.id} for patient {patient.id}"
+            )
+
+            log_user_activity(
+                user=request.user,
+                activity_type=ActivityTypes.DOCUMENT_UPLOAD,
+                description=f"Uploaded {document.filename} for {patient.first_name} {patient.last_name}",
+                request=request,
+                related_object_type='document',
+                related_object_id=document.id
+            )
+
+            from apps.documents.tasks import process_document_async
+            process_document_async.delay(document.id)
+
+            is_htmx = request.headers.get('HX-Request') == 'true'
+            if is_htmx:
+                html = render(request, 'patients/partials/_document_row.html', {
+                    'document': document,
+                }).content.decode()
+                return HttpResponse(html)
+            else:
+                messages.success(request, f"Document '{document.filename}' uploaded successfully.")
+                return redirect('patients:detail', pk=patient.pk)
+
+        except IntegrityError as integrity_error:
+            logger.error(f"Integrity error during inline upload: {integrity_error}")
+            return self._error_response(request, patient, form, "Database error while saving document.")
+
+        except (DatabaseError, OperationalError) as db_error:
+            logger.error(f"Database error during inline upload: {db_error}")
+            return self._error_response(request, patient, form, "Database error. Please try again.")
+
+    def _handle_invalid_upload(self, request, form, patient):
+        """Return validation errors as JSON for the fetch-based upload."""
+        is_htmx = request.headers.get('HX-Request') == 'true'
+        if is_htmx:
+            error_messages = []
+            for field, errors in form.errors.items():
+                for error in errors:
+                    error_messages.append(f"{field}: {error}" if field != '__all__' else error)
+            error_text = '; '.join(error_messages) or 'Upload validation failed.'
+            return HttpResponse(
+                f'<div class="p-3 text-sm text-red-600 bg-red-50 rounded-lg border border-red-200">{error_text}</div>',
+                status=422
+            )
+        else:
+            messages.error(request, f"Upload failed: {form.errors.as_text()}")
+            return redirect('patients:detail', pk=patient.pk)
+
+    def _error_response(self, request, patient, form, message):
+        """Return error response as HTML snippet."""
+        is_htmx = request.headers.get('HX-Request') == 'true'
+        if is_htmx:
+            return HttpResponse(
+                f'<div class="p-3 text-sm text-red-600 bg-red-50 rounded-lg border border-red-200">{message}</div>',
+                status=422
+            )
+        else:
+            messages.error(request, message)
+            return redirect('patients:detail', pk=patient.pk)
 
 
 @method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')

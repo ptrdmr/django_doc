@@ -232,13 +232,15 @@
                                     <div class="flex justify-between items-start">
                                         <div>
                                             <h3 class="font-bold text-green-900 text-lg">
-                                                {{ entry.resource.code.text|default:entry.resource.code.coding.0.display|default:entry.resource.code.coding.0.code|default:"Unknown Condition" }}
+                                                {% firstof entry.resource.code.text entry.resource.code.coding.0.display entry.resource.code.coding.0.code "Unknown Condition" %}
                                             </h3>
-                                            {% if entry.resource.code.coding.0.code %}
+                                            {% with icd_code=entry.resource.code.coding.0.code %}
+                                            {% if icd_code %}
                                             <p class="text-sm text-green-700 font-mono mt-1">
-                                                ICD-10: {{ entry.resource.code.coding.0.code }}
+                                                ICD-10: {{ icd_code }}
                                             </p>
                                             {% endif %}
+                                            {% endwith %}
                                             <p class="text-xs text-green-600 mt-2">
                                                 Recorded: {{ entry.resource.meta.lastUpdated|default:"Unknown" }}
                                             </p>
@@ -277,7 +279,7 @@
                                     <div class="ml-3 flex-1">
                                         <div class="flex justify-between">
                                             <p class="text-sm font-medium text-gray-900">
-                                                {{ entry.resource.code.text|default:entry.resource.code.coding.0.display|default:entry.resource.code.coding.0.code|default:"Unknown Condition" }}
+                                                {% firstof entry.resource.code.text entry.resource.code.coding.0.display entry.resource.code.coding.0.code "Unknown Condition" %}
                                             </p>
                                             {% if patient.primary_condition_id == entry.resource.id %}
                                             <span class="inline-flex items-center px-2 py-0.5 text-xs font-bold rounded bg-green-100 text-green-800">
@@ -285,11 +287,13 @@
                                             </span>
                                             {% endif %}
                                         </div>
-                                        {% if entry.resource.code.coding.0.code %}
+                                        {% with icd_code=entry.resource.code.coding.0.code %}
+                                        {% if icd_code %}
                                         <p class="text-xs text-gray-500 mt-0.5">
-                                            ICD-10: <span class="font-mono">{{ entry.resource.code.coding.0.code }}</span>
+                                            ICD-10: <span class="font-mono">{{ icd_code }}</span>
                                         </p>
                                         {% endif %}
+                                        {% endwith %}
                                     </div>
                                 </label>
                                 {% endif %}
@@ -323,10 +327,10 @@
                         </svg>
                         Documents <span class="ml-2 text-sm font-normal text-gray-500">({{ patient_documents|length }})</span>
                     </h2>
-                    <a href="{% url 'documents:upload' %}?patient={{ patient.pk }}" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                        + Upload New
-                    </a>
                 </div>
+
+                <!-- Inline Upload Zone -->
+                {% include "patients/partials/_upload_zone.html" with patient=patient upload_form=upload_form %}
                 
                 {% if flagged_extractions_count > 0 %}
                 <div class="mb-4 p-3 bg-amber-50 border-l-4 border-amber-500 rounded-r-lg">
@@ -353,7 +357,6 @@
                 </div>
                 {% endif %}
                 
-                {% if patient_documents %}
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
@@ -364,45 +367,19 @@
                                 <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                             </tr>
                         </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
+                        <tbody id="documents-tbody" class="bg-white divide-y divide-gray-200">
                             {% for document in patient_documents %}
-                            <tr class="hover:bg-gray-50">
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <div class="flex items-center">
-                                        <svg class="h-5 w-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                                        </svg>
-                                        <div>
-                                            <div class="text-sm font-medium text-gray-900">{{ document.filename|truncatechars:30 }}</div>
-                                            <div class="text-xs text-gray-500">{{ document.file_size|filesizeformat }}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full
-                                        {% if document.status == 'completed' %}bg-green-100 text-green-800
-                                        {% elif document.status == 'processing' %}bg-yellow-100 text-yellow-800
-                                        {% elif document.status == 'failed' %}bg-red-100 text-red-800
-                                        {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                        {{ document.get_status_display }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                    {{ document.uploaded_at|date:"M j, Y" }}
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                                    <a href="{% url 'documents:detail' document.pk %}" class="text-blue-600 hover:text-blue-900">View</a>
+                                {% include "patients/partials/_document_row.html" with document=document %}
+                            {% empty %}
+                            <tr id="no-documents-row">
+                                <td colspan="4" class="px-4 py-8 text-center text-sm text-gray-500">
+                                    No documents uploaded yet. Use the upload zone above to add documents.
                                 </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
-                {% else %}
-                <div class="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                    <p class="text-sm text-gray-500">No documents uploaded.</p>
-                </div>
-                {% endif %}
             </div>
 
             <!-- Patient summary is now accessed via the Summary side panel toggle button in the header -->

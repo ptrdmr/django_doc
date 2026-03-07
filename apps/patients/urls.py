@@ -15,6 +15,9 @@ urlpatterns = [
     path('<uuid:pk>/delete/', views.PatientDeleteView.as_view(), name='delete'),
     path('cleanup-deleted/', views.CleanupSoftDeletedView.as_view(), name='cleanup-deleted'),
     
+    # Inline document upload
+    path('<uuid:pk>/upload-document/', views.PatientUploadDocumentView.as_view(), name='upload-document'),
+    
     # FHIR functionality
     path('<uuid:pk>/export-fhir/', views.PatientFHIRExportView.as_view(), name='export-fhir'),
     path('<uuid:pk>/fhir-json/', views.PatientFHIRJSONView.as_view(), name='fhir-json'),

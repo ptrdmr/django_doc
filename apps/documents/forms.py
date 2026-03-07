@@ -257,6 +257,99 @@ class DocumentUploadForm(forms.ModelForm):
         return document
 
 
+class InlineDocumentUploadForm(forms.ModelForm):
+    """
+    Simplified upload form for inline document upload from the patient detail page.
+    
+    Patient is set from the URL (not user-selectable). Only exposes file and
+    optional notes. Reuses the same PDF/size/duplicate validation as
+    DocumentUploadForm.
+    """
+
+    file = forms.FileField(
+        required=True,
+        widget=forms.FileInput(attrs={
+            'accept': '.pdf',
+            'class': 'hidden',
+            'id': 'inline-file-input',
+        }),
+        help_text="Select a PDF file to upload (maximum 50MB)"
+    )
+
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'class': 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm',
+            'rows': 2,
+            'placeholder': 'Optional notes about this document...',
+        }),
+    )
+
+    class Meta:
+        model = Document
+        fields = ['file', 'notes']
+
+    def clean_file(self):
+        """Validate uploaded file: PDF only, 50MB max, non-empty."""
+        file = self.cleaned_data.get('file')
+
+        if not file:
+            raise ValidationError("Please select a file to upload.")
+
+        if not file.name.lower().endswith('.pdf'):
+            raise ValidationError(
+                "Only PDF files are allowed. Please select a PDF file."
+            )
+
+        max_size = 50 * 1024 * 1024
+        if file.size > max_size:
+            size_mb = round(file.size / (1024 * 1024), 1)
+            raise ValidationError(
+                f"File size ({size_mb}MB) exceeds the 50MB limit. "
+                f"Please select a smaller file."
+            )
+
+        if file.size == 0:
+            raise ValidationError("The selected file is empty. Please select a valid PDF file.")
+
+        return file
+
+    def clean(self):
+        """Duplicate detection using file size comparison (same logic as DocumentUploadForm)."""
+        cleaned_data = super().clean()
+        file = cleaned_data.get('file')
+        patient = getattr(self, '_patient', None)
+
+        if file and patient:
+            try:
+                existing_doc = Document.objects.filter(
+                    patient=patient,
+                    file_size=file.size
+                ).exclude(status='failed').first()
+
+                if existing_doc:
+                    raise ValidationError(
+                        f"A document with identical size already exists for this patient: "
+                        f"{existing_doc.filename} "
+                        f"(uploaded {existing_doc.uploaded_at.strftime('%Y-%m-%d %H:%M')})"
+                    )
+            except ValidationError:
+                raise
+            except Exception as e:
+                logger.warning(f"Error during inline duplicate detection: {e}")
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        """Save the document with filename from the uploaded file."""
+        document = super().save(commit=False)
+        if self.cleaned_data.get('file'):
+            document.filename = self.cleaned_data['file'].name
+        if commit:
+            document.save()
+        return document
+
+
 class CorrectDataForm(forms.Form):
     """
     Form for manually correcting extracted FHIR data in flagged documents.
