@@ -3726,7 +3726,7 @@
         "dependencies": [
           43
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -3734,7 +3734,7 @@
             "description": "Create a form on the patient detail page that allows users to select and upload documents directly. This form should include a file input field and a submit button, and should be styled to match the existing page layout.",
             "dependencies": [],
             "details": "Utilize Django's form handling capabilities to create a form that includes a file input field for document selection. Ensure the form is styled consistently with the patient detail page. Implement client-side validation to check for file type and size before submission.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test the form to ensure it accepts only valid file types and sizes, and that it integrates seamlessly with the existing page layout."
           },
           {
@@ -3745,7 +3745,7 @@
               1
             ],
             "details": "Add the 'hx-post' attribute to the form element, pointing to the appropriate endpoint for document upload. Set 'hx-target' to specify where the response should be rendered, and 'hx-swap' to define how the content should be swapped. Ensure the form's 'enctype' is set to 'multipart/form-data' to handle file uploads. Refer to HTMX documentation for detailed implementation guidance. ([four.htmx.org](https://four.htmx.org/docs/?utm_source=openai))",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Verify that the form submits asynchronously and that the response is rendered in the specified target without a full page reload."
           },
           {
@@ -3756,7 +3756,7 @@
               2
             ],
             "details": "Define a view function that accepts POST requests at the '/patients/<pk>/upload-document/' endpoint. In this view, handle the uploaded file, perform necessary validations, and save the document. After processing, render the '_document_row.html' partial with the new document information and return it as the response. Ensure that the view handles errors gracefully and returns appropriate error messages when validation fails. ([docs.djangoproject.com](https://docs.djangoproject.com/en/3.2/topics/http/file-uploads/?utm_source=openai))",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test the view to ensure it correctly processes uploaded files, handles validation errors, and returns the expected partial template."
           },
           {
@@ -3767,7 +3767,7 @@
               3
             ],
             "details": "Design the '_document_row.html' partial to display document details such as name, upload date, and a link to view or download the document. Ensure the partial is styled consistently with the rest of the patient detail page. In the upload endpoint view, render this partial with the new document information and include it in the response to be swapped into the page by HTMX. ([htmx.org](https://htmx.org/examples/file-upload/?utm_source=openai))",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Verify that the partial template displays document information correctly and integrates seamlessly into the patient detail page."
           },
           {
@@ -3778,7 +3778,7 @@
               2
             ],
             "details": "Include a 'progress' element in the form to display upload progress. Use HTMX's 'htmx:xhr:progress' event to listen for progress updates and adjust the progress bar's value accordingly. Ensure the progress bar is styled appropriately and provides clear feedback to the user. ([htmx.org](https://htmx.org/examples/file-upload/?utm_source=openai))",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test the progress indicator to ensure it updates correctly during file uploads and provides accurate feedback to the user."
           },
           {
@@ -3789,7 +3789,7 @@
               3
             ],
             "details": "In the document upload view, perform validation checks on the uploaded file, such as verifying file type and size. If validation fails, return error messages in the response. Use HTMX's 'hx-swap' attribute to replace the form's content with the error messages, displaying them inline within the form. Ensure that error messages are clear and provide guidance on how to correct the issues. ([htmx.org](https://htmx.org/examples/file-upload-input?utm_source=openai))",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test the validation logic to ensure it correctly identifies invalid files and displays appropriate error messages inline within the form."
           }
         ]
@@ -3925,7 +3925,7 @@
     ],
     "metadata": {
       "created": "2026-02-24T03:36:05.004Z",
-      "updated": "2026-03-07T16:58:10.507Z",
+      "updated": "2026-03-07T18:32:21.555Z",
       "description": "Patient-Centric Hub feature"
     }
   }

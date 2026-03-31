@@ -1,0 +1,29 @@
+<tr class="hover:bg-gray-50">
+    <td class="px-4 py-3 whitespace-nowrap">
+        <div class="flex items-center">
+            <svg class="h-5 w-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+            </svg>
+            <div>
+                <div class="text-sm font-medium text-gray-900">{{ document.filename|truncatechars:30 }}</div>
+                <div class="text-xs text-gray-500">{{ document.file_size|filesizeformat }}</div>
+            </div>
+        </div>
+    </td>
+    <td class="px-4 py-3 whitespace-nowrap">
+        <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full
+            {% if document.status == 'completed' %}bg-green-100 text-green-800
+            {% elif document.status == 'processing' %}bg-yellow-100 text-yellow-800
+            {% elif document.status == 'failed' %}bg-red-100 text-red-800
+            {% elif document.status == 'review' %}bg-amber-100 text-amber-800
+            {% else %}bg-gray-100 text-gray-800{% endif %}">
+            {{ document.get_status_display }}
+        </span>
+    </td>
+    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+        {{ document.uploaded_at|date:"M j, Y" }}
+    </td>
+    <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
+        <a href="{% url 'documents:detail' document.pk %}" class="text-blue-600 hover:text-blue-900">View</a>
+    </td>
+</tr>
