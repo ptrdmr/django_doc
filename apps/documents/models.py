@@ -100,6 +100,8 @@ class Document(BaseModel):
         ('completed', 'Completed'),
         ('failed', 'Processing Failed'),
         ('review', 'Needs Review'),
+        ('ocr_pending', 'OCR Processing'),
+        ('requires_review', 'Requires Review'),
     ]
     
     # Document metadata
