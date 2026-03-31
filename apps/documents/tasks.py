@@ -1305,7 +1305,7 @@ def process_document_async(self, document_id: int):
         result = {
             'success': True,
             'document_id': document_id,
-            'status': 'review',
+            'status': document.status,
             'task_id': self.request.id,
             'pdf_extraction': extraction_result_meta,
             'ai_analysis': ai_result if ai_result else {'success': False, 'error': 'AI analysis skipped - no content or no API keys'},
