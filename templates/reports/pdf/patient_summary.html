@@ -416,6 +416,100 @@
         {% endif %}
     </div>
     
+    <!-- SECTION 8: Allergies -->
+    <div class="section">
+        <div class="section-title">
+            <span class="section-number">8</span>
+            Allergies
+        </div>
+        
+        {% if data.clinical_summary.allergies %}
+        <div class="table-container">
+            {% for allergy in data.clinical_summary.allergies %}
+            <div class="table-row">
+                <strong>{{ allergy.display_name }}</strong> | 
+                Severity: {{ allergy.severity|default:"Not specified" }} | 
+                Status: {{ allergy.status|default:"Unknown" }}
+                {% if allergy.reactions %} | Reactions: {{ allergy.reactions|join:", " }}{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">No allergies recorded</div>
+        {% endif %}
+    </div>
+    
+    <!-- SECTION 9: Care Plans -->
+    <div class="section">
+        <div class="section-title">
+            <span class="section-number">9</span>
+            Care Plans
+        </div>
+        
+        {% if data.clinical_summary.care_plans %}
+        <div class="table-container">
+            {% for plan in data.clinical_summary.care_plans %}
+            <div class="table-row">
+                <strong>{{ plan.description|default:"No description" }}</strong> | 
+                Status: {{ plan.status|default:"Unknown" }}
+                {% if plan.goals %} | Goals: {{ plan.goals|join:"; " }}{% endif %}
+                {% if plan.period.start %} | From: {{ plan.period.start|date:"m/d/Y" }}{% endif %}
+                {% if plan.period.end %} to {{ plan.period.end|date:"m/d/Y" }}{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">No care plans recorded</div>
+        {% endif %}
+    </div>
+    
+    <!-- SECTION 10: Service Requests -->
+    <div class="section">
+        <div class="section-title">
+            <span class="section-number">10</span>
+            Service Requests
+        </div>
+        
+        {% if data.clinical_summary.service_requests %}
+        <div class="table-container">
+            {% for req in data.clinical_summary.service_requests %}
+            <div class="table-row">
+                <strong>{{ req.display_name }}</strong> | 
+                Priority: {{ req.priority|default:"Routine" }} | 
+                Status: {{ req.status|default:"Unknown" }}
+                {% if req.authored_on %} | Date: {{ req.authored_on|date:"m/d/Y" }}{% endif %}
+                {% if req.reason %} | Reason: {{ req.reason|join:", " }}{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">No service requests recorded</div>
+        {% endif %}
+    </div>
+    
+    <!-- SECTION 11: Diagnostic Reports -->
+    <div class="section">
+        <div class="section-title">
+            <span class="section-number">11</span>
+            Diagnostic Reports
+        </div>
+        
+        {% if data.clinical_summary.diagnostic_reports %}
+        <div class="table-container">
+            {% for diag in data.clinical_summary.diagnostic_reports %}
+            <div class="table-row">
+                <strong>{{ diag.display_name }}</strong> | 
+                Status: {{ diag.status|default:"Unknown" }}
+                {% if diag.effective_date %} | Date: {{ diag.effective_date|date:"m/d/Y" }}{% endif %}
+                {% if diag.conclusion %} | Conclusion: {{ diag.conclusion }}{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">No diagnostic reports recorded</div>
+        {% endif %}
+    </div>
+    
     <!-- FOOTER -->
     <div class="report-footer">
         <p><strong>Disclaimer:</strong> This report is generated from structured clinical data for informational purposes only. 

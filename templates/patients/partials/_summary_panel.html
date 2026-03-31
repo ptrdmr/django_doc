@@ -1,5 +1,5 @@
 {# Patient Summary Side Panel - Renders 7 sections from JSON data via Alpine.js #}
-{# Data structure: patient_info, clinical_summary (conditions, procedures, medications, observations, encounters, weight_timeline) #}
+{# Data structure: patient_info, clinical_summary (conditions, procedures, medications, observations, encounters, weight_timeline, allergies, care_plans, service_requests, diagnostic_reports) #}
 <div class="summary-panel-content h-full overflow-y-auto p-4" x-ref="panelContent">
     <!-- Loading state -->
     <div x-show="isLoading" class="flex flex-col items-center justify-center py-12">
@@ -166,6 +166,102 @@
                     </div>
                 </template>
                 <div x-show="!summaryData?.clinical_summary?.procedures?.length" class="text-sm text-gray-500 italic py-2">No procedures recorded</div>
+            </div>
+
+            <!-- Section 8: Allergies -->
+            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
+                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">8</span>
+                    Allergies
+                </h3>
+                <template x-if="summaryData?.clinical_summary?.allergies?.length">
+                    <div class="space-y-2 text-sm">
+                        <template x-for="(a, idx) in summaryData.clinical_summary.allergies" :key="'allergy-' + idx">
+                            <div class="p-2 bg-white rounded border border-gray-100">
+                                <span class="font-medium" x-text="a.display_name || 'Unknown'"></span> |
+                                Severity: <span x-text="a.severity || 'Not specified'"></span> |
+                                Status: <span x-text="a.status || 'Unknown'"></span>
+                                <template x-if="a.reactions?.length">
+                                    <span> | Reactions: <span x-text="a.reactions.join(', ')"></span></span>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <div x-show="!summaryData?.clinical_summary?.allergies?.length" class="text-sm text-gray-500 italic py-2">No allergies recorded</div>
+            </div>
+
+            <!-- Section 9: Care Plans -->
+            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
+                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">9</span>
+                    Care Plans
+                </h3>
+                <template x-if="summaryData?.clinical_summary?.care_plans?.length">
+                    <div class="space-y-2 text-sm">
+                        <template x-for="(cp, idx) in summaryData.clinical_summary.care_plans" :key="'cp-' + idx">
+                            <div class="p-2 bg-white rounded border border-gray-100">
+                                <span class="font-medium" x-text="cp.description || 'No description'"></span> |
+                                Status: <span x-text="cp.status || 'Unknown'"></span>
+                                <template x-if="cp.goals?.length">
+                                    <span> | Goals: <span x-text="cp.goals.join('; ')"></span></span>
+                                </template>
+                                <template x-if="cp.period?.start">
+                                    <span> | From: <span x-text="new Date(cp.period.start).toLocaleDateString()"></span></span>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <div x-show="!summaryData?.clinical_summary?.care_plans?.length" class="text-sm text-gray-500 italic py-2">No care plans recorded</div>
+            </div>
+
+            <!-- Section 10: Service Requests -->
+            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
+                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">10</span>
+                    Service Requests
+                </h3>
+                <template x-if="summaryData?.clinical_summary?.service_requests?.length">
+                    <div class="space-y-2 text-sm">
+                        <template x-for="(sr, idx) in summaryData.clinical_summary.service_requests" :key="'sr-' + idx">
+                            <div class="p-2 bg-white rounded border border-gray-100">
+                                <span class="font-medium" x-text="sr.display_name || 'Unknown'"></span> |
+                                Priority: <span x-text="sr.priority || 'Routine'"></span> |
+                                Status: <span x-text="sr.status || 'Unknown'"></span>
+                                <template x-if="sr.authored_on">
+                                    <span> | Date: <span x-text="new Date(sr.authored_on).toLocaleDateString()"></span></span>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <div x-show="!summaryData?.clinical_summary?.service_requests?.length" class="text-sm text-gray-500 italic py-2">No service requests recorded</div>
+            </div>
+
+            <!-- Section 11: Diagnostic Reports -->
+            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
+                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">11</span>
+                    Diagnostic Reports
+                </h3>
+                <template x-if="summaryData?.clinical_summary?.diagnostic_reports?.length">
+                    <div class="space-y-2 text-sm">
+                        <template x-for="(dr, idx) in summaryData.clinical_summary.diagnostic_reports" :key="'dr-' + idx">
+                            <div class="p-2 bg-white rounded border border-gray-100">
+                                <span class="font-medium" x-text="dr.display_name || 'Unknown'"></span> |
+                                Status: <span x-text="dr.status || 'Unknown'"></span>
+                                <template x-if="dr.conclusion">
+                                    <span> | Conclusion: <span x-text="dr.conclusion"></span></span>
+                                </template>
+                                <template x-if="dr.effective_date">
+                                    <span> | Date: <span x-text="new Date(dr.effective_date).toLocaleDateString()"></span></span>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <div x-show="!summaryData?.clinical_summary?.diagnostic_reports?.length" class="text-sm text-gray-500 italic py-2">No diagnostic reports recorded</div>
             </div>
 
             <!-- Footer -->

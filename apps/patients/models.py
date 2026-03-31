@@ -1281,7 +1281,11 @@ class Patient(MedicalRecord):
                     'procedures': [],
                     'medications': [],
                     'observations': [],
-                    'encounters': []
+                    'encounters': [],
+                    'allergies': [],
+                    'care_plans': [],
+                    'service_requests': [],
+                    'diagnostic_reports': [],
                 },
                 'provider_summary': {
                     'providers': [],
@@ -1351,7 +1355,27 @@ class Patient(MedicalRecord):
                     org_summary = self._extract_organization_for_report(resource)
                     if org_summary:
                         report['provider_summary']['organizations'].append(org_summary)
-            
+
+                elif resource_type == 'AllergyIntolerance':
+                    allergy_summary = self._extract_allergy_for_report(resource)
+                    if allergy_summary:
+                        report['clinical_summary']['allergies'].append(allergy_summary)
+
+                elif resource_type == 'CarePlan':
+                    plan_summary = self._extract_care_plan_for_report(resource)
+                    if plan_summary:
+                        report['clinical_summary']['care_plans'].append(plan_summary)
+
+                elif resource_type == 'ServiceRequest':
+                    req_summary = self._extract_service_request_for_report(resource)
+                    if req_summary:
+                        report['clinical_summary']['service_requests'].append(req_summary)
+
+                elif resource_type == 'DiagnosticReport':
+                    diag_summary = self._extract_diagnostic_report_for_report(resource)
+                    if diag_summary:
+                        report['clinical_summary']['diagnostic_reports'].append(diag_summary)
+
             # Update metadata
             report['report_metadata']['total_resources'] = total_resources
             report['report_metadata']['status'] = 'success'
@@ -1408,7 +1432,11 @@ class Patient(MedicalRecord):
                     'procedures': [],
                     'medications': [],
                     'observations': [],
-                    'encounters': []
+                    'encounters': [],
+                    'allergies': [],
+                    'care_plans': [],
+                    'service_requests': [],
+                    'diagnostic_reports': [],
                 },
                 'provider_summary': {
                     'providers': [],
@@ -2107,6 +2135,216 @@ class Patient(MedicalRecord):
         except Exception as e:
             return {'error': f'Error processing organization: {str(e)}'}
 
+    def _extract_allergy_for_report(self, allergy):
+        """Extract allergy/intolerance information for comprehensive report."""
+        try:
+            allergy_data = {
+                'resource_type': 'AllergyIntolerance',
+                'id': allergy.get('id', 'unknown'),
+                'status': allergy.get('clinicalStatus', {}).get('coding', [{}])[0].get('code', 'unknown'),
+                'verification': allergy.get('verificationStatus', {}).get('coding', [{}])[0].get('code', 'unknown'),
+                'display_name': 'Unknown Allergen',
+                'onset_date': None,
+                'severity': None,
+                'reactions': [],
+                'notes': []
+            }
+
+            if 'code' in allergy:
+                if 'text' in allergy['code'] and allergy['code']['text']:
+                    allergy_data['display_name'] = allergy['code']['text']
+                elif 'coding' in allergy['code']:
+                    for coding in allergy['code']['coding']:
+                        display = coding.get('display', '')
+                        if display:
+                            allergy_data['display_name'] = display
+                            break
+
+            if 'onsetDateTime' in allergy:
+                try:
+                    date_str = allergy['onsetDateTime'][:10]
+                    allergy_data['onset_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    allergy_data['onset_date'] = None
+
+            if 'reaction' in allergy:
+                for reaction in allergy['reaction']:
+                    if 'severity' in reaction and not allergy_data['severity']:
+                        allergy_data['severity'] = reaction['severity']
+                    for manifestation in reaction.get('manifestation', []):
+                        text = manifestation.get('text', '')
+                        if text:
+                            allergy_data['reactions'].append(text)
+
+            if 'note' in allergy:
+                for note in allergy['note']:
+                    if 'text' in note:
+                        allergy_data['notes'].append(note['text'])
+
+            return allergy_data
+
+        except Exception as e:
+            return {'error': f'Error processing allergy: {str(e)}'}
+
+    def _extract_care_plan_for_report(self, care_plan):
+        """Extract care plan information for comprehensive report."""
+        try:
+            care_plan_data = {
+                'resource_type': 'CarePlan',
+                'id': care_plan.get('id', 'unknown'),
+                'status': care_plan.get('status', 'unknown'),
+                'intent': care_plan.get('intent', 'unknown'),
+                'description': care_plan.get('description', 'No description'),
+                'period': {
+                    'start': None,
+                    'end': None
+                },
+                'goals': [],
+                'activities': [],
+                'notes': []
+            }
+
+            if 'period' in care_plan:
+                period = care_plan['period']
+                if 'start' in period:
+                    try:
+                        date_str = period['start'][:10]
+                        care_plan_data['period']['start'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        pass
+                if 'end' in period:
+                    try:
+                        date_str = period['end'][:10]
+                        care_plan_data['period']['end'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    except (ValueError, AttributeError):
+                        pass
+
+            if 'goal' in care_plan:
+                for goal in care_plan['goal']:
+                    desc = goal.get('description', {})
+                    text = desc.get('text', '') if isinstance(desc, dict) else str(desc)
+                    if text:
+                        care_plan_data['goals'].append(text)
+
+            if 'activity' in care_plan:
+                for activity in care_plan['activity']:
+                    detail = activity.get('detail', {})
+                    desc = detail.get('description', '') if isinstance(detail, dict) else ''
+                    if desc:
+                        care_plan_data['activities'].append(desc)
+
+            if 'note' in care_plan:
+                for note in care_plan['note']:
+                    if 'text' in note:
+                        care_plan_data['notes'].append(note['text'])
+
+            return care_plan_data
+
+        except Exception as e:
+            return {'error': f'Error processing care plan: {str(e)}'}
+
+    def _extract_service_request_for_report(self, service_request):
+        """Extract service request information for comprehensive report."""
+        try:
+            request_data = {
+                'resource_type': 'ServiceRequest',
+                'id': service_request.get('id', 'unknown'),
+                'status': service_request.get('status', 'unknown'),
+                'intent': service_request.get('intent', 'unknown'),
+                'display_name': 'Unknown Request',
+                'authored_on': None,
+                'priority': service_request.get('priority'),
+                'reason': [],
+                'category': None
+            }
+
+            if 'code' in service_request:
+                code = service_request['code']
+                if 'text' in code and code['text']:
+                    request_data['display_name'] = code['text']
+                elif 'coding' in code:
+                    for coding in code['coding']:
+                        display = coding.get('display', '')
+                        if display:
+                            request_data['display_name'] = display
+                            break
+
+            if 'authoredOn' in service_request:
+                try:
+                    date_str = service_request['authoredOn'][:10]
+                    request_data['authored_on'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    request_data['authored_on'] = None
+
+            if 'reasonCode' in service_request:
+                for reason in service_request['reasonCode']:
+                    text = reason.get('text', '')
+                    if text:
+                        request_data['reason'].append(text)
+
+            if 'category' in service_request:
+                for cat in service_request['category']:
+                    if 'coding' in cat:
+                        for coding in cat['coding']:
+                            display = coding.get('display', '')
+                            if display:
+                                request_data['category'] = display
+                                break
+                    if request_data['category']:
+                        break
+
+            return request_data
+
+        except Exception as e:
+            return {'error': f'Error processing service request: {str(e)}'}
+
+    def _extract_diagnostic_report_for_report(self, diagnostic_report):
+        """Extract diagnostic report information for comprehensive report."""
+        try:
+            report_data = {
+                'resource_type': 'DiagnosticReport',
+                'id': diagnostic_report.get('id', 'unknown'),
+                'status': diagnostic_report.get('status', 'unknown'),
+                'display_name': 'Unknown Report',
+                'effective_date': None,
+                'conclusion': diagnostic_report.get('conclusion'),
+                'category': None
+            }
+
+            if 'code' in diagnostic_report:
+                code = diagnostic_report['code']
+                if 'text' in code and code['text']:
+                    report_data['display_name'] = code['text']
+                elif 'coding' in code:
+                    for coding in code['coding']:
+                        display = coding.get('display', '')
+                        if display:
+                            report_data['display_name'] = display
+                            break
+
+            if 'effectiveDateTime' in diagnostic_report:
+                try:
+                    date_str = diagnostic_report['effectiveDateTime'][:10]
+                    report_data['effective_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except (ValueError, AttributeError):
+                    report_data['effective_date'] = None
+
+            if 'category' in diagnostic_report:
+                for cat in diagnostic_report['category']:
+                    if 'coding' in cat:
+                        for coding in cat['coding']:
+                            display = coding.get('display', '')
+                            if display:
+                                report_data['category'] = display
+                                break
+                    if report_data['category']:
+                        break
+
+            return report_data
+
+        except Exception as e:
+            return {'error': f'Error processing diagnostic report: {str(e)}'}
+
     def _sort_clinical_data_by_date(self, report):
         """Sort clinical data by date (most recent first)."""
         try:
@@ -2142,7 +2380,31 @@ class Patient(MedicalRecord):
                 key=lambda x: (x.get('period', {}).get('start') if x.get('period') else None) or '1900-01-01',
                 reverse=True
             )
-            
+
+            # Sort allergies by onset date
+            report['clinical_summary'].get('allergies', []).sort(
+                key=lambda x: x.get('onset_date') or '1900-01-01',
+                reverse=True
+            )
+
+            # Sort care plans by period start
+            report['clinical_summary'].get('care_plans', []).sort(
+                key=lambda x: (x.get('period', {}).get('start') if x.get('period') else None) or '1900-01-01',
+                reverse=True
+            )
+
+            # Sort service requests by authored date
+            report['clinical_summary'].get('service_requests', []).sort(
+                key=lambda x: x.get('authored_on') or '1900-01-01',
+                reverse=True
+            )
+
+            # Sort diagnostic reports by effective date
+            report['clinical_summary'].get('diagnostic_reports', []).sort(
+                key=lambda x: x.get('effective_date') or '1900-01-01',
+                reverse=True
+            )
+
         except Exception as e:
             # If sorting fails, continue without sorting
             import logging
