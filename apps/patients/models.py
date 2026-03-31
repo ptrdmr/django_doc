@@ -258,28 +258,23 @@ class Patient(MedicalRecord):
                 if "entry" not in current_bundle:
                     current_bundle["entry"] = []
                 
-                # Build composite key index for existing resources (Task 41.6)
-                # Key: (meta.source, resourceType) -> entry index
-                # This enables idempotent merging - same document processed twice updates, not duplicates
-                existing_keys = {}
-                if document_id:  # Only use composite key matching if document_id provided
-                    for idx, entry in enumerate(current_bundle["entry"]):
-                        resource = entry.get("resource", {})
-                        meta_source = resource.get("meta", {}).get("source", "")
-                        resource_type = resource.get("resourceType", "")
-                        
-                        if meta_source and resource_type:
-                            composite_key = (meta_source, resource_type)
-                            existing_keys[composite_key] = idx
-                
-                # Track merge statistics for audit trail
-                added_count = 0
-                updated_count = 0
                 source_tag = f"document_{document_id}" if document_id else "direct_entry"
                 
-                # Process each incoming resource
+                # Rollback-then-append: remove existing resources from this document
+                # before appending the new set. This ensures idempotent reprocessing
+                # regardless of how many resources of each type the document produces.
+                replaced_count = 0
+                if document_id:
+                    original_len = len(current_bundle["entry"])
+                    current_bundle["entry"] = [
+                        entry for entry in current_bundle["entry"]
+                        if entry.get("resource", {}).get("meta", {}).get("source", "") != source_tag
+                    ]
+                    replaced_count = original_len - len(current_bundle["entry"])
+                
+                # Append all incoming resources as new entries
+                added_count = 0
                 for resource in resources:
-                    # Add metadata for tracking
                     if "meta" not in resource:
                         resource["meta"] = {}
                     
@@ -294,22 +289,11 @@ class Patient(MedicalRecord):
                         }]
                     })
                     
-                    # Check for existing resource using composite key (Task 41.6)
-                    resource_type = resource["resourceType"]
-                    composite_key = (source_tag, resource_type)
-                    
-                    if document_id and composite_key in existing_keys:
-                        # UPDATE existing resource (idempotent merge)
-                        existing_idx = existing_keys[composite_key]
-                        current_bundle["entry"][existing_idx]["resource"] = resource
-                        updated_count += 1
-                    else:
-                        # APPEND new resource
-                        current_bundle["entry"].append({
-                            "resource": resource,
-                            "fullUrl": f"urn:uuid:{uuid.uuid4()}"
-                        })
-                        added_count += 1
+                    current_bundle["entry"].append({
+                        "resource": resource,
+                        "fullUrl": f"urn:uuid:{uuid.uuid4()}"
+                    })
+                    added_count += 1
                 
                 # Update bundle metadata
                 current_bundle["meta"] = {
@@ -327,7 +311,7 @@ class Patient(MedicalRecord):
                 self.save()
                 
                 # Create audit trail with merge statistics
-                self._create_fhir_audit_record(resources, document_id, added_count, updated_count)
+                self._create_fhir_audit_record(resources, document_id, added_count, replaced_count)
                 
                 return True
             
@@ -338,15 +322,15 @@ class Patient(MedicalRecord):
             logger.error(f"Error adding FHIR resources to patient {self.mrn}: {str(e)}")
             raise
     
-    def _create_fhir_audit_record(self, resources, document_id=None, added_count=0, updated_count=0):
+    def _create_fhir_audit_record(self, resources, document_id=None, added_count=0, replaced_count=0):
         """
         Create audit trail for FHIR resource merge operation.
         
         Args:
             resources (list): Resources that were merged
             document_id (int, optional): Source document ID
-            added_count (int): Count of resources added (default: 0 for backward compatibility)
-            updated_count (int): Count of resources updated (default: 0 for backward compatibility)
+            added_count (int): Count of new resources appended
+            replaced_count (int): Count of old resources removed before re-appending
         """
         try:
             # Create sanitized resource summary for audit (no PHI)
@@ -374,10 +358,10 @@ class Patient(MedicalRecord):
                 resource_summary.append(summary)
             
             # Determine action based on merge statistics (Task 41.6)
-            if added_count > 0 or updated_count > 0:
+            if added_count > 0 or replaced_count > 0:
                 action = 'fhir_merge'
                 notes = f"Merged {len(resources)} FHIR resource(s) from document {document_id} " \
-                        f"(added: {added_count}, updated: {updated_count})"
+                        f"(added: {added_count}, replaced: {replaced_count})"
             else:
                 # Backward compatibility: if no counts provided, use old behavior
                 action = 'fhir_append'
@@ -392,9 +376,9 @@ class Patient(MedicalRecord):
             }
             
             # Add merge statistics if available (Task 41.6)
-            if added_count > 0 or updated_count > 0:
+            if added_count > 0 or replaced_count > 0:
                 fhir_delta['added_count'] = added_count
-                fhir_delta['updated_count'] = updated_count
+                fhir_delta['replaced_count'] = replaced_count
                 if document_id:
                     fhir_delta['document_id'] = document_id
             
