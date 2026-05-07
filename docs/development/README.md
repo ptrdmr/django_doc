@@ -3635,4 +3635,23 @@ text = service.extract_text_from_result(result)
 
 **Tests:** `apps/patients/tests/test_summary_panel.py` — 11 tests covering endpoints, auth, deprecation behavior.
 
-*Updated: 2026-03-06 20:34:02 | Task 43 completed — Patient Summary Side Panel with Reports flow deprecation*
+---
+
+## Extraction Pipeline & Patient Merge (May 2026)
+
+### What shipped
+- **`FamilyHistoryService`**: `structured_data.family_history` → FHIR `FamilyMemberHistory` + extraction extensions.
+- **Observations**: `physical_exam_findings` (category `exam`) and `social_history` (category `social-history`) without short-circuiting when vitals/labs are empty.
+- **`DeduplicationService`**: hydrates bundle `entry.resource` dicts with `fhir.resources` models, honors `ResourceDeduplicator.merge` output via `DeduplicationResult.merged_resources`, prefers higher `extraction-confidence` extensions when sorting pairwise candidates.
+- **`Patient.add_fhir_resources`**: runs bundle entry dedupe post-append; searchable metadata + audit trail use the post-dedupe resources that still carry the active `meta.source` tag.
+- **Cross-service extensions**: `append_extraction_extensions` applied across structured paths (conditions, meds, observations, procedures, encounters, practitioners, allergies, care plans, organizations, diagnostics, service requests).
+- **AI prompt alignment**: `AIExtractionService._get_comprehensive_extraction_prompt()` documents `StructuredMedicalExtraction` field names, date granularity (`date_precision`), hospice/social/family coverage.
+- **Living setting trace**: `living_setting` remains a `Patient` CharField updated through the patient form only; document/FHIR merge paths do not mutate it (no code references outside the model/form layer as of this change).
+
+### Tests
+- `apps/fhir/tests/test_extraction_pipeline_wiring.py`
+- `apps/core/tests/test_date_parser.py` — ISO `T` suffix calendar-day guard
+
+---
+
+*Updated: 2026-05-06 20:44:02 | Extraction pipeline extensions, family history service, bundle dedupe wiring, prompt alignment, regression tests*

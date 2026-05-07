@@ -145,6 +145,15 @@
     content: '';
     @apply absolute inset-0 bg-white bg-opacity-50 flex items-center justify-center;
   }
+
+  /* Mobile-friendly layout helpers (use with Tailwind responsive utilities) */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px] inline-flex items-center justify-center;
+  }
+
+  .mobile-stack {
+    @apply flex flex-col sm:flex-row sm:items-center gap-2;
+  }
 }
 
 /* Custom Animations */

@@ -24,6 +24,6 @@
         {{ document.uploaded_at|date:"M j, Y" }}
     </td>
     <td class="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-        <a href="{% url 'documents:detail' document.pk %}" class="text-blue-600 hover:text-blue-900">View</a>
+        <a href="{% url 'documents:detail' document.pk %}" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-md font-medium">View</a>
     </td>
 </tr>

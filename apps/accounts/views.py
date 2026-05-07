@@ -75,7 +75,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         """
         stats = {
             'patient_count': get_model_count('patients', 'Patient'),
-            'provider_count': get_model_count('providers', 'Provider'),
+            # provider_count omitted while Providers UI is MVP-hidden; re-add when re-enabling nav
             'document_count': get_model_count('documents', 'Document'),
             'active_users_count': self._get_active_users_count(),
             'flagged_extractions_count': get_model_count_with_filter('documents', 'ParsedData', review_status='flagged'),

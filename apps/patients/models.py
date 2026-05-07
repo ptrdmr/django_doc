@@ -230,6 +230,7 @@ class Patient(MedicalRecord):
         import uuid
         from django.utils import timezone
         from django.db import transaction
+        from apps.fhir.services.deduplication_service import DeduplicationService
         
         # Validate input
         if not fhir_resources:
@@ -295,6 +296,22 @@ class Patient(MedicalRecord):
                     })
                     added_count += 1
                 
+                dedup_svc = DeduplicationService()
+                current_bundle["entry"] = dedup_svc.deduplicate_bundle_entries(
+                    current_bundle["entry"],
+                    preserve_provenance=True,
+                )
+
+                metadata_batch = [
+                    bucket.get("resource")
+                    for bucket in current_bundle["entry"]
+                    if isinstance(bucket, dict)
+                    and isinstance(bucket.get("resource"), dict)
+                    and bucket.get("resource", {}).get("meta", {}).get("source") == source_tag
+                ]
+                if not metadata_batch:
+                    metadata_batch = list(resources)
+
                 # Update bundle metadata
                 current_bundle["meta"] = {
                     "lastUpdated": timezone.now().isoformat(),
@@ -305,13 +322,13 @@ class Patient(MedicalRecord):
                 self.encrypted_fhir_bundle = current_bundle
                 
                 # Extract searchable metadata
-                self.extract_searchable_metadata(resources)
+                self.extract_searchable_metadata(metadata_batch)
                 
                 # Save the patient record
                 self.save()
                 
                 # Create audit trail with merge statistics
-                self._create_fhir_audit_record(resources, document_id, added_count, replaced_count)
+                self._create_fhir_audit_record(metadata_batch, document_id, added_count, replaced_count)
                 
                 return True
             

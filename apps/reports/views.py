@@ -88,7 +88,7 @@ class GenerateReportView(LoginRequiredMixin, FormView):
     Patient summary reports are deprecated here; use the patient detail page instead.
     """
     template_name = 'reports/generate.html'
-    success_url = reverse_lazy('reports:dashboard')
+    success_url = reverse_lazy('accounts:dashboard')
     
     def get(self, request, *args, **kwargs):
         """Redirect patient_summary requests to the patients list."""
@@ -320,7 +320,7 @@ class ReportPreviewView(LoginRequiredMixin, View):
         
         # Fallback for unsupported report types
         messages.warning(request, 'Preview not available for this report type.')
-        return redirect('reports:dashboard')
+        return redirect('accounts:dashboard')
 
 
 class ReportDownloadView(LoginRequiredMixin, View):
@@ -428,4 +428,4 @@ class ConfigurationDeleteView(LoginRequiredMixin, View):
         config.delete()
         
         messages.success(request, f'Configuration "{config_name}" deleted successfully.')
-        return redirect('reports:dashboard')
+        return redirect('accounts:dashboard')

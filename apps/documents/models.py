@@ -97,9 +97,11 @@ class Document(BaseModel):
     STATUS_CHOICES = [
         ('pending', 'Pending Processing'),
         ('processing', 'Processing'),
+        ('ocr_pending', 'OCR Pending'),
         ('completed', 'Completed'),
         ('failed', 'Processing Failed'),
         ('review', 'Needs Review'),
+        ('requires_review', 'Requires Review'),
     ]
     
     # Document metadata
@@ -139,7 +141,7 @@ class Document(BaseModel):
     
     # Processing status
     status = models.CharField(
-        max_length=20,
+        max_length=25,
         choices=STATUS_CHOICES,
         default='pending',
         db_index=True,

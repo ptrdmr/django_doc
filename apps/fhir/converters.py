@@ -719,6 +719,7 @@ class StructuredDataConverter(BaseFHIRConverter):
                 from fhir.resources.organization import Organization
                 from fhir.resources.servicerequest import ServiceRequest
                 from fhir.resources.diagnosticreport import DiagnosticReport
+                from fhir.resources.familymemberhistory import FamilyMemberHistory
                 
                 resource_mapping = {
                     'Condition': Condition,
@@ -731,7 +732,8 @@ class StructuredDataConverter(BaseFHIRConverter):
                     'CarePlan': CarePlan,
                     'Organization': Organization,
                     'ServiceRequest': ServiceRequest,
-                    'DiagnosticReport': DiagnosticReport
+                    'DiagnosticReport': DiagnosticReport,
+                    'FamilyMemberHistory': FamilyMemberHistory,
                 }
                 
                 resources = []

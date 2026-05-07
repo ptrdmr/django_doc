@@ -132,87 +132,80 @@ EXTRACTION TARGETS - Extract ALL instances of:
     - Follow-up instructions
     - Discharge planning
 
-OUTPUT FORMAT: Return a comprehensive JSON object with ALL extracted data:
+OUTPUT FORMAT: Return JSON whose **top-level keys match** the `StructuredMedicalExtraction`
+schema used by the ingestion pipeline (snake_case):
 
+- `conditions`, `medications`, `vital_signs`, `lab_results`, `procedures`, `providers`,
+  `encounters`, `service_requests`, `diagnostic_reports`, `allergies`, `care_plans`,
+  `organizations`, `family_history`, `physical_exam_findings`, `social_history`
+- `extraction_timestamp` (ISO-8601 string), optional `document_type`, optional `confidence_average`
+
+Each list item must include `confidence` (0-1 float) and nested `source`:
+`{"text": "<verbatim snippet>", "start_index": <int>, "end_index": <int>}`.
+
+PERTINENT NEGATIVES & HOSPICE/PALLIATIVE CONTEXT:
+- Record denials only when explicitly documented ("denies chest pain", "no edema").
+- Capture ADL/IADL cues, caregiver availability, code status, POLST references when present.
+- Family history rows use `relationship`, `condition`, optional `onset_age`, optional `deceased`.
+
+DATE GRANULARITY (`date_precision`: `year` | `month` | `day` when applicable):
+- If the note only states a year (`2019`), emit `onset_date`: `"2019"` with `date_precision: "year"` — **never** fabricate `-01-01`.
+- If month+year without day, use `"YYYY-MM"` and `date_precision: "month"`.
+- Only emit full `YYYY-MM-DD` when a day is explicit in the source.
+
+MINIMAL ILLUSTRATION (fields abbreviated; expand as needed):
 {
-  "patient_demographics": {
-    "name": {"value": "Full name", "confidence": 0.95},
-    "date_of_birth": {"value": "YYYY-MM-DD", "confidence": 0.95},
-    "age": {"value": "Age in years", "confidence": 0.90},
-    "gender": {"value": "Male/Female", "confidence": 0.95},
-    "mrn": {"value": "Medical record number", "confidence": 0.95}
-  },
+  "conditions": [
+    {
+      "name": "Type 2 Diabetes Mellitus",
+      "status": "active",
+      "onset_date": "2019",
+      "date_precision": "year",
+      "icd_code": "E11.9",
+      "confidence": 0.93,
+      "source": {"text": "...", "start_index": 0, "end_index": 42}
+    }
+  ],
   "medications": [
     {
-      "name": {"value": "Medication name", "confidence": 0.90},
-      "dosage": {"value": "Dose amount", "confidence": 0.85},
-      "route": {"value": "Administration route", "confidence": 0.80},
-      "frequency": {"value": "Dosing schedule", "confidence": 0.85},
-      "status": {"value": "active/discontinued", "confidence": 0.80}
+      "name": "Metformin",
+      "dosage": "500 mg",
+      "route": "oral",
+      "frequency": "BID",
+      "status": "active",
+      "confidence": 0.9,
+      "source": {"text": "...", "start_index": 0, "end_index": 24}
     }
   ],
   "diagnostic_reports": [
     {
-      "procedure_type": {"value": "Test/procedure name", "confidence": 0.90},
-      "date": {"value": "YYYY-MM-DD", "confidence": 0.85},
-      "results": {"value": "Results/findings", "confidence": 0.85},
-      "interpretation": {"value": "Clinical interpretation", "confidence": 0.80}
-    }
-  ],
-  "diagnoses": [
-    {
-      "condition": {"value": "Diagnosis name", "confidence": 0.90},
-      "status": {"value": "active/resolved/suspected", "confidence": 0.80},
-      "onset_date": {"value": "When diagnosed", "confidence": 0.70}
-    }
-  ],
-  "encounters": [
-    {
-      "type": {"value": "Visit type", "confidence": 0.85},
-      "date": {"value": "YYYY-MM-DD", "confidence": 0.90},
-      "provider": {"value": "Healthcare provider", "confidence": 0.85},
-      "location": {"value": "Facility/department", "confidence": 0.80},
-      "reason": {"value": "Chief complaint/reason", "confidence": 0.85}
+      "report_type": "CT Chest",
+      "report_date": "2024-03-01",
+      "findings": "No acute infiltrate",
+      "conclusion": "Stable",
+      "confidence": 0.88,
+      "source": {"text": "...", "start_index": 0, "end_index": 120}
     }
   ],
   "service_requests": [
     {
-      "service": {"value": "Requested service/referral", "confidence": 0.85},
-      "provider": {"value": "Target provider/specialty", "confidence": 0.80},
-      "priority": {"value": "routine/urgent/stat", "confidence": 0.75},
-      "reason": {"value": "Indication for request", "confidence": 0.80}
+      "request_type": "Physical Therapy referral",
+      "request_date": "2024-03-05",
+      "priority": "routine",
+      "confidence": 0.82,
+      "source": {"text": "...", "start_index": 0, "end_index": 48}
     }
   ],
-  "procedures": [
-    {
-      "name": {"value": "Procedure name", "confidence": 0.90},
-      "date": {"value": "YYYY-MM-DD", "confidence": 0.85},
-      "provider": {"value": "Performing provider", "confidence": 0.80},
-      "outcome": {"value": "Procedure results", "confidence": 0.75}
-    }
+  "physical_exam_findings": [
+    {"body_site": "Lungs", "finding": "Clear to auscultation", "status": "normal", "confidence": 0.9, "source": {"text": "...", "start_index": 0, "end_index": 36}}
   ],
-  "vital_signs": [
-    {
-      "measurement": {"value": "Vital sign type", "confidence": 0.90},
-      "value": {"value": "Measured value", "confidence": 0.95},
-      "unit": {"value": "Unit of measurement", "confidence": 0.90},
-      "date": {"value": "YYYY-MM-DD", "confidence": 0.85}
-    }
+  "social_history": [
+    {"category": "tobacco", "description": "Former smoker, quit 2019", "confidence": 0.87, "source": {"text": "...", "start_index": 0, "end_index": 30}}
   ],
-  "providers": [
-    {
-      "name": {"value": "Provider name", "confidence": 0.90},
-      "specialty": {"value": "Medical specialty", "confidence": 0.85},
-      "role": {"value": "Role in care", "confidence": 0.80}
-    }
+  "family_history": [
+    {"relationship": "Mother", "condition": "Breast cancer", "onset_age": "60s", "deceased": false, "confidence": 0.8, "source": {"text": "...", "start_index": 0, "end_index": 42}}
   ],
-  "care_plans": [
-    {
-      "goal": {"value": "Treatment goal", "confidence": 0.80},
-      "intervention": {"value": "Planned intervention", "confidence": 0.85},
-      "timeline": {"value": "Expected timeframe", "confidence": 0.70}
-    }
-  ]
+  "extraction_timestamp": "2026-05-05T00:00:00Z"
 }
 
 CRITICAL EXTRACTION RULES:
@@ -316,9 +309,10 @@ RESPONSE REQUIREMENTS:
                 'context': context,
                 'prompt_length': len(prompt),
                 'extraction_targets': [
-                    'patient_demographics', 'medications', 'diagnostic_reports', 
-                    'diagnoses', 'encounters', 'service_requests', 'procedures',
-                    'vital_signs', 'providers', 'care_plans'
+                    'conditions', 'medications', 'vital_signs', 'lab_results', 'procedures',
+                    'providers', 'encounters', 'service_requests', 'diagnostic_reports',
+                    'allergies', 'care_plans', 'organizations',
+                    'family_history', 'physical_exam_findings', 'social_history',
                 ]
             }
             

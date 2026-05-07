@@ -18,6 +18,8 @@ from .care_plan_service import CarePlanService
 from .organization_service import OrganizationService
 from .fhir_processor import FHIRProcessor
 from .metrics_service import FHIRMetricsService
+from .deduplication_service import DeduplicationService
+from .family_history_service import FamilyHistoryService
 
 __all__ = [
     'ConditionService',
@@ -33,4 +35,6 @@ __all__ = [
     'OrganizationService',
     'FHIRProcessor',
     'FHIRMetricsService',
+    'DeduplicationService',
+    'FamilyHistoryService',
 ]

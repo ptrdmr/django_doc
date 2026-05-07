@@ -1,4 +1,4 @@
-{# Patient Summary Side Panel - Renders 7 sections from JSON data via Alpine.js #}
+{# Patient Summary Side Panel - Renders 11 sections from JSON data via Alpine.js #}
 {# Data structure: patient_info, clinical_summary (conditions, procedures, medications, observations, encounters, weight_timeline, allergies, care_plans, service_requests, diagnostic_reports) #}
 <div class="summary-panel-content h-full overflow-y-auto p-4" x-ref="panelContent">
     <!-- Loading state -->
@@ -18,7 +18,7 @@
         </button>
     </div>
 
-    <!-- Content: 7 sections -->
+    <!-- Content: 11 sections -->
     <template x-if="!isLoading && !error && summaryData">
         <div class="space-y-4">
             <!-- Section 1: Demographics & Context -->

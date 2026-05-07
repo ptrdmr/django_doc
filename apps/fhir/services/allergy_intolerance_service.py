@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 from apps.core.date_parser import ClinicalDateParser
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
 
 logger = logging.getLogger(__name__)
 
@@ -198,24 +199,11 @@ class AllergyIntoleranceService:
         if onset_date:
             allergy["onsetDateTime"] = onset_date
         
-        # Add extraction confidence
-        confidence = allergy_dict.get('confidence')
-        if confidence is not None:
-            if "extension" not in allergy:
-                allergy["extension"] = []
-            allergy["extension"].append({
-                "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
-                "valueDecimal": confidence
-            })
-        
-        # Add source context if available
-        source = allergy_dict.get('source')
-        if source and isinstance(source, dict):
-            source_text = source.get('text', '')
-            if source_text:
-                allergy["note"] = [{
-                    "text": f"Source: {source_text[:200]}"
-                }]
+        append_extraction_extensions(
+            allergy,
+            confidence=allergy_dict.get('confidence'),
+            source_text=source_snippet_from_field(allergy_dict.get('source')),
+        )
         
         self.logger.debug(f"Created AllergyIntolerance from structured data: {allergen[:50]}...")
         return allergy

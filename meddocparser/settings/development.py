@@ -3,8 +3,30 @@ Development settings for meddocparser project.
 These settings are optimized for local development and testing.
 """
 
+import socket
+from urllib.parse import urlparse
+
 from .base import *
 from decouple import config
+
+
+def _redis_is_reachable(redis_url: str) -> bool:
+    """
+    Return True if a TCP connection to the broker host:port succeeds.
+    Used to fall back to in-memory cache + eager Celery when Redis is not running locally.
+    """
+    if not redis_url or redis_url.startswith('memory://'):
+        return False
+    try:
+        parsed = urlparse(redis_url)
+        host = parsed.hostname
+        port = parsed.port or 6379
+        if not host:
+            return False
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -97,9 +119,9 @@ LOGGING['loggers']['meddocparser']['handlers'].append('console')
 #     MIDDLEWARE.insert(0, 'debug_toolbar.middleware.DebugToolbarMiddleware')
 #     INTERNAL_IPS = ['127.0.0.1']
 
-# Redis/Cache: When running locally (not in Docker), "redis" hostname doesn't resolve.
-# Use in-memory cache so login/sessions work without Redis. Celery tasks won't run async.
-if 'redis:6379' in REDIS_URL or '@redis/' in REDIS_URL:
+# Redis/Cache: When Redis is not reachable (e.g. local dev without a broker), use
+# in-memory cache so login/sessions work. Celery runs eagerly in that case.
+if not _redis_is_reachable(REDIS_URL):
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',

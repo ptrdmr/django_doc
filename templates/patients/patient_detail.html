@@ -47,7 +47,7 @@
             </div>
             
             <!-- Action Buttons -->
-            <div class="flex space-x-3">
+            <div class="flex flex-wrap gap-2">
                 <a href="{% url 'patients:edit' patient.pk %}" 
                    class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -150,7 +150,7 @@
                                     {{ fhir_summary.LabResult.count|default:"0" }}
                                 </span>
                                 <button type="button" onclick="viewFHIRResource('LabResult')" 
-                                        class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                                        class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-2 text-sm text-blue-600 hover:text-blue-800 font-medium rounded-md hover:bg-blue-50">
                                     View
                                 </button>
                             </div>
@@ -168,7 +168,7 @@
                                     {{ fhir_summary.VitalSign.count|default:"0" }}
                                 </span>
                                 <button type="button" onclick="viewFHIRResource('VitalSign')" 
-                                        class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                                        class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-2 text-sm text-blue-600 hover:text-blue-800 font-medium rounded-md hover:bg-blue-50">
                                     View
                                 </button>
                             </div>
@@ -189,7 +189,7 @@
                                         {{ resource_info.count }}
                                     </span>
                                     <button type="button" onclick="viewFHIRResource('{{ resource_type }}')" 
-                                            class="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                                            class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-2 text-sm text-blue-600 hover:text-blue-800 font-medium rounded-md hover:bg-blue-50">
                                         View
                                     </button>
                                 </div>
@@ -217,7 +217,8 @@
                     </h2>
                     <button x-show="!isEditing" 
                             @click="isEditing = true"
-                            class="text-sm text-blue-600 hover:text-blue-800 font-medium focus:outline-none">
+                            type="button"
+                            class="inline-flex items-center justify-center min-h-[44px] px-3 text-sm text-blue-600 hover:text-blue-800 font-medium rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
                         {% if patient.primary_condition_id %}Change{% else %}Set Diagnosis{% endif %}
                     </button>
                 </div>
@@ -256,7 +257,7 @@
                         {% if not patient.primary_condition_id %}
                             <div class="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
                                 <p class="text-sm text-gray-500 mb-2">No primary diagnosis set.</p>
-                                <button @click="isEditing = true" class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors">
+                                <button type="button" @click="isEditing = true" class="inline-flex items-center justify-center min-h-[44px] px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
                                     Select Primary Diagnosis
                                 </button>
                             </div>
@@ -397,20 +398,19 @@
          x-transition:leave-start="opacity-100 translate-x-0"
          x-transition:leave-end="opacity-0 translate-x-full"
          @keydown.escape.window="if (isOpen) toggle()"
-         class="fixed top-0 right-0 h-full bg-white shadow-xl flex flex-col"
-         x-cloak
-         style="z-index: 40; width: 25vw; min-width: 320px; max-width: 100vw;">
+         class="fixed top-0 right-0 h-full w-full max-w-full sm:max-w-md md:w-[min(90vw,28rem)] lg:w-[25vw] lg:min-w-[320px] lg:max-w-[100vw] bg-white shadow-xl flex flex-col z-40"
+         x-cloak>
         <!-- Panel header -->
         <div class="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
             <h2 class="text-lg font-semibold text-gray-900">Patient Summary</h2>
             <div class="flex items-center space-x-2">
                 <button type="button" @click="downloadPdf()"
                         :disabled="pdfLoading"
-                        class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                        class="inline-flex items-center justify-center min-h-[44px] px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                     <span x-show="!pdfLoading">Download PDF</span>
                     <span x-show="pdfLoading">Generating...</span>
                 </button>
-                <button type="button" @click="toggle()" class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">
+                <button type="button" @click="toggle()" class="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-lg transition-colors" aria-label="Close summary panel">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                     </svg>

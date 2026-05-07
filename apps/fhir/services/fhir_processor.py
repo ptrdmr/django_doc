@@ -20,6 +20,7 @@ from .practitioner_service import PractitionerService
 from .allergy_intolerance_service import AllergyIntoleranceService
 from .care_plan_service import CarePlanService
 from .organization_service import OrganizationService
+from .family_history_service import FamilyHistoryService
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,9 @@ class FHIRProcessor:
         self.allergy_service = AllergyIntoleranceService()
         self.care_plan_service = CarePlanService()
         self.organization_service = OrganizationService()
-        
-        logger.info("FHIRProcessor initialized with 11 resource services - COMPLETE 12/12 ALIGNMENT!")
+        self.family_history_service = FamilyHistoryService()
+
+        logger.info("FHIRProcessor initialized with 12 resource services.")
     
     def process_extracted_data(self, extracted_data: Dict[str, Any], 
                              patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -149,13 +151,19 @@ class FHIRProcessor:
                 processing_stats['processed_categories'] += 1
                 logger.info(f"Processed {len(care_plans)} care plan resources")
             
-            # Process organizations (NEW in Phase 3)
+            # Process organizations
             organizations = self._process_organizations(extracted_data)
             if organizations:
                 fhir_resources.extend(organizations)
                 processing_stats['processed_categories'] += 1
                 logger.info(f"Processed {len(organizations)} organization resources")
-            
+
+            family_history_resources = self._process_family_history(extracted_data)
+            if family_history_resources:
+                fhir_resources.extend(family_history_resources)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(family_history_resources)} family history resources")
+
             processing_stats['total_resources'] = len(fhir_resources)
             
             logger.info(
@@ -260,7 +268,15 @@ class FHIRProcessor:
         except Exception as e:
             logger.error(f"Error processing organizations: {e}")
             return []
-    
+
+    def _process_family_history(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Family history narratives via FamilyHistoryService."""
+        try:
+            return self.family_history_service.process_family_history(extracted_data)
+        except Exception as exc:
+            logger.error("Error processing family history: %s", exc)
+            return []
+
     def _add_processing_metadata(self, fhir_resources: List[Dict[str, Any]], 
                                processing_stats: Dict[str, Any]) -> None:
         """
@@ -323,14 +339,15 @@ class FHIRProcessor:
             'Condition',
             'MedicationStatement',
             'Observation',
-            'DiagnosticReport', 
+            'DiagnosticReport',
             'ServiceRequest',
             'Encounter',
             'Procedure',
             'Practitioner',
             'AllergyIntolerance',
             'CarePlan',
-            'Organization'
+            'Organization',
+            'FamilyMemberHistory',
         ]
         
         return supported_types
@@ -361,7 +378,8 @@ class FHIRProcessor:
             ('practitioner_service', 'PractitionerService'),
             ('allergy_service', 'AllergyIntoleranceService'),
             ('care_plan_service', 'CarePlanService'),
-            ('organization_service', 'OrganizationService')
+            ('organization_service', 'OrganizationService'),
+            ('family_history_service', 'FamilyHistoryService'),
         ]
         
         for attr_name, service_name in required_services:

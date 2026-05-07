@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 from apps.core.date_parser import ClinicalDateParser
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
 
 logger = logging.getLogger(__name__)
 
@@ -238,24 +239,11 @@ class EncounterService:
                         }]
                     })
         
-        # Add extraction confidence
-        confidence = encounter_dict.get('confidence')
-        if confidence is not None:
-            encounter["extension"] = [{
-                "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
-                "valueDecimal": confidence
-            }]
-        
-        # Add source context if available
-        source = encounter_dict.get('source')
-        if source and isinstance(source, dict):
-            source_text = source.get('text', '')
-            if source_text:
-                if "note" not in encounter:
-                    encounter["note"] = []
-                encounter["note"].append({
-                    "text": f"Source: {source_text[:200]}"
-                })
+        append_extraction_extensions(
+            encounter,
+            confidence=encounter_dict.get('confidence'),
+            source_text=source_snippet_from_field(encounter_dict.get('source')),
+        )
         
         self.logger.debug(f"Created Encounter from structured data: {encounter_type[:50]}...")
         return encounter

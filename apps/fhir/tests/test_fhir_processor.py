@@ -114,10 +114,9 @@ class FHIRProcessorIntegrationTests(TestCase):
         
         result = self.processor.process_extracted_data(test_data)
         
-        # Should still process the available data
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]['resourceType'], 'MedicationStatement')
-        self.assertEqual(result[0]['medicationCodeableConcept']['text'], 'Aspirin')
+        medications = [r for r in result if r['resourceType'] == 'MedicationStatement']
+        self.assertEqual(len(medications), 1)
+        self.assertEqual(medications[0]['medicationCodeableConcept']['text'], 'Aspirin')
     
     def test_process_empty_data(self):
         """Test processing with empty data."""
@@ -141,12 +140,11 @@ class FHIRProcessorIntegrationTests(TestCase):
         
         result = self.processor.process_extracted_data(test_data, patient_id='456')
         
-        # Should use the override patient_id
-        self.assertEqual(len(result), 1)
+        medications = [r for r in result if r['resourceType'] == 'MedicationStatement']
+        self.assertEqual(len(medications), 1)
         self.assertEqual(test_data['patient_id'], '456')  # Should be updated
         
-        # Verify the resource references the correct patient
-        medication_resource = result[0]
+        medication_resource = medications[0]
         self.assertEqual(medication_resource['subject']['reference'], 'Patient/456')
     
     def test_error_handling_in_individual_services(self):
@@ -187,17 +185,26 @@ class FHIRProcessorIntegrationTests(TestCase):
         validation = self.processor.validate_processing_capabilities()
         
         self.assertTrue(validation['valid'])
-        self.assertEqual(len(validation['services_initialized']), 4)
         self.assertEqual(len(validation['missing_services']), 0)
         self.assertEqual(len(validation['errors']), 0)
         
         # Verify expected services are initialized
         expected_services = [
+            'ConditionService',
             'MedicationService',
+            'ObservationService',
             'DiagnosticReportService',
             'ServiceRequestService',
-            'EncounterService'
+            'EncounterService',
+            'ProcedureService',
+            'PractitionerService',
+            'AllergyIntoleranceService',
+            'CarePlanService',
+            'OrganizationService',
+            'FamilyHistoryService',
         ]
+        
+        self.assertEqual(len(validation['services_initialized']), len(expected_services))
         
         for service in expected_services:
             self.assertIn(service, validation['services_initialized'])
@@ -216,8 +223,9 @@ class FHIRProcessorIntegrationTests(TestCase):
         
         result = self.processor.process_extracted_data(test_data)
         
-        self.assertEqual(len(result), 1)
-        resource = result[0]
+        medications = [r for r in result if r['resourceType'] == 'MedicationStatement']
+        self.assertEqual(len(medications), 1)
+        resource = medications[0]
         
         # Check meta fields
         self.assertIn('meta', resource)
@@ -244,7 +252,7 @@ class FHIRProcessorIntegrationTests(TestCase):
         self.assertIn('totalResourcesProcessed', ext_fields)
         self.assertIn('processingVersion', ext_fields)
         
-        self.assertEqual(ext_fields['totalResourcesProcessed']['valueInteger'], 1)
+        self.assertEqual(ext_fields['totalResourcesProcessed']['valueInteger'], len(result))
         self.assertEqual(ext_fields['processingVersion']['valueString'], '1.0.0')
 
 
@@ -260,17 +268,19 @@ class FHIRProcessorServiceInitializationTests(TestCase):
         self.assertIsNotNone(processor.diagnostic_report_service)
         self.assertIsNotNone(processor.service_request_service)
         self.assertIsNotNone(processor.encounter_service)
+        self.assertIsNotNone(processor.family_history_service)
         
         # Verify service types
         from apps.fhir.services import (
             MedicationService, DiagnosticReportService,
-            ServiceRequestService, EncounterService
+            ServiceRequestService, EncounterService, FamilyHistoryService
         )
         
         self.assertIsInstance(processor.medication_service, MedicationService)
         self.assertIsInstance(processor.diagnostic_report_service, DiagnosticReportService)
         self.assertIsInstance(processor.service_request_service, ServiceRequestService)
         self.assertIsInstance(processor.encounter_service, EncounterService)
+        self.assertIsInstance(processor.family_history_service, FamilyHistoryService)
     
     @patch('apps.fhir.services.fhir_processor.MedicationService')
     def test_initialization_with_service_failure(self, mock_medication_service):
@@ -289,5 +299,5 @@ class FHIRProcessorServiceInitializationTests(TestCase):
             
             # Verify initialization was logged
             mock_logger.info.assert_called_with(
-                "FHIRProcessor initialized with all available resource services"
+                "FHIRProcessor initialized with 12 resource services."
             )

@@ -91,6 +91,8 @@ class DeduplicationResult:
         self.processing_time_seconds = 0.0
         self.success = False
         self.provenance_created = []
+        # Populated after successful dedupe: merged fhir.resources Resource instances
+        self.merged_resources: Optional[List[Any]] = None
         
     def add_duplicate(self, duplicate_detail: DuplicateResourceDetail):
         """Add a duplicate resource detail to the results."""
@@ -526,6 +528,7 @@ class ResourceDeduplicator:
             result.resources_removed = len(resources) - len(merged_resources)
             result.processing_time_seconds = (datetime.now() - start_time).total_seconds()
             result.success = True
+            result.merged_resources = merged_resources
             
             self.logger.info(
                 f"Deduplication completed: {len(result.duplicates_found)} duplicates found, "
@@ -719,8 +722,8 @@ class ResourceDeduplicator:
                 from fhir.resources.meta import Meta
                 primary_resource.meta = Meta()
             
-            # Create provenance extension if it doesn't exist
-            if not hasattr(primary_resource.meta, 'extension'):
+            # Create provenance extension list container if missing / null
+            if getattr(primary_resource.meta, "extension", None) is None:
                 primary_resource.meta.extension = []
             
             # Add deduplication provenance

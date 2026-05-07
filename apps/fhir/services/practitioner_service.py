@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 from apps.core.date_parser import ClinicalDateParser
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
 
 logger = logging.getLogger(__name__)
 
@@ -169,26 +170,11 @@ class PractitionerService:
                 "valueString": role.strip()
             })
         
-        # Add extraction confidence
-        confidence = provider_dict.get('confidence')
-        if confidence is not None:
-            if "extension" not in practitioner:
-                practitioner["extension"] = []
-            practitioner["extension"].append({
-                "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
-                "valueDecimal": confidence
-            })
-        
-        # Add source context if available
-        source = provider_dict.get('source')
-        if source and isinstance(source, dict):
-            source_text = source.get('text', '')
-            if source_text:
-                if "note" not in practitioner:
-                    practitioner["note"] = []
-                practitioner["note"].append({
-                    "text": f"Source: {source_text[:200]}"
-                })
+        append_extraction_extensions(
+            practitioner,
+            confidence=provider_dict.get('confidence'),
+            source_text=source_snippet_from_field(provider_dict.get('source')),
+        )
         
         self.logger.debug(f"Created Practitioner resource from structured data: {name[:50]}...")
         return practitioner

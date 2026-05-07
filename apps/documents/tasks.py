@@ -874,18 +874,6 @@ def process_document_async(self, document_id: int):
                     # via the merge_to_patient_record task
                     logger.info(f"FHIR processing completed: {len(fhir_resources)} resources ready for review and approval")
                     
-                    # Store AI results (for backward compatibility and debugging)
-                    if hasattr(document, 'ai_extracted_data'):
-                        document.ai_extracted_data = ai_result['fields']
-                    if hasattr(document, 'fhir_data'):
-                        document.fhir_data = fhir_resources
-                    
-                    # Store AI usage information
-                    if hasattr(document, 'ai_tokens_used'):
-                        document.ai_tokens_used = ai_result.get('usage', {}).get('total_tokens', 0)
-                    if hasattr(document, 'ai_model_used'):
-                        document.ai_model_used = ai_result.get('model_used', 'unknown')
-                    
                     # ENHANCED: Create ParsedData record with structured data support
                     try:
                         from .models import ParsedData
@@ -2396,14 +2384,29 @@ def _aggregate_chunked_extractions(chunk_results: List[Dict]) -> 'StructuredMedi
         'lab_results': [],
         'procedures': [],
         'providers': [],
+        'encounters': [],
+        'service_requests': [],
+        'diagnostic_reports': [],
+        'allergies': [],
+        'care_plans': [],
+        'organizations': [],
+        'family_history': [],
+        'physical_exam_findings': [],
+        'social_history': [],
         'extraction_timestamp': timezone.now().isoformat(),
         'document_type': 'chunked_document'
     }
-    
+
+    _chunk_list_keys = [
+        'conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers',
+        'encounters', 'service_requests', 'diagnostic_reports', 'allergies', 'care_plans',
+        'organizations', 'family_history', 'physical_exam_findings', 'social_history',
+    ]
+
     # Collect all items from chunks
     for chunk_result in chunk_results:
         if chunk_result and isinstance(chunk_result, dict):
-            for key in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers']:
+            for key in _chunk_list_keys:
                 if key in chunk_result:
                     aggregated[key].extend(chunk_result[key])
     

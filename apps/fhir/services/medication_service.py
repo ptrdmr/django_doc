@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 from apps.core.date_parser import ClinicalDateParser
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,12 @@ class MedicationService:
                 medication["note"] = [{
                     "text": f"Source: {source_text[:200]}"
                 }]
+        
+        append_extraction_extensions(
+            medication,
+            confidence=med_dict.get('confidence'),
+            source_text=source_snippet_from_field(med_dict.get('source')),
+        )
         
         self.logger.debug(f"Created MedicationStatement from structured data: {name[:50]}...")
         return medication

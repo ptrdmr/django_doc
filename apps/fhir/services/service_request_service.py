@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,7 +66,13 @@ class ServiceRequestService:
             List of normalized service request dictionaries
         """
         request_data = []
-        
+
+        structured = extracted_data.get("structured_data")
+        if isinstance(structured, dict):
+            structured_requests = structured.get("service_requests")
+            if isinstance(structured_requests, list) and structured_requests:
+                request_data.extend(structured_requests)
+
         # Handle direct service_requests list
         if 'service_requests' in extracted_data and isinstance(extracted_data['service_requests'], list):
             request_data.extend(extracted_data['service_requests'])
@@ -373,9 +381,19 @@ class ServiceRequestService:
             FHIR ServiceRequest resource or None if creation fails
         """
         try:
-            service = request_data.get('service')
-            if not service:
-                self.logger.warning("Service request missing service description, skipping")
+            service_label = (
+                request_data.get('service')
+                or request_data.get('request_type')
+                or request_data.get('order_name')
+            )
+
+            if isinstance(service_label, str):
+                service_stripped = service_label.strip()
+            else:
+                service_stripped = ''
+
+            if not service_stripped:
+                self.logger.warning("Service request missing description, skipping")
                 return None
                 
             request_id = str(uuid4())
@@ -387,7 +405,7 @@ class ServiceRequestService:
                 "status": request_data.get('status', 'active'),
                 "intent": request_data.get('intent', 'order'),
                 "code": {
-                    "text": service
+                    "text": service_stripped
                 },
                 "meta": {
                     "versionId": "1",
@@ -402,9 +420,13 @@ class ServiceRequestService:
                     "reference": f"Patient/{patient_id}"
                 }
                 
-            # Add authored date if available
-            if request_data.get('date'):
-                request_resource["authoredOn"] = request_data['date']
+            authored = (
+                request_data.get('authoredOn')
+                or request_data.get('date')
+                or request_data.get('request_date')
+            )
+            if authored:
+                request_resource["authoredOn"] = authored
                 
             # Add priority if specified
             priority = request_data.get('priority', 'routine')
@@ -418,7 +440,7 @@ class ServiceRequestService:
                 }]
                 
             # Add category based on service type
-            category = self._determine_category(service)
+            category = self._determine_category(service_stripped)
             if category:
                 request_resource["category"] = [{
                     "coding": [{
@@ -428,12 +450,11 @@ class ServiceRequestService:
                     }]
                 }]
                 
-            # Add confidence as extension if available
-            if request_data.get('confidence'):
-                request_resource["extension"] = [{
-                    "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
-                    "valueDecimal": request_data['confidence']
-                }]
+            append_extraction_extensions(
+                request_resource,
+                confidence=request_data.get("confidence"),
+                source_text=source_snippet_from_field(request_data.get("source")),
+            )
                 
             return request_resource
             

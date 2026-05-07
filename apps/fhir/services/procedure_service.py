@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 from apps.core.date_parser import ClinicalDateParser
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,12 @@ class ProcedureService:
                 procedure["note"] = [{
                     "text": f"Source: {source_text[:200]}"
                 }]
+        
+        append_extraction_extensions(
+            procedure,
+            confidence=procedure_dict.get('confidence'),
+            source_text=source_snippet_from_field(procedure_dict.get('source')),
+        )
         
         self.logger.debug(f"Created Procedure resource from structured data: {name[:50]}...")
         return procedure

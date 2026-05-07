@@ -45,9 +45,9 @@
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Report</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Format</th>
+                        <th class="hidden md:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Format</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Generated</th>
+                        <th class="hidden sm:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Generated</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
@@ -62,7 +62,7 @@
                                 {{ report.get_type_label }}
                             </div>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
+                        <td class="hidden md:table-cell px-6 py-4 whitespace-nowrap">
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
                                 {{ report.format|upper }}
                             </span>
@@ -82,21 +82,23 @@
                             </span>
                             {% endif %}
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td class="hidden sm:table-cell px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {{ report.created_at|date:"M d, Y g:i A" }}
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <td class="px-6 py-4 text-sm font-medium">
+                            <div class="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3 sm:items-center">
                             {% if report.status == 'completed' %}
-                            <a href="{% url 'reports:preview' report.pk %}" class="text-blue-600 hover:text-blue-900 mr-4">
+                            <a href="{% url 'reports:preview' report.pk %}" class="inline-flex items-center justify-center min-h-[44px] px-2 rounded-md text-blue-600 hover:text-blue-900 hover:bg-blue-50">
                                 View
                             </a>
-                            <a href="{% url 'reports:download' report.pk %}" class="text-green-600 hover:text-green-900 mr-4">
+                            <a href="{% url 'reports:download' report.pk %}" class="inline-flex items-center justify-center min-h-[44px] px-2 rounded-md text-green-600 hover:text-green-900 hover:bg-green-50">
                                 Download
                             </a>
                             {% endif %}
-                            <a href="{% url 'reports:detail' report.pk %}" class="text-gray-600 hover:text-gray-900">
+                            <a href="{% url 'reports:detail' report.pk %}" class="inline-flex items-center justify-center min-h-[44px] px-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100">
                                 Details
                             </a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}

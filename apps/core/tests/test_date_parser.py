@@ -337,6 +337,11 @@ class TestClinicalDateParser(unittest.TestCase):
             except Exception as e:
                 self.fail(f"Parser crashed on edge case '{edge_case}': {e}")
 
+    def test_parse_single_date_keeps_calendar_day_with_t_suffix(self):
+        """ISO calendar prefix must ignore trailing time/zone (no off-by-one shift)."""
+        parsed = self.parser.parse_single_date("2024-06-11T00:00:00+00:00")
+        self.assertEqual(parsed, date(2024, 6, 11))
+
 
 class TestDateExtractionResult(unittest.TestCase):
     """Test cases for the DateExtractionResult class."""

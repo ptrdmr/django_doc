@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 from apps.core.date_parser import ClinicalDateParser
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
 
 logger = logging.getLogger(__name__)
 
@@ -191,28 +192,11 @@ class OrganizationService:
                 "value": phone.strip()
             }]
         
-        # Add confidence
-        confidence = org_dict.get('confidence')
-        if confidence is not None:
-            if "extension" not in organization:
-                organization["extension"] = []
-            organization["extension"].append({
-                "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
-                "valueDecimal": confidence
-            })
-        
-        # Add source context
-        source = org_dict.get('source')
-        if source and isinstance(source, dict):
-            source_text = source.get('text', '')
-            if source_text:
-                if "contact" not in organization:
-                    organization["contact"] = []
-                organization["contact"].append({
-                    "purpose": {
-                        "text": f"Source: {source_text[:200]}"
-                    }
-                })
+        append_extraction_extensions(
+            organization,
+            confidence=org_dict.get('confidence'),
+            source_text=source_snippet_from_field(org_dict.get('source')),
+        )
         
         self.logger.debug(f"Created Organization from structured data: {name[:50]}...")
         return organization

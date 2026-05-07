@@ -15,7 +15,7 @@ import instructor
 import time
 import re
 import gc
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator, ValidationError
 from django.conf import settings
@@ -44,6 +44,9 @@ from apps.documents.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+# FHIR-aligned date granularity when only partial dates appear in source text (no invented day/month).
+DateGranularityLiteral = Literal['year', 'month', 'day']
 
 # Import enhanced prompting service for comprehensive data capture
 # Note: This import is now handled locally in each function to avoid scope issues
@@ -149,6 +152,10 @@ class MedicalCondition(BaseModel):
     )
     confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     onset_date: Optional[str] = Field(default=None, description="When condition was diagnosed")
+    date_precision: Optional[DateGranularityLiteral] = Field(
+        default=None,
+        description="Granularity of onset_date only: year (YYYY), month (YYYY-MM), or full day (YYYY-MM-DD)."
+    )
     icd_code: Optional[str] = Field(default=None, description="ICD-10 code if mentioned")
     source: SourceContext = Field(description="Source context in the document")
 
@@ -163,6 +170,10 @@ class Medication(BaseModel):
     confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     start_date: Optional[str] = Field(default=None, description="When medication was started")
     stop_date: Optional[str] = Field(default=None, description="When medication was stopped")
+    date_precision: Optional[DateGranularityLiteral] = Field(
+        default=None,
+        description="Granularity of start_date/stop_date strings when present."
+    )
     source: SourceContext = Field(description="Source context in the document")
 
 
@@ -172,6 +183,10 @@ class VitalSign(BaseModel):
     value: str = Field(description="The measured value")
     unit: Optional[str] = Field(default=None, description="Unit of measurement")
     timestamp: Optional[str] = Field(default=None, description="When measurement was taken")
+    date_precision: Optional[DateGranularityLiteral] = Field(
+        default=None,
+        description="Granularity of timestamp when present."
+    )
     confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     source: SourceContext = Field(description="Source context in the document")
 
@@ -184,6 +199,10 @@ class LabResult(BaseModel):
     reference_range: Optional[str] = Field(default=None, description="Normal reference range")
     status: Optional[str] = Field(default=None, description="Result status")
     test_date: Optional[str] = Field(default=None, description="Date test was performed")
+    date_precision: Optional[DateGranularityLiteral] = Field(
+        default=None,
+        description="Granularity of test_date when present."
+    )
     confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     source: SourceContext = Field(description="Source context in the document")
 
@@ -194,6 +213,10 @@ class Procedure(BaseModel):
     procedure_date: Optional[str] = Field(default=None, description="Date procedure was performed")
     provider: Optional[str] = Field(default=None, description="Provider who performed procedure")
     outcome: Optional[str] = Field(default=None, description="Outcome or result")
+    date_precision: Optional[DateGranularityLiteral] = Field(
+        default=None,
+        description="Granularity of procedure_date when present."
+    )
     confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     source: SourceContext = Field(description="Source context in the document")
 
@@ -291,6 +314,39 @@ class Organization(BaseModel):
     source: SourceContext = Field(description="Source context in the document")
 
 
+class FamilyMemberHistory(BaseModel):
+    """Family history row for FHIR FamilyMemberHistory conversion."""
+
+    relationship: str = Field(description="Relationship to patient (e.g. mother, father, sibling)")
+    condition: str = Field(description="Reported condition or cause of death in relative")
+    onset_age: Optional[str] = Field(default=None, description="Age at onset if stated")
+    deceased: Optional[bool] = Field(default=None, description="Whether relative is deceased if stated")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
+    source: SourceContext = Field(description="Source context in the document")
+
+
+class PhysicalExamFinding(BaseModel):
+    """Physical exam bullet mapped to Observation (category exam)."""
+
+    body_site: Optional[str] = Field(default=None, description="Body area if mentioned")
+    finding: str = Field(description="Exam finding narrative")
+    status: Optional[str] = Field(default=None, description="normal, abnormal, or similar if discernible")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
+    source: SourceContext = Field(description="Source context in the document")
+
+
+class SocialHistoryItem(BaseModel):
+    """Social history row mapped to Observation (category social-history)."""
+
+    category: Optional[str] = Field(
+        default=None,
+        description="living_arrangement, employment, substance_use, tobacco, alcohol, support_system, etc.",
+    )
+    description: str = Field(description="Social history narrative")
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
+    source: SourceContext = Field(description="Source context in the document")
+
+
 class StructuredMedicalExtraction(BaseModel):
     """Complete structured medical data extraction from a clinical document."""
     
@@ -343,6 +399,18 @@ class StructuredMedicalExtraction(BaseModel):
         default_factory=list,
         description="All healthcare organizations and facilities mentioned"
     )
+    family_history: List[FamilyMemberHistory] = Field(
+        default_factory=list,
+        description="Family history entries for pedigree-relevant conditions"
+    )
+    physical_exam_findings: List[PhysicalExamFinding] = Field(
+        default_factory=list,
+        description="Structured physical exam bullets from exam section"
+    )
+    social_history: List[SocialHistoryItem] = Field(
+        default_factory=list,
+        description="Social determinants / living situation / tobacco alcohol employment when documented"
+    )
     
     # Metadata
     extraction_timestamp: str = Field(description="When this extraction was performed")
@@ -353,7 +421,12 @@ class StructuredMedicalExtraction(BaseModel):
     def calculate_average_confidence(self):
         """Calculate average confidence across all extracted items."""
         all_items = []
-        for field_name in ['conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers', 'encounters', 'service_requests', 'diagnostic_reports', 'allergies', 'care_plans', 'organizations']:
+        for field_name in [
+            'conditions', 'medications', 'vital_signs', 'lab_results', 'procedures',
+            'providers', 'encounters', 'service_requests', 'diagnostic_reports',
+            'allergies', 'care_plans', 'organizations',
+            'family_history', 'physical_exam_findings', 'social_history',
+        ]:
             items = getattr(self, field_name, [])
             all_items.extend(item.confidence for item in items)
         
@@ -475,6 +548,14 @@ DATE EXTRACTION PRIORITY (CRITICAL):
 - For lab results: Extract test dates (e.g., "Glucose 105 on 10/19/24" → test_date: "2024-10-19")
 - ALWAYS extract dates even if approximate (e.g., "2018" is valid, "Oct 2024" is valid)
 
+DATE GRANULARITY (CRITICAL — DO NOT FABRICATE PRECISION):
+- If only a YEAR is documented (e.g. "since 2012", "Dx 2012"), emit the shortest string `"2012"`, set `date_precision` to `"year"`, and NEVER output `"2012-01-01"`.
+- If only YEAR-MONTH is documented, emit `"YYYY-MM"`, `date_precision` `"month"` — NEVER pad missing day as `-01`.
+- If a specific calendar DAY is documented, emit ISO date `YYYY-MM-DD` and `date_precision` `"day"`.
+- Apply the same pattern to medications (`start_date`/`stop_date` + `date_precision`), vitals (`timestamp` + `date_precision`), lab results (`test_date` + `date_precision`), procedures (`procedure_date` + `date_precision`), and conditions (`onset_date` + `date_precision`).
+- Omit `date_precision` or use null when the corresponding date field is absent.
+- Dates must reflect the document text exactly — do not shift days for timezones.
+
 CONFIDENCE SCORING:
 - 0.9-1.0: Information explicitly and clearly stated
 - 0.7-0.9: Information clearly implied or inferred  
@@ -586,6 +667,9 @@ CRITICAL REQUIREMENTS:
 4. **EXTRACT ALL DATES AGGRESSIVELY** - Look for dates in any format near medical findings (MM/DD/YY, MM/DD/YYYY, spelled out, etc.)
 5. Use proper medical terminology and classifications
 6. Include dates, values, and units exactly as written
+
+DATE GRANULARITY — DO NOT FABRICATE DAYS OR MONTHS:
+Set `date_precision` to "year", "month", or "day" for conditions (onset_date), medications (start/stop dates), vitals (timestamp), labs (test_date), procedures (procedure_date). Use "2012" + "year" for year-only; "2012-06" + "month" for month precision; never use "2012-01-01" unless January 1 is explicitly documented. Do not shift calendar days due to timezone.
 
 CONFIDENCE SCORING:
 - 0.9-1.0: Information explicitly and clearly stated
@@ -704,6 +788,7 @@ CRITICAL: Use EXACT field names as shown - do not abbreviate or rename fields!
       "status": "active",
       "confidence": 0.9,
       "onset_date": null,
+      "date_precision": null,
       "icd_code": null,
       "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
     }}
@@ -718,6 +803,7 @@ CRITICAL: Use EXACT field names as shown - do not abbreviate or rename fields!
       "confidence": 0.9,
       "start_date": null,
       "stop_date": null,
+      "date_precision": null,
       "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
     }}
   ],
@@ -727,6 +813,7 @@ CRITICAL: Use EXACT field names as shown - do not abbreviate or rename fields!
       "value": "measurement value",
       "unit": "unit",
       "timestamp": null,
+      "date_precision": null,
       "confidence": 0.9,
       "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
     }}
@@ -739,6 +826,7 @@ CRITICAL: Use EXACT field names as shown - do not abbreviate or rename fields!
       "reference_range": null,
       "status": "final",
       "test_date": null,
+      "date_precision": null,
       "confidence": 0.9,
       "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
     }}
@@ -749,6 +837,7 @@ CRITICAL: Use EXACT field names as shown - do not abbreviate or rename fields!
       "procedure_date": null,
       "provider": null,
       "outcome": null,
+      "date_precision": null,
       "confidence": 0.9,
       "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
     }}
@@ -846,6 +935,33 @@ CRITICAL: Use EXACT field names as shown - do not abbreviate or rename fields!
       "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
     }}
   ],
+  "family_history": [
+    {{
+      "relationship": "mother",
+      "condition": "breast cancer",
+      "onset_age": null,
+      "deceased": false,
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "physical_exam_findings": [
+    {{
+      "body_site": "cardiovascular",
+      "finding": "Regular rate and rhythm",
+      "status": "normal",
+      "confidence": 0.85,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
+  "social_history": [
+    {{
+      "category": "tobacco",
+      "description": "Former smoker, quit 2015",
+      "confidence": 0.9,
+      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
+    }}
+  ],
   "extraction_timestamp": "",
   "document_type": "",
   "confidence_average": null
@@ -857,6 +973,7 @@ CRITICAL FIELD NAME REQUIREMENTS:
 - diagnostic_reports: Use "report_type" NOT "type"
 - vital_signs: Use "measurement" NOT "type"
 - Every extracted item MUST include a "source" object with exact text snippet
+- date_precision MUST be null or one of: "year", "month", "day" — NEVER pad partial dates into full YYYY-MM-DD
 - Use exact field names as shown above - do not abbreviate or substitute"""
                 
                 # Reset start time for manual approach

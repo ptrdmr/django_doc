@@ -9,8 +9,9 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
-from datetime import datetime
 from apps.core.date_parser import ClinicalDateParser
+
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
 
 logger = logging.getLogger(__name__)
 
@@ -65,34 +66,70 @@ class ObservationService:
             self.logger.warning("No patient_id provided for observation processing")
             return observations
         
-        # PRIMARY PATH: Handle structured Pydantic data
-        clinical_date = extracted_data.get('clinical_date')
-        if 'structured_data' in extracted_data:
-            structured_data = extracted_data['structured_data']
-            if isinstance(structured_data, dict):
-                # Process VitalSign models
-                vital_signs = structured_data.get('vital_signs', [])
-                if vital_signs:
-                    self.logger.info(f"Processing {len(vital_signs)} vital signs via structured path")
-                    for vital_dict in vital_signs:
-                        if isinstance(vital_dict, dict):
-                            obs_resource = self._create_observation_from_structured(vital_dict, patient_id, 'vital_sign', clinical_date=clinical_date)
-                            if obs_resource:
-                                observations.append(obs_resource)
-                
-                # Process LabResult models
-                lab_results = structured_data.get('lab_results', [])
-                if lab_results:
-                    self.logger.info(f"Processing {len(lab_results)} lab results via structured path")
-                    for lab_dict in lab_results:
-                        if isinstance(lab_dict, dict):
-                            obs_resource = self._create_observation_from_structured(lab_dict, patient_id, 'lab_result', clinical_date=clinical_date)
-                            if obs_resource:
-                                observations.append(obs_resource)
-                
-                if vital_signs or lab_results:
-                    self.logger.info(f"Successfully processed {len(observations)} observations via structured path")
-                    return observations
+        clinical_date = extracted_data.get("clinical_date")
+        structured_blob = extracted_data.get("structured_data")
+
+        # PRIMARY PATH: Handle structured Pydantic-derived observation buckets
+        if isinstance(structured_blob, dict):
+            vital_signs = structured_blob.get("vital_signs") or []
+            lab_results = structured_blob.get("lab_results") or []
+            exam_findings = structured_blob.get("physical_exam_findings") or []
+            social_history = structured_blob.get("social_history") or []
+
+            if vital_signs:
+                self.logger.info("Processing %s vital signs via structured path", len(vital_signs))
+                for vital_dict in vital_signs:
+                    if isinstance(vital_dict, dict):
+                        obs_resource = self._create_observation_from_structured(
+                            vital_dict,
+                            patient_id,
+                            "vital_sign",
+                            clinical_date=clinical_date,
+                        )
+                        if obs_resource:
+                            observations.append(obs_resource)
+
+            if lab_results:
+                self.logger.info(
+                    "Processing %s lab results via structured path", len(lab_results)
+                )
+                for lab_dict in lab_results:
+                    if isinstance(lab_dict, dict):
+                        obs_resource = self._create_observation_from_structured(
+                            lab_dict,
+                            patient_id,
+                            "lab_result",
+                            clinical_date=clinical_date,
+                        )
+                        if obs_resource:
+                            observations.append(obs_resource)
+
+            if exam_findings:
+                self.logger.info(
+                    "Processing %s structured physical exam bullets", len(exam_findings)
+                )
+                for fd in exam_findings:
+                    if isinstance(fd, dict):
+                        obs = self._create_exam_observation(fd, patient_id, clinical_date)
+                        if obs:
+                            observations.append(obs)
+
+            if social_history:
+                self.logger.info(
+                    "Processing %s structured social-history rows", len(social_history)
+                )
+                for item in social_history:
+                    if isinstance(item, dict):
+                        obs = self._create_social_observation(item, patient_id, clinical_date)
+                        if obs:
+                            observations.append(obs)
+
+            if observations:
+                self.logger.info(
+                    "Successfully processed %s observation resources via structured path",
+                    len(observations),
+                )
+                return observations
         
         # FALLBACK PATH: Handle legacy fields list format
         if 'fields' in extracted_data:
@@ -257,24 +294,174 @@ class ObservationService:
                 observation["status"] = status_mapping.get(lab_status.lower(), 'final')
         
         # Add extraction confidence
-        confidence = obs_dict.get('confidence')
+        confidence = obs_dict.get("confidence")
         if confidence is not None:
-            observation["meta"]["tag"].append({
-                "system": "http://terminology.hl7.org/CodeSystem/common-tags",
-                "code": "extraction-confidence",
-                "display": f"Extraction confidence: {confidence}"
-            })
-        
+            observation["meta"]["tag"].append(
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                    "code": "extraction-confidence",
+                    "display": f"Extraction confidence: {confidence}",
+                }
+            )
+
         # Add source context if available
-        source = obs_dict.get('source')
-        if source and isinstance(source, dict):
-            source_text = source.get('text', '')
-            if source_text:
-                observation["note"] = [{
-                    "text": f"Source: {source_text[:200]}"
-                }]
-        
-        self.logger.debug(f"Created Observation from structured {obs_type}: {display_name[:50]}...")
+        source = obs_dict.get("source")
+        if isinstance(source, dict):
+            snippet = source.get("text") or ""
+            snippet = snippet[:200].strip()
+            if snippet:
+                observation["note"] = [{"text": f"Source: {snippet}"}]
+
+        append_extraction_extensions(
+            observation,
+            confidence=obs_dict.get("confidence"),
+            source_text=source_snippet_from_field(obs_dict.get("source")),
+        )
+
+        self.logger.debug(
+            "Created Observation from structured %s: %s...", obs_type, display_name[:50]
+        )
+        return observation
+
+    def _shared_effective_datetime(
+        self, raw_date_hint: Optional[str], clinical_date
+    ) -> Optional[str]:
+        """Resolve effective datetime from textual hint plus ParsedData fallback."""
+        if raw_date_hint:
+            extracted_dates = self.date_parser.extract_dates(raw_date_hint)
+            if extracted_dates:
+                best_date = max(extracted_dates, key=lambda x: x.confidence)
+                return best_date.extracted_date.isoformat()
+
+        from datetime import date as date_type
+        from datetime import datetime as datetime_type
+
+        if clinical_date:
+            if isinstance(clinical_date, datetime_type):
+                return clinical_date.isoformat()
+            if isinstance(clinical_date, date_type):
+                return datetime_type.combine(clinical_date, datetime_type.min.time()).isoformat()
+            return str(clinical_date)
+
+        return None
+
+    def _create_exam_observation(
+        self,
+        finding: Dict[str, Any],
+        patient_id: str,
+        clinical_date,
+    ) -> Optional[Dict[str, Any]]:
+        """Observation with category ``exam`` for structured physical findings."""
+        text = (finding.get("finding") or "").strip()
+        if not text:
+            return None
+
+        site = (finding.get("body_site") or "").strip()
+        disp = text if not site else f"{site}: {text}"
+
+        observation: Dict[str, Any] = {
+            "resourceType": "Observation",
+            "id": str(uuid4()),
+            "status": "final",
+            "category": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                            "code": "exam",
+                            "display": "Exam",
+                        }
+                    ]
+                }
+            ],
+            "code": {"text": disp},
+            "subject": {"reference": f"Patient/{patient_id}"},
+            "valueString": text,
+            "meta": {
+                "source": "Structured physical_exam_findings extraction",
+                "profile": ["http://hl7.org/fhir/StructureDefinition/Observation"],
+                "tag": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                        "code": "structured-exposure",
+                        "display": "Physical exam extraction",
+                    }
+                ],
+            },
+        }
+
+        status_label = finding.get("status")
+        if status_label:
+            observation["interpretation"] = [
+                {"text": str(status_label).strip()},
+            ]
+
+        effective = self._shared_effective_datetime(None, clinical_date)
+        if effective:
+            observation["effectiveDateTime"] = effective
+
+        snippet = source_snippet_from_field(finding.get("source"))
+        append_extraction_extensions(
+            observation,
+            confidence=finding.get("confidence"),
+            source_text=snippet,
+        )
+        return observation
+
+    def _create_social_observation(
+        self,
+        item: Dict[str, Any],
+        patient_id: str,
+        clinical_date,
+    ) -> Optional[Dict[str, Any]]:
+        """Observation capturing social-history statements."""
+        description = (item.get("description") or "").strip()
+        if not description:
+            return None
+
+        category_tag = (item.get("category") or "social-history").strip() or "social-history"
+        headline = category_tag.replace("_", " ").title()
+
+        observation: Dict[str, Any] = {
+            "resourceType": "Observation",
+            "id": str(uuid4()),
+            "status": "final",
+            "category": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                            "code": "social-history",
+                            "display": "Social History",
+                        }
+                    ]
+                }
+            ],
+            "code": {"text": headline},
+            "subject": {"reference": f"Patient/{patient_id}"},
+            "valueString": description,
+            "meta": {
+                "source": "Structured social_history extraction",
+                "profile": ["http://hl7.org/fhir/StructureDefinition/Observation"],
+                "tag": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                        "code": "social-history-field",
+                        "display": category_tag,
+                    }
+                ],
+            },
+        }
+
+        effective = self._shared_effective_datetime(None, clinical_date)
+        if effective:
+            observation["effectiveDateTime"] = effective
+
+        append_extraction_extensions(
+            observation,
+            confidence=item.get("confidence"),
+            source_text=source_snippet_from_field(item.get("source")),
+        )
         return observation
     
     def _create_observation_resource(self, field: Dict[str, Any], patient_id: str, clinical_date: Optional[str] = None) -> Optional[Dict[str, Any]]:

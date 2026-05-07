@@ -29,16 +29,17 @@
     
     <!-- Navigation Header -->
     <header class="bg-white border-b-2 border-blue-600 shadow-sm">
-        <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" role="navigation" aria-label="Main navigation">
-            <div class="flex justify-between items-center h-14">
+        <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" role="navigation" aria-label="Main navigation" x-data="{ mobileOpen: false }" @keydown.escape.window="mobileOpen = false">
+            <div class="flex justify-between items-center h-14 gap-2">
                 <!-- Brand Logo -->
-                <div class="flex items-center">
+                <div class="flex items-center min-w-0 shrink-0">
                     <a href="{% url 'home' %}" class="flex items-center space-x-3 text-gray-900 hover:opacity-90 transition-opacity">
-                        <img src="{% static 'img/moristat_logo.png' %}" alt="Moristat" class="h-20 w-auto">
+                        <img src="{% static 'img/moristat_logo.png' %}" alt="Moristat" class="h-10 sm:h-12 w-auto max-h-14 object-contain">
                     </a>
                 </div>
                 
                 {% if user.is_authenticated %}
+                <div class="flex items-center gap-2 md:gap-4 ml-auto min-w-0">
                 <!-- Desktop Navigation -->
                 <div class="hidden md:flex items-center space-x-4">
                     <a href="{% url 'patients:list' %}" class="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-all">
@@ -47,24 +48,14 @@
                         </svg>
                         <span>Patients</span>
                     </a>
-                    <a href="{% url 'providers:list' %}" class="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-all">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
-                        </svg>
-                        <span>Providers</span>
-                    </a>
+                    {# Providers nav hidden for MVP — routes remain for later #}
                     <a href="{% url 'documents:list' %}" class="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-all">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                         </svg>
                         <span>Documents</span>
                     </a>
-                    <a href="{% url 'reports:dashboard' %}" class="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-all">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                        </svg>
-                        <span>Reports</span>
-                    </a>
+                    {# Reports hub hidden for MVP — patient reports live on patient detail; URLs remain #}
                 </div>
                 
                 <!-- User Menu -->
@@ -129,19 +120,87 @@
                 </div>
 
                 <!-- Mobile menu button -->
-                <div class="md:hidden">
+                <div class="md:hidden shrink-0">
                     <button 
-                        x-data="{ mobileOpen: false }"
+                        type="button"
                         @click="mobileOpen = !mobileOpen"
-                        class="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
+                        class="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200"
+                        aria-controls="mobile-nav-drawer"
+                        :aria-expanded="mobileOpen.toString()"
+                        aria-label="Open menu"
                     >
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg x-show="!mobileOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                        <svg x-show="mobileOpen" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
                     </button>
                 </div>
+                </div>
                 {% endif %}
             </div>
+
+            {% if user.is_authenticated %}
+            <!-- Mobile navigation drawer -->
+            <div
+                id="mobile-nav-drawer"
+                class="md:hidden fixed inset-0 z-[100]"
+                x-show="mobileOpen"
+                x-cloak
+                x-transition:enter="transition ease-out duration-200"
+                x-transition:enter-start="opacity-0"
+                x-transition:enter-end="opacity-100"
+                x-transition:leave="transition ease-in duration-150"
+                x-transition:leave-start="opacity-100"
+                x-transition:leave-end="opacity-0"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Main menu"
+            >
+                <div class="absolute inset-0 bg-gray-900/50" @click="mobileOpen = false" aria-hidden="true"></div>
+                <div
+                    class="absolute top-0 right-0 bottom-0 w-full max-w-xs bg-white shadow-xl flex flex-col border-l border-gray-200"
+                    x-transition:enter="transition ease-out duration-200 transform"
+                    x-transition:enter-start="translate-x-full"
+                    x-transition:enter-end="translate-x-0"
+                    x-transition:leave="transition ease-in duration-150 transform"
+                    x-transition:leave-start="translate-x-0"
+                    x-transition:leave-end="translate-x-full"
+                    @click.stop
+                >
+                    <div class="flex items-center justify-between h-14 px-4 border-b border-gray-200">
+                        <span class="text-sm font-semibold text-gray-900">Menu</span>
+                        <button type="button" class="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100" @click="mobileOpen = false" aria-label="Close menu">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+                        <a href="{% url 'patients:list' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-800 hover:bg-blue-50 hover:text-blue-700" @click="mobileOpen = false">
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            Patients
+                        </a>
+                        {# Providers drawer link hidden for MVP #}
+                        <a href="{% url 'documents:list' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-800 hover:bg-blue-50 hover:text-blue-700" @click="mobileOpen = false">
+                            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            Documents
+                        </a>
+                        {# Reports drawer link hidden for MVP #}
+                        <hr class="border-gray-200 my-2">
+                        <a href="{% url 'accounts:profile' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-800 hover:bg-blue-50 hover:text-blue-700" @click="mobileOpen = false">Profile</a>
+                        <a href="{% url 'accounts:settings' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-800 hover:bg-blue-50 hover:text-blue-700" @click="mobileOpen = false">Settings</a>
+                        {% if user.is_staff or user.is_superuser %}
+                        <p class="px-3 pt-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Administration</p>
+                        <a href="{% url 'accounts:invitation_list' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-800 hover:bg-blue-50 hover:text-blue-700" @click="mobileOpen = false">Provider Invitations</a>
+                        <a href="{% url 'accounts:role_list' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-800 hover:bg-blue-50 hover:text-blue-700" @click="mobileOpen = false">Role Management</a>
+                        <a href="{% url 'accounts:user_list' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-800 hover:bg-blue-50 hover:text-blue-700" @click="mobileOpen = false">User Management</a>
+                        {% endif %}
+                        <hr class="border-gray-200 my-2">
+                        <a href="{% url 'account_logout' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-red-700 hover:bg-red-50" @click="mobileOpen = false">Logout</a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </nav>
     </header>
     
@@ -192,7 +251,7 @@
         {% endif %}
         
         <!-- Page Content -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 min-h-96">
+        <div class="{% block content_wrapper_class %}bg-white rounded-lg shadow-sm border border-gray-200 min-h-96{% endblock %}">
             {% block content %}{% endblock %}
         </div>
     </main>
@@ -239,7 +298,7 @@
             crossorigin="anonymous"></script>
             <div x-data="documentProgress()" 
             x-init="init()" 
-            class="fixed bottom-4 right-4 z-50 w-80 space-y-2 font-sans"
+            class="fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] max-w-sm sm:w-80 space-y-2 font-sans"
             style="display: none;" 
             x-show="hasActiveUploads || recentUploads.length > 0"
             x-transition:enter="transition ease-out duration-300"

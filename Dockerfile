@@ -17,6 +17,12 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libpq-dev \
     curl \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 # NOTE: tesseract-ocr and poppler-utils removed (Task 42.22) - OCR handled by AWS Textract
 

@@ -348,10 +348,17 @@ class ClinicalDateParser:
         """
         if not date_string or not isinstance(date_string, str):
             return None
+
+        stripped = date_string.strip()
+        # Calendar prefix from ISO-8601: never apply timezone shifts to the Y-M-D portion.
+        # Fixes off-by-one when dateutil returns a UTC instant that maps to the prior local day.
+        prefix = self._calendar_date_from_iso_prefix(stripped)
+        if prefix:
+            return prefix
         
         # First try with our regex patterns
         for pattern, pattern_name in self.compiled_patterns:
-            match = pattern.search(date_string.strip())
+            match = pattern.search(stripped)
             if match:
                 parsed_date = self._parse_regex_match(match, pattern_name)
                 if parsed_date and self._is_valid_clinical_date(parsed_date):
@@ -359,7 +366,7 @@ class ClinicalDateParser:
         
         # Fall back to dateutil fuzzy parsing
         try:
-            parsed_date = dateutil_parser.parse(date_string.strip(), fuzzy=True)
+            parsed_date = dateutil_parser.parse(stripped, fuzzy=True)
             if isinstance(parsed_date, datetime):
                 parsed_date = parsed_date.date()
             
@@ -368,6 +375,33 @@ class ClinicalDateParser:
         except (ValueError, TypeError, OverflowError):
             pass
         
+        return None
+
+    @staticmethod
+    def _calendar_date_from_iso_prefix(stripped: str) -> Optional[date]:
+        """
+        Return a calendar date from leading YYYY-MM-DD if present (optionally before 'T' or space).
+
+        Clinical documents and LLM extractions use this form; the calendar day in the string
+        is authoritative and must not shift due to timezone interpretation.
+        """
+        head = stripped
+        if "T" in head:
+            head = head.split("T", 1)[0]
+        elif " " in head and re.match(r"^\d{4}-\d{2}-\d{2}\s", head):
+            head = head.split(" ", 1)[0]
+        match = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", head)
+        if not match:
+            return None
+        try:
+            y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            candidate = date(y, m, d)
+        except ValueError:
+            return None
+        earliest_valid = date(1900, 1, 1)
+        latest_valid = date.today() + relativedelta(years=1)
+        if earliest_valid <= candidate <= latest_valid:
+            return candidate
         return None
     
     def validate_date_string(self, date_string: str) -> Tuple[bool, Optional[str]]:

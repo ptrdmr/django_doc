@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,8 +66,14 @@ class DiagnosticReportService:
             List of normalized diagnostic report dictionaries
         """
         report_data = []
-        
-        # Handle direct diagnostic_reports list
+
+        structured = extracted_data.get("structured_data")
+        if isinstance(structured, dict):
+            structured_reports = structured.get("diagnostic_reports")
+            if isinstance(structured_reports, list) and structured_reports:
+                report_data.extend(structured_reports)
+
+        # Handle direct diagnostic_reports list (legacy unstructured batching)
         if 'diagnostic_reports' in extracted_data and isinstance(extracted_data['diagnostic_reports'], list):
             report_data.extend(extracted_data['diagnostic_reports'])
             
@@ -320,10 +328,28 @@ class DiagnosticReportService:
             FHIR DiagnosticReport resource or None if creation fails
         """
         try:
-            procedure_type = report_data.get('procedure_type')
-            if not procedure_type:
-                self.logger.warning("Diagnostic report missing procedure type, skipping")
+            procedure_type = (
+                report_data.get('procedure_type')
+                or report_data.get('report_type')
+            )
+            if not procedure_type or not isinstance(procedure_type, str):
+                procedure_type_stripped = ''
+            else:
+                procedure_type_stripped = procedure_type.strip()
+
+            if not procedure_type_stripped:
+                self.logger.warning("Diagnostic report missing procedure/report type, skipping")
                 return None
+
+            findings_blob = report_data.get('findings')
+            conclusion_blob = report_data.get('conclusion')
+
+            conclusions: List[str] = []
+            if findings_blob:
+                conclusions.append(str(findings_blob).strip())
+            if conclusion_blob:
+                conclusions.append(str(conclusion_blob).strip())
+            blended_conclusion = "\n".join(part for part in conclusions if part)
                 
             report_id = str(uuid4())
             
@@ -333,7 +359,7 @@ class DiagnosticReportService:
                 "id": report_id,
                 "status": report_data.get('status', 'final'),
                 "code": {
-                    "text": procedure_type
+                    "text": procedure_type_stripped
                 },
                 "meta": {
                     "versionId": "1",
@@ -348,16 +374,20 @@ class DiagnosticReportService:
                     "reference": f"Patient/{patient_id}"
                 }
                 
-            # Add effective date if available
-            if report_data.get('date'):
-                report_resource["effectiveDateTime"] = report_data['date']
+            # Add effective datetime if available
+            effective_value = (
+                report_data.get('effectiveDateTime')
+                or report_data.get('date')
+                or report_data.get('report_date')
+            )
+            if effective_value:
+                report_resource["effectiveDateTime"] = effective_value
                 
-            # Add conclusion if available
-            if report_data.get('conclusion'):
-                report_resource["conclusion"] = report_data['conclusion']
+            if blended_conclusion:
+                report_resource["conclusion"] = blended_conclusion
                 
             # Add category based on procedure type
-            category = self._determine_category(procedure_type)
+            category = self._determine_category(procedure_type_stripped)
             if category:
                 report_resource["category"] = [{
                     "coding": [{
@@ -367,12 +397,11 @@ class DiagnosticReportService:
                     }]
                 }]
                 
-            # Add confidence as extension if available
-            if report_data.get('confidence'):
-                report_resource["extension"] = [{
-                    "url": "http://hl7.org/fhir/StructureDefinition/data-confidence",
-                    "valueDecimal": report_data['confidence']
-                }]
+            append_extraction_extensions(
+                report_resource,
+                confidence=report_data.get("confidence"),
+                source_text=source_snippet_from_field(report_data.get("source")),
+            )
                 
             return report_resource
             

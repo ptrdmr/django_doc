@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 from apps.core.date_parser import ClinicalDateParser
+from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
 
 logger = logging.getLogger(__name__)
 
@@ -113,43 +114,52 @@ class ConditionService:
         
         if raw_onset:
             import re
-            
-            # Handle partial dates that date parser can't process
-            # Year-only format (e.g., "2018")
-            if re.match(r'^\d{4}$', str(raw_onset)):
-                onset_date = f"{raw_onset}-01-01"  # Default to January 1st
+
+            raw_str = str(raw_onset).strip()
+            precision_hint = (condition_dict.get('date_precision') or "").strip().lower()
+
+            # Year-only: preserve as "YYYY" — valid FHIR partial dateTime; do not invent Jan 1.
+            if re.match(r"^\d{4}$", raw_str):
+                onset_date = raw_str
                 date_source = "partial_year"
-                self.logger.debug(f"Converted year-only date '{raw_onset}' to {onset_date}")
-            
-            # Year-month format (e.g., "2018-02" or "2018/02")
-            elif re.match(r'^\d{4}[-/]\d{1,2}$', str(raw_onset)):
-                # Normalize separator to dash and pad month
-                parts = re.split(r'[-/]', str(raw_onset))
+                self.logger.debug(f"Preserving year-only onset date '{raw_str}'")
+
+            # Year-month only: "YYYY-MM" — do not pad missing day.
+            elif re.match(r"^\d{4}[-/]\d{1,2}$", raw_str):
+                parts = re.split(r"[-/]", raw_str)
                 year, month = parts[0], parts[1].zfill(2)
-                
-                # Validate month range
                 try:
                     month_int = int(month)
                     if 1 <= month_int <= 12:
-                        onset_date = f"{year}-{month}-01"  # Default to 1st of month
+                        onset_date = f"{year}-{month}"
                         date_source = "partial_year_month"
-                        self.logger.debug(f"Converted year-month date '{raw_onset}' to {onset_date}")
+                        self.logger.debug(f"Preserving year-month onset date '{raw_str}' as {onset_date}")
                     else:
-                        self.logger.warning(f"Invalid month {month} in partial date: {raw_onset}. Month must be 1-12.")
-                        # Don't set onset_date - will remain None
+                        self.logger.warning(
+                            "Invalid month %s in partial date: %s. Month must be 1-12.",
+                            month,
+                            raw_onset,
+                        )
                 except ValueError:
-                    self.logger.warning(f"Non-numeric month component in partial date: {raw_onset}.")
-                    # Don't set onset_date - will remain None
-            
-            # If partial date handling didn't set onset_date, try full date parser
+                    self.logger.warning("Non-numeric month component in partial date: %s.", raw_onset)
+
+            # Hint: treat as full day if model says day but string looks complete (let parser run)
+            elif precision_hint == "day" and re.match(r"^\d{4}-\d{2}-\d{2}$", raw_str):
+                onset_date = raw_str
+                date_source = "structured_full_day"
+
+            # Complete or fuzzy dates: ClinicalDateParser
             if not onset_date:
-                # Use ClinicalDateParser for complete dates
-                extracted_dates = self.date_parser.extract_dates(str(raw_onset))
+                extracted_dates = self.date_parser.extract_dates(raw_str)
                 if extracted_dates:
                     best_date = max(extracted_dates, key=lambda x: x.confidence)
                     onset_date = best_date.extracted_date.isoformat()
                     date_source = "full_date_parsed"
-                    self.logger.debug(f"Parsed structured onset date {onset_date} with confidence {best_date.confidence}")
+                    self.logger.debug(
+                        "Parsed structured onset date %s with confidence %s",
+                        onset_date,
+                        best_date.confidence,
+                    )
         
         # Map condition status to FHIR clinical status
         condition_status = condition_dict.get('status', 'active').lower()
@@ -246,6 +256,12 @@ class ConditionService:
                 condition["note"] = [{
                     "text": f"Source: {source_text[:200]}"  # Limit length
                 }]
+        
+        append_extraction_extensions(
+            condition,
+            confidence=condition_dict.get('confidence'),
+            source_text=source_snippet_from_field(condition_dict.get('source')),
+        )
         
         self.logger.debug(f"Created Condition resource from structured data: {name[:50]}...")
         return condition
