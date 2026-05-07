@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from apps.fhir.services.condition_service import ConditionService
 from apps.fhir.services.deduplication_service import DeduplicationService
+from apps.fhir.services.encounter_service import EncounterService
 from apps.fhir.services.family_history_service import FamilyHistoryService
 from apps.fhir.services.observation_service import ObservationService
 
@@ -165,3 +166,41 @@ class ExtractionPipelineWiringTests(unittest.TestCase):
         )
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["onsetDateTime"], "2019")
+
+    def test_encounter_service_processes_all_encounters(self) -> None:
+        """Multi-encounter documents must produce one FHIR resource per encounter."""
+        service = EncounterService()
+        payload = {
+            "patient_id": self.patient_id,
+            "structured_data": {
+                "encounters": [
+                    {
+                        "encounter_type": "Office visit",
+                        "encounter_date": "2024-03-01",
+                        "location": "Main clinic",
+                        "reason": "Follow-up",
+                        "confidence": 0.9,
+                        "source": {"text": "Office visit 3/1", "start_index": 0, "end_index": 16},
+                    },
+                    {
+                        "encounter_type": "Emergency",
+                        "encounter_date": "2024-03-10",
+                        "location": "ER",
+                        "reason": "Chest pain",
+                        "confidence": 0.85,
+                        "source": {"text": "ER visit 3/10", "start_index": 20, "end_index": 34},
+                    },
+                    {
+                        "encounter_type": "Telehealth",
+                        "encounter_date": "2024-03-15",
+                        "reason": "Medication review",
+                        "confidence": 0.88,
+                        "source": {"text": "Telehealth 3/15", "start_index": 40, "end_index": 55},
+                    },
+                ]
+            },
+        }
+        encounters = service.process_encounters(payload)
+        self.assertEqual(len(encounters), 3)
+        resource_types = {e["resourceType"] for e in encounters}
+        self.assertEqual(resource_types, {"Encounter"})

@@ -103,11 +103,11 @@ class FHIRProcessor:
                 logger.info(f"Processed {len(service_requests)} service request resources")
             
             # Process encounter information
-            encounter = self._process_encounter(extracted_data)
-            if encounter:
-                fhir_resources.append(encounter)
+            encounters = self._process_encounters(extracted_data)
+            if encounters:
+                fhir_resources.extend(encounters)
                 processing_stats['processed_categories'] += 1
-                logger.info("Processed encounter resource")
+                logger.info(f"Processed {len(encounters)} encounter resource(s)")
             
             # Process conditions (diagnosis fields)
             conditions = self._process_conditions(extracted_data)
@@ -205,13 +205,13 @@ class FHIRProcessor:
             logger.error(f"Error processing service requests: {e}")
             return []
     
-    def _process_encounter(self, extracted_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _process_encounters(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Process encounter data using EncounterService."""
         try:
             return self.encounter_service.process_encounters(extracted_data)
         except Exception as e:
-            logger.error(f"Error processing encounter: {e}")
-            return None
+            logger.error(f"Error processing encounters: {e}")
+            return []
     
     def _process_conditions(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Process condition data using ConditionService."""

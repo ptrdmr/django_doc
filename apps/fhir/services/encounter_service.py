@@ -27,67 +27,72 @@ class EncounterService:
         self.logger = logger
         self.date_parser = ClinicalDateParser()
         
-    def process_encounters(self, extracted_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def process_encounters(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Process encounter data with complete visit and interaction information.
-        
+
         Supports dual-format input:
-        1. Structured Pydantic-derived dicts (primary path) - when Encounter model exists
+        1. Structured Pydantic-derived dicts (primary path)
         2. Legacy encounter/visit/appointment structures (fallback path)
-        
+
         Args:
             extracted_data: Dictionary containing either:
-                - 'structured_data' dict with 'encounters' list (future Encounter Pydantic models)
-                - 'encounter', 'visit', or 'appointment' objects (legacy formats)
-            
+                - 'structured_data' dict with 'encounters' list
+                - 'encounter', 'visit', or 'appointment' objects (legacy)
+
         Returns:
-            FHIR Encounter resource or None if no encounter data found
+            List of FHIR Encounter resource dicts (may be empty)
         """
         patient_id = extracted_data.get('patient_id')
-        
+
         if not patient_id:
             self.logger.warning("No patient_id provided for encounter processing")
-            return None
-        
-        # PRIMARY PATH: Handle structured Pydantic data (when Encounter model is created in Phase 2)
+            return []
+
+        # PRIMARY PATH: structured Pydantic data
         if 'structured_data' in extracted_data:
             structured_data = extracted_data['structured_data']
-            if isinstance(structured_data, dict):
-                # Check if encounters key exists (indicates structured format is intended)
-                if 'encounters' in structured_data:
-                    encounters_list = structured_data['encounters']
-                    if encounters_list and len(encounters_list) > 0:
-                        self.logger.info(f"Processing {len(encounters_list)} encounters via structured path")
-                        # Process first encounter (typically documents have one primary encounter)
-                        encounter_dict = encounters_list[0]
-                        if isinstance(encounter_dict, dict):
-                            encounter_resource = self._create_encounter_from_structured(encounter_dict, patient_id)
-                            if encounter_resource:
-                                self.logger.info(f"Successfully processed encounter via structured path")
-                                return encounter_resource
-                            else:
-                                # Structured data was invalid, don't fall back to legacy
-                                self.logger.warning(f"Invalid structured encounter data, no fallback")
-                                return None
-                    else:
-                        # Encounters list is empty - structured format but no data
-                        self.logger.info(f"No encounters in structured data")
-                        return None
-        
-        # FALLBACK PATH: Handle legacy encounter data structures (only if structured_data not present)
-        self.logger.warning(f"Falling back to legacy encounter processing")
+            if isinstance(structured_data, dict) and 'encounters' in structured_data:
+                encounters_list = structured_data['encounters']
+                if not encounters_list:
+                    self.logger.info("No encounters in structured data")
+                    return []
+
+                self.logger.info(
+                    "Processing %s encounters via structured path", len(encounters_list)
+                )
+                results: List[Dict[str, Any]] = []
+                for encounter_dict in encounters_list:
+                    if isinstance(encounter_dict, dict):
+                        resource = self._create_encounter_from_structured(
+                            encounter_dict, patient_id
+                        )
+                        if resource:
+                            results.append(resource)
+
+                self.logger.info(
+                    "Successfully processed %s encounter(s) via structured path",
+                    len(results),
+                )
+                return results
+
+        # FALLBACK PATH: legacy encounter/visit/appointment structures
+        self.logger.warning("Falling back to legacy encounter processing")
         encounter_data = self._extract_encounter_data(extracted_data)
-        
+
         if encounter_data:
             try:
                 encounter_resource = self._create_encounter(encounter_data, patient_id)
                 if encounter_resource:
-                    self.logger.info(f"Created Encounter for: {encounter_data.get('type', 'Unknown encounter type')} via legacy path")
-                    return encounter_resource
+                    self.logger.info(
+                        "Created Encounter for: %s via legacy path",
+                        encounter_data.get('type', 'Unknown encounter type'),
+                    )
+                    return [encounter_resource]
             except Exception as e:
                 self.logger.error(f"Failed to create Encounter: {e}")
-                
-        return None
+
+        return []
     
     def _create_encounter_from_structured(self, encounter_dict: Dict[str, Any], patient_id: str) -> Optional[Dict[str, Any]]:
         """
