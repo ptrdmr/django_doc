@@ -283,13 +283,16 @@ def api_clear_cache(request):
         
         # Log the action
         from apps.core.models import AuditLog
-        AuditLog.objects.create(
+        AuditLog.log_event(
+            event_type='cache_cleared',
             user=request.user,
-            action="fhir_cache_cleared",
-            resource_type="FHIRCache",
-            resource_id="global",
-            ip_address=request.META.get('REMOTE_ADDR'),
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            request=request,
+            description='FHIR resource cache cleared (global)',
+            details={
+                'cache_component': 'FHIRCache',
+                'scope': 'global',
+            },
+            severity='info',
         )
         
         return JsonResponse({

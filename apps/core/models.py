@@ -125,6 +125,12 @@ class AuditLog(models.Model):
         ('security_violation', 'Security Violation'),
         ('data_breach', 'Data Breach Incident'),
         ('unauthorized_access', 'Unauthorized Access Attempt'),
+        # Pipeline / system observability (middleware & admin actions)
+        ('data_validation', 'Document Pipeline Data Validation'),
+        ('cache_cleared', 'Application Cache Cleared'),
+        ('slow_request', 'Slow Request Detected'),
+        ('rbac_access', 'Role-Based Access Log'),
+        ('web_access_audit', 'Sensitive Path Web Access'),
     ]
     
     # Event categories for filtering
@@ -263,6 +269,11 @@ class AuditLog(models.Model):
             'security_violation': 'security',
             'data_breach': 'security',
             'unauthorized_access': 'security',
+            'data_validation': 'compliance',
+            'cache_cleared': 'system_admin',
+            'slow_request': 'system_admin',
+            'rbac_access': 'authorization',
+            'web_access_audit': 'data_access',
         }
         
         # Extract request information

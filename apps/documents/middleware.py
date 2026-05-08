@@ -166,23 +166,26 @@ class StructuredDataValidationMiddleware(MiddlewareMixin):
         try:
             # Import here to avoid circular imports
             from apps.core.models import AuditLog
-            
-            # Create audit log entry
-            AuditLog.objects.create(
+
+            AuditLog.log_event(
+                event_type='data_validation',
                 user=request.user if request.user.is_authenticated else None,
-                action='DATA_VALIDATION',
-                resource_type='ValidationMiddleware',
-                resource_id=request.path_info,
-                ip_address=self._get_client_ip(request),
-                user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
-                data_accessed=f"Validations: {len(context['validations_performed'])}, Errors: {len(context['validation_errors'])}",
-                additional_info={
+                request=request,
+                description=(
+                    f"Validations: {len(context['validations_performed'])}, "
+                    f"Errors: {len(context['validation_errors'])}"
+                ),
+                details={
                     'validation_time_ms': round(validation_time, 2),
                     'validations_performed': context['validations_performed'],
-                    'validation_errors': context['validation_errors'][:5],  # Limit for storage
+                    'validation_errors': context['validation_errors'][:5],
                     'success': len(context['validation_errors']) == 0,
-                    'pipeline_stage': context.get('pipeline_stage', 'unknown')
-                }
+                    'pipeline_stage': context.get('pipeline_stage', 'unknown'),
+                    'resource_type': 'ValidationMiddleware',
+                    'path': request.path_info,
+                },
+                severity='info',
+                success=len(context['validation_errors']) == 0,
             )
             
         except Exception as e:

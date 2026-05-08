@@ -191,30 +191,31 @@ class AccessControlMiddleware:
         # Always log for authenticated users accessing sensitive paths
         if request.user.is_authenticated and requires_audit:
             try:
-                # Get client IP
-                client_ip = self.get_client_ip(request)
-                
-                # Determine action based on method and response status
+                # Determine action label based on method and response status
                 if response.status_code >= 400:
-                    action = f"ACCESS_DENIED_{request.method}"
+                    access_action = f"ACCESS_DENIED_{request.method}"
                 else:
-                    action = f"ACCESS_GRANTED_{request.method}"
+                    access_action = f"ACCESS_GRANTED_{request.method}"
                 
-                # Create audit log entry
-                AuditLog.objects.create(
+                AuditLog.log_event(
+                    event_type='web_access_audit',
                     user=request.user,
-                    action=action,
-                    resource_type='WebView',
-                    resource_id=request.path_info,
-                    ip_address=client_ip,
-                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
-                    data_accessed=f"Path: {request.path_info}, Method: {request.method}, Status: {response.status_code}",
-                    additional_info={
+                    request=request,
+                    description=(
+                        f"Path: {request.path_info}, Method: {request.method}, "
+                        f"Status: {response.status_code}"
+                    ),
+                    details={
+                        'access_action': access_action,
                         'processing_time_ms': round(processing_time, 2),
                         'status_code': response.status_code,
                         'content_length': len(response.content) if hasattr(response, 'content') else 0,
                         'user_roles': self.get_user_roles(request.user),
-                    }
+                        'path': request.path_info,
+                        'resource_type': 'WebView',
+                    },
+                    severity='warning' if response.status_code >= 400 else 'info',
+                    success=response.status_code < 400,
                 )
                 
                 # Log performance for monitoring
@@ -388,18 +389,22 @@ class PerformanceMonitoringMiddleware:
             # Log to audit system for performance monitoring
             if request.user.is_authenticated:
                 try:
-                    AuditLog.objects.create(
+                    AuditLog.log_event(
+                        event_type='slow_request',
                         user=request.user,
-                        action='SLOW_REQUEST',
-                        resource_type='Performance',
-                        resource_id=request.path,
-                        ip_address=request.META.get('REMOTE_ADDR', 'unknown'),
-                        data_accessed=f"Slow request: {processing_time:.2f}ms",
-                        additional_info={
+                        request=request,
+                        description=(
+                            f"Slow request: {processing_time:.2f}ms "
+                            f"(threshold {self.slow_request_threshold}ms)"
+                        ),
+                        details={
                             'processing_time_ms': round(processing_time, 2),
                             'threshold_ms': self.slow_request_threshold,
                             'method': request.method,
-                        }
+                            'path': request.path,
+                            'resource_type': 'Performance',
+                        },
+                        severity='warning',
                     )
                 except Exception as e:
                     logger.error(f"Error logging slow request: {e}")
@@ -485,19 +490,22 @@ class RBACLoggingMiddleware:
                     user_roles = request.user.profile.get_role_names()
                 
                 # Log role-based access
-                AuditLog.objects.create(
+                AuditLog.log_event(
+                    event_type='rbac_access',
                     user=request.user,
-                    action='RBAC_ACCESS',
-                    resource_type='RoleBasedAccess',
-                    resource_id=request.path_info,
-                    ip_address=request.META.get('REMOTE_ADDR', 'unknown'),
-                    data_accessed=f"Roles: {', '.join(user_roles) if user_roles else 'No roles'}",
-                    additional_info={
+                    request=request,
+                    description=(
+                        f"Roles: {', '.join(user_roles) if user_roles else 'No roles'}"
+                    ),
+                    details={
                         'user_roles': user_roles,
                         'status_code': response.status_code,
                         'method': request.method,
                         'has_phi_access': PermissionChecker.user_can_access_phi(request.user),
-                    }
+                        'path': request.path_info,
+                        'resource_type': 'RoleBasedAccess',
+                    },
+                    severity='info',
                 )
                 
             except Exception as e:

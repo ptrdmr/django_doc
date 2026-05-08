@@ -49,6 +49,48 @@ from .performance import performance_monitor, document_chunker
 logger = logging.getLogger(__name__)
 
 
+def _field_label_to_category(label: str) -> str:
+    """
+    Map legacy flat AI field labels to FHIRMetricsService category keys.
+
+    Structured extraction builds labels like ``diagnosis_1``, ``medication_2``,
+    ``vital_*``, ``lab_*``; metrics expects dict keys matching category_mappings
+    in apps.fhir.services.metrics_service (e.g. ``conditions``, ``medications``).
+    """
+    if not label or not isinstance(label, str):
+        return 'other_fields'
+    lower = label.lower()
+    if lower.startswith('diagnosis_'):
+        return 'conditions'
+    if lower.startswith('medication_'):
+        return 'medications'
+    if lower.startswith('vital_'):
+        return 'vital_signs'
+    if lower.startswith('lab_'):
+        return 'lab_results'
+    if lower.startswith('procedure_'):
+        return 'procedures'
+    if lower.startswith('provider_'):
+        return 'providers'
+    return 'other_fields'
+
+
+def _group_ai_fields_for_metrics(
+    fields: Optional[List[Dict[str, Any]]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Group flat ``fields`` list into category dict for calculate_data_capture_metrics."""
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    if not fields:
+        return grouped
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        label = field.get('label', '') or ''
+        category = _field_label_to_category(str(label))
+        grouped.setdefault(category, []).append(field)
+    return grouped
+
+
 def check_document_idempotency(document_id: int, task_id: str) -> dict:
     """
     Check if document has already been processed to prevent duplicate processing.
@@ -843,8 +885,11 @@ def process_document_async(self, document_id: int):
                     try:
                         from apps.fhir.services import FHIRMetricsService
                         metrics_service = FHIRMetricsService()
+                        fields_for_metrics = _group_ai_fields_for_metrics(
+                            ai_result.get('fields', [])
+                        )
                         capture_metrics = metrics_service.calculate_data_capture_metrics(
-                            ai_result.get('fields', []), fhir_resources
+                            fields_for_metrics, fhir_resources
                         )
                         
                         # Store metrics in AI result for reporting
