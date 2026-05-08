@@ -21,15 +21,24 @@ try:
     spec = importlib.util.spec_from_file_location("services_module", services_file)
     services_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(services_module)
+    # Ensure tests and patch.object can resolve this module by stable name
+    sys.modules['services_module'] = services_module
     
     # Extract the classes we need
     PDFTextExtractor = services_module.PDFTextExtractor
     DocumentAnalyzer = services_module.DocumentAnalyzer
+    ResponseParser = services_module.ResponseParser
     APIRateLimitError = services_module.APIRateLimitError
     PatientDataComparisonService = services_module.PatientDataComparisonService
     
     # Make them available for import
-    __all__ = ['PDFTextExtractor', 'DocumentAnalyzer', 'APIRateLimitError', 'PatientDataComparisonService']
+    __all__ = [
+        'PDFTextExtractor',
+        'DocumentAnalyzer',
+        'ResponseParser',
+        'APIRateLimitError',
+        'PatientDataComparisonService',
+    ]
     
 except Exception as e:
     # Fallback: define minimal classes to prevent import errors

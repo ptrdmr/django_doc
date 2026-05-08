@@ -483,11 +483,7 @@ FHIR_STRICT_MODE = config('FHIR_STRICT_MODE', default=False, cast=bool)
 
 # OCR Feature Flags
 OCR_ENABLED = config('OCR_ENABLED', default=True, cast=bool)
-OCR_SELECTIVE_ENABLED = config('OCR_SELECTIVE_ENABLED', default=True, cast=bool)
 
-# OCR Thresholds
-# Pages with fewer characters than this threshold are classified as "image pages" needing OCR
-OCR_TEXT_THRESHOLD = config('OCR_TEXT_THRESHOLD', default=50, cast=int)
 # Documents larger than this size (in MB) use async Textract processing
 OCR_ASYNC_THRESHOLD_MB = config('OCR_ASYNC_THRESHOLD_MB', default=5, cast=int)
 
@@ -501,7 +497,15 @@ OCR_S3_BUCKET = config('OCR_S3_BUCKET', default=None)
 OCR_S3_PREFIX = config('OCR_S3_PREFIX', default='ocr-temp/')
 
 # Textract API Configuration
-TEXTRACT_FEATURE_TYPES = ['TABLES', 'FORMS']  # Extract tables and form fields
+# mode: detect = DetectDocumentText (text-only, cheaper); analyze = AnalyzeDocument with features below
+TEXTRACT_MODE = config('TEXTRACT_MODE', default='detect')
+TEXTRACT_FEATURE_TYPES = config(
+    'TEXTRACT_FEATURE_TYPES',
+    default='TABLES,FORMS',
+    cast=lambda v: [
+        s.strip() for s in str(v or 'TABLES,FORMS').split(',') if s.strip()
+    ]
+)
 
 # Async Processing Configuration
 TEXTRACT_ASYNC_POLL_INTERVAL = config('TEXTRACT_ASYNC_POLL_INTERVAL', default=10, cast=int)  # seconds

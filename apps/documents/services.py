@@ -30,6 +30,25 @@ from apps.documents.services.textract import (
 logger = logging.getLogger(__name__)
 
 
+def _pdf_page_has_embedded_fonts(page) -> bool:
+    """
+    Return True if the page's resource dictionary includes /Font.
+
+    Native text PDFs embed fonts; typical scanned PDFs do not (text is in pixels).
+    """
+    try:
+        page_dict = getattr(page, 'page', None)
+        if page_dict is None:
+            return False
+        resources = page_dict.get('/Resources')
+        if resources is None:
+            return False
+        return bool(resources.get('/Font'))
+    except Exception as exc:
+        logger.debug('Embedded font check failed, treating as scanned: %s', exc)
+        return False
+
+
 class DocumentProcessingError(Exception):
     """Custom exception for document processing failures"""
     pass
@@ -37,35 +56,28 @@ class DocumentProcessingError(Exception):
 
 class PDFTextExtractor:
     """
-    Service class for extracting text from PDF documents.
-    Designed for medical documents with proper error handling.
-    
-    Supports page-level text detection to classify pages as:
-    - text_pages: Pages with embedded text >= OCR_TEXT_THRESHOLD characters
-    - image_pages: Pages with < OCR_TEXT_THRESHOLD characters (likely scanned)
-    
-    This classification enables selective OCR routing to reduce costs.
+    Extract text from PDFs using pdfplumber for native-text pages and AWS Textract for scanned pages.
+
+    Pages are classified by embedded font resources (/Resources/Font), not character counts.
+    Pages with fonts use pdfplumber; pages without are routed to Textract (sync single-page small
+    docs, async via S3 for larger or multi-page).
     """
-    
+
     def __init__(self):
-        """Initialize the PDF text extractor"""
+        """Initialize the PDF text extractor."""
         from django.conf import settings
-        
+
         self.supported_extensions = ['.pdf']
         self.max_file_size_mb = 50  # Maximum file size in MB
-        
-        # OCR configuration from settings
-        self.ocr_text_threshold = getattr(settings, 'OCR_TEXT_THRESHOLD', 50)
-        self.ocr_selective_enabled = getattr(settings, 'OCR_SELECTIVE_ENABLED', True)
+
         self.ocr_enabled = getattr(settings, 'OCR_ENABLED', True)
-        
+
         # Threshold for async vs sync Textract processing (in MB)
         # Documents >= this size use async workflow; smaller use sync API
         self.ocr_async_threshold_mb = getattr(settings, 'OCR_ASYNC_THRESHOLD_MB', 5)
-        
+
         # Textract service (lazy initialization)
         self._textract_service = None
-        
     @property
     def textract_service(self) -> Optional[TextractService]:
         """
@@ -91,7 +103,8 @@ class PDFTextExtractor:
         Extract text using AWS Textract synchronous API.
         
         This method is called for documents <5MB that need OCR processing.
-        It reads the file bytes and sends them to Textract's AnalyzeDocument API.
+        It reads the file bytes and sends them to Textract (DetectDocumentText or
+        AnalyzeDocument per settings.TEXTRACT_MODE).
         
         Args:
             file_path: Path to the PDF file
@@ -125,8 +138,8 @@ class PDFTextExtractor:
                 f"Starting Textract sync OCR: file_size={file_size_mb:.2f}MB"
             )
             
-            # Call Textract sync API
-            result: TextractResult = self.textract_service.analyze_document_sync(
+            # Call Textract sync API (mode from settings)
+            result: TextractResult = self.textract_service.process_document_sync(
                 document_bytes
             )
             
@@ -165,19 +178,17 @@ class PDFTextExtractor:
         """
         Extract text from a PDF file with comprehensive error handling.
         
-        Performs page-level text detection to classify each page as:
-        - text_page: Has >= OCR_TEXT_THRESHOLD characters (embedded text)
-        - image_page: Has < OCR_TEXT_THRESHOLD characters (likely scanned/image)
-        
-        This classification enables selective OCR routing for hybrid documents.
-        
+        Performs page-level classification by embedded PDF fonts:
+        - text_page: Page has /Font resources (native text); extract with pdfplumber
+        - image_page: No embedded fonts (typical scanned page); route to Textract
+
         For documents with image pages requiring OCR:
-        - Documents <5MB: Uses AWS Textract synchronous API (external_ocr)
-        - Documents >=5MB: Currently falls back to local OCR (async workflow pending)
-        
+        - Single-page documents under OCR_ASYNC_THRESHOLD_MB: Textract synchronous API
+        - Multi-page or large documents: async Textract via S3 (ocr_pending)
+
         Args:
             file_path (str): Path to the PDF file
-            
+
         Returns:
             Dict containing:
                 - success (bool): Whether extraction succeeded
@@ -188,10 +199,10 @@ class PDFTextExtractor:
                 - metadata (dict): Additional file metadata including:
                     - extraction_method: 'embedded_text', 'external_ocr', 'hybrid', or 'ocr'
                     - total_pages: Total page count
-                    - text_pages: List of page indices with embedded text
-                    - image_pages: List of page indices needing OCR
+                    - text_pages: List of page indices with native font-backed text
+                    - image_pages: List of page indices needing Textract OCR
                     - chars_per_page: Dict mapping page number to char count
-                    - ocr_text_threshold: Threshold used for classification
+                    - page_classification: 'embedded_fonts'
                     - textract_metadata: Textract audit data (if external_ocr used)
         """
         try:
@@ -222,31 +233,34 @@ class PDFTextExtractor:
                     'author': pdf.metadata.get('Author', ''),
                     'creator': pdf.metadata.get('Creator', ''),
                     'creation_date': pdf.metadata.get('CreationDate', ''),
+                    'page_classification': 'embedded_fonts',
                 }
                 
-                # Process each page and classify
+                # Process each page: native text if /Font in Resources, else Textract OCR route
                 for page_num, page in enumerate(pdf.pages, 1):
                     try:
                         page_text = page.extract_text()
                         cleaned_text = self._clean_text(page_text) if page_text else ''
                         char_count = len(cleaned_text)
-                        
-                        # Track character count per page
+
                         chars_per_page[page_num] = char_count
                         page_texts[page_num] = cleaned_text
-                        
-                        # Classify page based on text threshold
-                        if char_count >= self.ocr_text_threshold:
+
+                        if _pdf_page_has_embedded_fonts(page):
                             text_pages.append(page_num)
                             if cleaned_text.strip():
                                 extracted_text.append(f"--- Page {page_num} ---\n{cleaned_text}")
+                            else:
+                                logger.debug(
+                                    'Page %s has font resources but no extractable text', page_num
+                                )
                         else:
                             image_pages.append(page_num)
                             logger.debug(
-                                f"Page {page_num} classified as image page "
-                                f"({char_count} chars < {self.ocr_text_threshold} threshold)"
+                                'Page %s classified as scanned (no /Font in page resources)',
+                                page_num,
                             )
-                        
+
                     except Exception as page_error:
                         logger.warning(f"Failed to extract text from page {page_num}: {page_error}")
                         # Mark failed pages as image pages (may need OCR)
@@ -346,9 +360,8 @@ class PDFTextExtractor:
                         metadata['text_pages'] = text_pages
                         metadata['image_pages'] = image_pages
                         metadata['chars_per_page'] = chars_per_page
-                        metadata['ocr_text_threshold'] = self.ocr_text_threshold
                         metadata['ocr_pending'] = True
-                        
+
                         return {
                             'success': True,
                             'text': full_text,  # May have partial text from text_pages
@@ -380,8 +393,7 @@ class PDFTextExtractor:
                 metadata['text_pages'] = text_pages
                 metadata['image_pages'] = image_pages
                 metadata['chars_per_page'] = chars_per_page
-                metadata['ocr_text_threshold'] = self.ocr_text_threshold
-                
+
                 result = {
                     'success': True,
                     'text': full_text,
@@ -511,11 +523,7 @@ class PDFTextExtractor:
         text = re.sub(r'(\d+)\.(\d+)\.(\d+)', r'\1.\2.\3', text)  # Normalize decimal numbers
         
         return text.strip()
-    
-    # NOTE: extract_with_ocr() (Tesseract) removed in Task 42.22.
-    # All OCR is now handled by AWS Textract (sync for 1-page, async for multi-page).
-    
-    
+
     def extract_text_with_layout(self, file_path: str) -> Dict[str, any]:
         """
         Extract text with layout information (tables, positions, etc.).
@@ -3578,7 +3586,12 @@ Processing Note: This is part of a larger medical document. Context may span mul
         Handles cases where the response is not valid JSON or is embedded in markdown.
         """
         # TEMPORARY DIAGNOSTIC LOG - CAPTURE RAW AI RESPONSE
-        self.logger.critical(f"🔍 RAW AI RESPONSE (Length: {len(response_content)}): {response_content}")
+        # Avoid non-ASCII in logs (Windows consoles / syslog may use cp1252).
+        self.logger.critical(
+            "RAW AI RESPONSE (length=%s): %s",
+            len(response_content),
+            response_content,
+        )
         
         try:
             # First, try to load the entire string as JSON

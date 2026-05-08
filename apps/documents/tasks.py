@@ -1293,7 +1293,7 @@ def process_document_async(self, document_id: int):
         result = {
             'success': True,
             'document_id': document_id,
-            'status': 'review',
+            'status': document.status,
             'task_id': self.request.id,
             'pdf_extraction': extraction_result_meta,
             'ai_analysis': ai_result if ai_result else {'success': False, 'error': 'AI analysis skipped - no content or no API keys'},
@@ -1564,16 +1564,18 @@ def start_textract_async_job(self, document_id: int):
         logger.warning(f"[{task_id}] S3 upload failed: {s3_error}")
         raise self.retry(exc=s3_error, countdown=30)
     
-    # Step 3: Start async Textract analysis
+    # Step 3: Start async Textract (text detection or analysis per settings.TEXTRACT_MODE)
     try:
         textract_service = TextractService()
-        job_id = textract_service.start_async_analysis(
+        async_job = textract_service.start_async_job(
             s3_bucket=s3_storage.bucket,
-            s3_key=s3_key
+            s3_key=s3_key,
         )
-        
+        job_id = async_job['job_id']
+        textract_job_type = async_job['job_type']
+
         logger.info(
-            f"[{task_id}] Textract async job started: job_id={job_id}"
+            f"[{task_id}] Textract async job started: job_id={job_id}, job_type={textract_job_type}"
         )
         
     except TextractConfigurationError as config_error:
@@ -1637,11 +1639,12 @@ def start_textract_async_job(self, document_id: int):
         existing_data = document.structured_data or {}
         existing_data['textract_async'] = {
             'job_id': job_id,
+            'job_type': textract_job_type,
             's3_key': s3_key,
             's3_bucket': s3_storage.bucket,
             'started_at': timezone.now().isoformat(),
             'task_id': task_id,
-            'file_size_bytes': file_size
+            'file_size_bytes': file_size,
         }
         document.structured_data = existing_data
         document.status = 'processing'
@@ -1830,9 +1833,14 @@ def poll_textract_job(self, document_id: int, job_id: str, s3_key: str, attempt:
         }
     
     # Check job status
+    textract_job_type = textract_data.get(
+        'job_type', TextractService.JOB_TYPE_ANALYZE
+    )
     try:
         textract_service = TextractService()
-        status = textract_service.get_async_job_status(job_id)
+        status = textract_service.get_async_job_status(
+            job_id, job_type=textract_job_type
+        )
         
         logger.info(
             f"[{task_id}] Textract job status: {status} (attempt {attempt}, "
@@ -1890,7 +1898,8 @@ def poll_textract_job(self, document_id: int, job_id: str, s3_key: str, attempt:
             result = textract_service.get_async_result(
                 job_id,
                 poll_interval_seconds=1,  # Already completed, minimal poll
-                max_wait_seconds=30       # Should return immediately
+                max_wait_seconds=30,      # Should return immediately
+                job_type=textract_job_type,
             )
             
             # Extract text from result
