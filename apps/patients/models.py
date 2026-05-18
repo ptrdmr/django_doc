@@ -27,6 +27,7 @@ SECURITY NOTES:
 ==================================
 """
 
+import json
 import uuid
 from datetime import datetime
 from django.db import models, transaction
@@ -324,21 +325,44 @@ class Patient(MedicalRecord):
                 # Extract searchable metadata
                 self.extract_searchable_metadata(metadata_batch)
                 
+                # Sanitize JSONFields — FHIR data may contain Decimal, datetime,
+                # or date objects that PostgreSQL's jsonb adapter can't serialize.
+                import json
+                for field_name in ('searchable_medical_codes', 'encounter_dates', 'provider_references'):
+                    raw = getattr(self, field_name)
+                    if raw:
+                        setattr(self, field_name, json.loads(json.dumps(raw, default=str)))
+                
                 # Save the patient record
                 self.save()
-                
-                # Create audit trail with merge statistics
-                self._create_fhir_audit_record(metadata_batch, document_id, added_count, replaced_count)
-                
-                return True
+            
+            # Audit trail MUST be outside transaction.atomic() — a failed INSERT
+            # (e.g. from non-serializable datetime objects in FHIR data) poisons
+            # the PostgreSQL transaction, causing a ROLLBACK of the patient save.
+            self._create_fhir_audit_record(metadata_batch, document_id, added_count, replaced_count)
+            
+            return True
             
         except Exception as e:
-            # Log error but don't expose sensitive details
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"Error adding FHIR resources to patient {self.mrn}: {str(e)}")
             raise
     
+    @staticmethod
+    def _json_safe(obj):
+        """Recursively convert non-serializable types (datetime, date, UUID) to strings."""
+        import json
+        if isinstance(obj, dict):
+            return {k: Patient._json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [Patient._json_safe(item) for item in obj]
+        try:
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            return str(obj)
+
     def _create_fhir_audit_record(self, resources, document_id=None, added_count=0, replaced_count=0):
         """
         Create audit trail for FHIR resource merge operation.
@@ -350,7 +374,6 @@ class Patient(MedicalRecord):
             replaced_count (int): Count of old resources removed before re-appending
         """
         try:
-            # Create sanitized resource summary for audit (no PHI)
             resource_summary = []
             resource_type_counts = {}
             
@@ -361,9 +384,8 @@ class Patient(MedicalRecord):
                 summary = {
                     "resourceType": resource_type,
                     "id": resource.get("id"),
-                    "meta": resource.get("meta", {})
+                    "meta": Patient._json_safe(resource.get("meta", {}))
                 }
-                # Add non-PHI identifiers only
                 if "code" in resource and "coding" in resource["code"]:
                     summary["codes"] = [
                         {
@@ -374,25 +396,21 @@ class Patient(MedicalRecord):
                     ]
                 resource_summary.append(summary)
             
-            # Determine action based on merge statistics (Task 41.6)
             if added_count > 0 or replaced_count > 0:
                 action = 'fhir_merge'
                 notes = f"Merged {len(resources)} FHIR resource(s) from document {document_id} " \
                         f"(added: {added_count}, replaced: {replaced_count})"
             else:
-                # Backward compatibility: if no counts provided, use old behavior
                 action = 'fhir_append'
                 notes = f"Added {len(resources)} FHIR resource(s)" + \
                         (f" from document {document_id}" if document_id else "")
             
-            # Create history record with merge statistics
             fhir_delta = {
-                'resources': resource_summary,  # Sanitized version without PHI
+                'resources': resource_summary,
                 'resource_types': resource_type_counts,
                 'total_resources': len(resources),
             }
             
-            # Add merge statistics if available (Task 41.6)
             if added_count > 0 or replaced_count > 0:
                 fhir_delta['added_count'] = added_count
                 fhir_delta['replaced_count'] = replaced_count
@@ -406,7 +424,6 @@ class Patient(MedicalRecord):
                 notes=notes
             )
         except Exception as e:
-            # Audit logging failure shouldn't stop the main operation
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to create audit record for patient {self.mrn}: {str(e)}")
@@ -569,6 +586,11 @@ class Patient(MedicalRecord):
             # Audit logging failure shouldn't stop the rollback
             logger.warning(f"Failed to create rollback audit record for patient {self.mrn}, document {document_id}: {str(e)}")
     
+    @staticmethod
+    def _date_str(value):
+        """Safely extract YYYY-MM-DD from a value that may be str, date, or datetime."""
+        return str(value)[:10] if value is not None else None
+
     def extract_searchable_metadata(self, fhir_resources):
         """
         Extract searchable metadata from FHIR resources without including PHI.
@@ -681,14 +703,14 @@ class Patient(MedicalRecord):
                     # 🚨 ENHANCED: Extract temporal information (diagnosis dates)
                     # Add onset date if available (medical timeline, not PHI)
                     if "onsetDateTime" in condition_resource:
-                        onset_date = condition_resource["onsetDateTime"][:10]  # YYYY-MM-DD only
+                        onset_date = Patient._date_str(condition_resource["onsetDateTime"])
                         code_data["onsetDate"] = onset_date
                         # Add to encounter dates for timeline searching
                         if onset_date not in self.encounter_dates:
                             self.encounter_dates.append(onset_date)
                             summary["encounter_dates_extracted"] += 1
                     elif "onsetPeriod" in condition_resource and "start" in condition_resource["onsetPeriod"]:
-                        onset_date = condition_resource["onsetPeriod"]["start"][:10]
+                        onset_date = Patient._date_str(condition_resource["onsetPeriod"]["start"])
                         code_data["onsetDate"] = onset_date
                         # Add to encounter dates for timeline searching
                         if onset_date not in self.encounter_dates:
@@ -697,7 +719,7 @@ class Patient(MedicalRecord):
                     
                     # Add recorded date if available (when condition was documented)
                     if "recordedDate" in condition_resource:
-                        recorded_date = condition_resource["recordedDate"][:10]  # YYYY-MM-DD only
+                        recorded_date = Patient._date_str(condition_resource["recordedDate"])
                         code_data["recordedDate"] = recorded_date
                         # Add to encounter dates for timeline searching
                         if recorded_date not in self.encounter_dates:
@@ -746,7 +768,7 @@ class Patient(MedicalRecord):
                     # 🚨 ENHANCED: Extract temporal information (procedure dates)
                     # Add performed date if available (medical timeline, not PHI)
                     if "performedDateTime" in procedure_resource:
-                        performed_date = procedure_resource["performedDateTime"][:10]  # YYYY-MM-DD only
+                        performed_date = Patient._date_str(procedure_resource["performedDateTime"])
                         code_data["performedDate"] = performed_date
                         # Add to encounter dates for timeline searching
                         if performed_date not in self.encounter_dates:
@@ -756,14 +778,14 @@ class Patient(MedicalRecord):
                         # Handle period-based procedures
                         period = procedure_resource["performedPeriod"]
                         if "start" in period:
-                            start_date = period["start"][:10]
+                            start_date = Patient._date_str(period["start"])
                             code_data["performedDate"] = start_date
                             # Add to encounter dates for timeline searching
                             if start_date not in self.encounter_dates:
                                 self.encounter_dates.append(start_date)
                                 summary["encounter_dates_extracted"] += 1
                         if "end" in period:
-                            end_date = period["end"][:10]
+                            end_date = Patient._date_str(period["end"])
                             code_data["performedEndDate"] = end_date
                             # Add end date to encounter dates too
                             if end_date not in self.encounter_dates and end_date != start_date:
@@ -821,22 +843,21 @@ class Patient(MedicalRecord):
                 period = encounter_resource["period"]
                 
                 # Extract start date
+                start_date = None
                 if "start" in period:
-                    start_date = period["start"][:10]  # YYYY-MM-DD only (no time = no PHI)
+                    start_date = Patient._date_str(period["start"])
                     if start_date not in self.encounter_dates:
                         self.encounter_dates.append(start_date)
                         summary["encounter_dates_extracted"] += 1
                 
-                # Extract end date if different
                 if "end" in period:
-                    end_date = period["end"][:10]  # YYYY-MM-DD only
+                    end_date = Patient._date_str(period["end"])
                     if end_date not in self.encounter_dates and end_date != start_date:
                         self.encounter_dates.append(end_date)
                         summary["encounter_dates_extracted"] += 1
             
-            # Extract single date if no period
             elif "period" not in encounter_resource and "date" in encounter_resource:
-                encounter_date = encounter_resource["date"][:10]  # YYYY-MM-DD only
+                encounter_date = Patient._date_str(encounter_resource["date"])
                 if encounter_date not in self.encounter_dates:
                     self.encounter_dates.append(encounter_date)
                     summary["encounter_dates_extracted"] += 1
@@ -977,28 +998,23 @@ class Patient(MedicalRecord):
                         if dosage_instructions:
                             med_data["dosageInstructions"] = dosage_instructions
                     
-                    # 🚨 ENHANCED: Extract temporal information (medication dates)
-                    # Add effective period if available (treatment timeline, not PHI)
                     if "effectivePeriod" in medication_resource:
                         period = medication_resource["effectivePeriod"]
                         if "start" in period:
-                            start_date = period["start"][:10]  # YYYY-MM-DD only
+                            start_date = Patient._date_str(period["start"])
                             med_data["effectiveStart"] = start_date
-                            # Add to encounter dates for timeline searching
                             if start_date not in self.encounter_dates:
                                 self.encounter_dates.append(start_date)
                                 summary["encounter_dates_extracted"] += 1
                         if "end" in period:
-                            end_date = period["end"][:10]  # YYYY-MM-DD only
+                            end_date = Patient._date_str(period["end"])
                             med_data["effectiveEnd"] = end_date
-                            # Add end date to encounter dates too
                             if end_date not in self.encounter_dates:
                                 self.encounter_dates.append(end_date)
                                 summary["encounter_dates_extracted"] += 1
                     elif "effectiveDateTime" in medication_resource:
-                        effective_date = medication_resource["effectiveDateTime"][:10]
+                        effective_date = Patient._date_str(medication_resource["effectiveDateTime"])
                         med_data["effectiveDate"] = effective_date
-                        # Add to encounter dates for timeline searching
                         if effective_date not in self.encounter_dates:
                             self.encounter_dates.append(effective_date)
                             summary["encounter_dates_extracted"] += 1
@@ -1080,29 +1096,25 @@ class Patient(MedicalRecord):
                         if len(value_str) < 50 and not any(char.isdigit() for char in value_str):
                             obs_data["valueString"] = value_str
                     
-                    # 🚨 ENHANCED: Extract temporal information (observation/lab dates)
-                    # Add effective date if available (clinical timeline, not PHI)
                     if "effectiveDateTime" in observation_resource:
-                        effective_date = observation_resource["effectiveDateTime"][:10]  # YYYY-MM-DD only
+                        raw_dt = observation_resource["effectiveDateTime"]
+                        effective_date = str(raw_dt)[:10]
                         obs_data["effectiveDate"] = effective_date
-                        # Add to encounter dates for timeline searching
                         if effective_date not in self.encounter_dates:
                             self.encounter_dates.append(effective_date)
                             summary["encounter_dates_extracted"] += 1
                     elif "effectivePeriod" in observation_resource:
-                        # Handle period-based observations
                         period = observation_resource["effectivePeriod"]
+                        start_date = None
                         if "start" in period:
-                            start_date = period["start"][:10]
+                            start_date = str(period["start"])[:10]
                             obs_data["effectiveDate"] = start_date
-                            # Add to encounter dates for timeline searching
                             if start_date not in self.encounter_dates:
                                 self.encounter_dates.append(start_date)
                                 summary["encounter_dates_extracted"] += 1
                         if "end" in period:
-                            end_date = period["end"][:10]
+                            end_date = str(period["end"])[:10]
                             obs_data["effectiveEndDate"] = end_date
-                            # Add end date to encounter dates too
                             if end_date not in self.encounter_dates and end_date != start_date:
                                 self.encounter_dates.append(end_date)
                                 summary["encounter_dates_extracted"] += 1
@@ -1311,7 +1323,10 @@ class Patient(MedicalRecord):
             
             # The encrypted_fhir_bundle is a FHIR Bundle with entry array
             bundle_entries = self.encrypted_fhir_bundle.get('entry', [])
-            
+            # Normalize non-JSON-native types (datetime, Decimal, UUID) that can
+            # survive encrypt/decrypt so extraction never hits TypeError on [:10].
+            bundle_entries = json.loads(json.dumps(bundle_entries, default=str))
+
             for entry in bundle_entries:
                 resource = entry.get('resource', {})
                 resource_type = resource.get('resourceType')
@@ -1496,7 +1511,7 @@ class Patient(MedicalRecord):
                 try:
                     date_str = condition['onsetDateTime'][:10]
                     condition_data['onset_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     condition_data['onset_date'] = None
                 
                 # Extract date precision from meta tags
@@ -1513,14 +1528,14 @@ class Patient(MedicalRecord):
                 try:
                     date_str = condition['onsetPeriod']['start'][:10]
                     condition_data['onset_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     condition_data['onset_date'] = None
             
             if 'recordedDate' in condition:
                 try:
                     date_str = condition['recordedDate'][:10]
                     condition_data['recorded_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     condition_data['recorded_date'] = None
             
             # Extract severity
@@ -1581,13 +1596,13 @@ class Patient(MedicalRecord):
                 try:
                     date_str = procedure['occurrenceDateTime'][:10]
                     procedure_data['performed_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     procedure_data['performed_date'] = None
             elif 'performedDateTime' in procedure:  # Legacy field name
                 try:
                     date_str = procedure['performedDateTime'][:10]
                     procedure_data['performed_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     procedure_data['performed_date'] = None
             elif 'occurrencePeriod' in procedure:
                 period = procedure['occurrencePeriod']
@@ -1598,14 +1613,14 @@ class Patient(MedicalRecord):
                     try:
                         start_str = period['start'][:10]
                         start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         start_date = None
                 
                 if period.get('end'):
                     try:
                         end_str = period['end'][:10]
                         end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         end_date = None
                 
                 procedure_data['performed_period'] = {
@@ -1621,14 +1636,14 @@ class Patient(MedicalRecord):
                     try:
                         start_str = period['start'][:10]
                         start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         start_date = None
                 
                 if period.get('end'):
                     try:
                         end_str = period['end'][:10]
                         end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         end_date = None
                 
                 procedure_data['performed_period'] = {
@@ -1762,14 +1777,14 @@ class Patient(MedicalRecord):
                     try:
                         start_str = period['start'][:10]
                         start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         start_date = None
                 
                 if period.get('end'):
                     try:
                         end_str = period['end'][:10]
                         end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         end_date = None
                 
                 medication_data['effective_period'] = {
@@ -1785,7 +1800,7 @@ class Patient(MedicalRecord):
                     try:
                         date_str = effective_date[:10]
                         start_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         start_date = None
                 
                 medication_data['effective_period'] = {
@@ -1903,13 +1918,13 @@ class Patient(MedicalRecord):
                 try:
                     date_str = observation['effectiveDateTime'][:10]
                     observation_data['effective_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     observation_data['effective_date'] = None
             elif 'effectivePeriod' in observation and 'start' in observation['effectivePeriod']:
                 try:
                     date_str = observation['effectivePeriod']['start'][:10]
                     observation_data['effective_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     observation_data['effective_date'] = None
             
             # Extract notes
@@ -1965,14 +1980,14 @@ class Patient(MedicalRecord):
                     try:
                         start_str = period['start'][:10]
                         start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         start_date = None
                 
                 if period.get('end'):
                     try:
                         end_str = period['end'][:10]
                         end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         end_date = None
                 
                 encounter_data['period'] = {
@@ -2165,7 +2180,7 @@ class Patient(MedicalRecord):
                 try:
                     date_str = allergy['onsetDateTime'][:10]
                     allergy_data['onset_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     allergy_data['onset_date'] = None
 
             if 'reaction' in allergy:
@@ -2211,13 +2226,13 @@ class Patient(MedicalRecord):
                     try:
                         date_str = period['start'][:10]
                         care_plan_data['period']['start'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         pass
                 if 'end' in period:
                     try:
                         date_str = period['end'][:10]
                         care_plan_data['period']['end'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, TypeError):
                         pass
 
             if 'goal' in care_plan:
@@ -2274,7 +2289,7 @@ class Patient(MedicalRecord):
                 try:
                     date_str = service_request['authoredOn'][:10]
                     request_data['authored_on'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     request_data['authored_on'] = None
 
             if 'reasonCode' in service_request:
@@ -2327,7 +2342,7 @@ class Patient(MedicalRecord):
                 try:
                     date_str = diagnostic_report['effectiveDateTime'][:10]
                     report_data['effective_date'] = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):
                     report_data['effective_date'] = None
 
             if 'category' in diagnostic_report:
@@ -2346,63 +2361,92 @@ class Patient(MedicalRecord):
         except Exception as e:
             return {'error': f'Error processing diagnostic report: {str(e)}'}
 
+    @staticmethod
+    def _report_sort_key_date(value):
+        """Normalize date-like values so report sorts never compare date vs str."""
+        sentinel = '1900-01-01'
+        if value is None:
+            return sentinel
+        if hasattr(value, 'isoformat'):
+            try:
+                return value.isoformat()[:10]
+            except (ValueError, TypeError):
+                return sentinel
+        text = str(value).strip()
+        return text[:10] if len(text) >= 10 else (text or sentinel)
+
     def _sort_clinical_data_by_date(self, report):
         """Sort clinical data by date (most recent first)."""
         try:
+            sort_key_date = Patient._report_sort_key_date
+
             # Sort conditions by onset or recorded date
             report['clinical_summary']['conditions'].sort(
-                key=lambda x: x.get('onset_date') or x.get('recorded_date') or '1900-01-01',
+                key=lambda x: sort_key_date(
+                    x.get('onset_date') or x.get('recorded_date')
+                ),
                 reverse=True
             )
             
             # Sort procedures by performed date
             report['clinical_summary']['procedures'].sort(
-                key=lambda x: x.get('performed_date') or 
-                             (x.get('performed_period', {}).get('start') if x.get('performed_period') else None) or 
-                             '1900-01-01',
+                key=lambda x: sort_key_date(
+                    x.get('performed_date') or (
+                        x.get('performed_period', {}).get('start')
+                        if x.get('performed_period') else None
+                    )
+                ),
                 reverse=True
             )
             
             # Sort medications by effective period start
             report['clinical_summary']['medications'].sort(
-                key=lambda x: (x.get('effective_period', {}).get('start') if x.get('effective_period') else None) or 
-                             '1900-01-01',
+                key=lambda x: sort_key_date(
+                    x.get('effective_period', {}).get('start')
+                    if x.get('effective_period') else None
+                ),
                 reverse=True
             )
             
             # Sort observations by effective date
             report['clinical_summary']['observations'].sort(
-                key=lambda x: x.get('effective_date') or '1900-01-01',
+                key=lambda x: sort_key_date(x.get('effective_date')),
                 reverse=True
             )
             
             # Sort encounters by period start
             report['clinical_summary']['encounters'].sort(
-                key=lambda x: (x.get('period', {}).get('start') if x.get('period') else None) or '1900-01-01',
+                key=lambda x: sort_key_date(
+                    x.get('period', {}).get('start')
+                    if x.get('period') else None
+                ),
                 reverse=True
             )
 
             # Sort allergies by onset date
             report['clinical_summary'].get('allergies', []).sort(
-                key=lambda x: x.get('onset_date') or '1900-01-01',
+                key=lambda x: sort_key_date(x.get('onset_date')),
                 reverse=True
             )
 
             # Sort care plans by period start
             report['clinical_summary'].get('care_plans', []).sort(
-                key=lambda x: (x.get('period', {}).get('start') if x.get('period') else None) or '1900-01-01',
+                key=lambda x: sort_key_date(
+                    x.get('period', {}).get('start')
+                    if x.get('period') else None
+                ),
                 reverse=True
             )
 
             # Sort service requests by authored date
             report['clinical_summary'].get('service_requests', []).sort(
-                key=lambda x: x.get('authored_on') or '1900-01-01',
+                key=lambda x: sort_key_date(x.get('authored_on')),
                 reverse=True
             )
 
             # Sort diagnostic reports by effective date
             report['clinical_summary'].get('diagnostic_reports', []).sort(
-                key=lambda x: x.get('effective_date') or '1900-01-01',
+                key=lambda x: sort_key_date(x.get('effective_date')),
                 reverse=True
             )
 
