@@ -4354,7 +4354,16 @@ class PatientDataComparisonService:
             return comparison
         
         # Extract patient demographics from document
-        extracted_data = self._extract_patient_demographics(document)
+        extracted_data = {}
+        if hasattr(document, 'parsed_data') and document.parsed_data:
+            extraction_data = document.parsed_data.extraction_json
+            if extraction_data:
+                if isinstance(extraction_data, dict):
+                    extracted_data = extraction_data
+                elif isinstance(extraction_data, list):
+                    for item in extraction_data:
+                        if isinstance(item, dict) and 'label' in item:
+                            extracted_data[item['label']] = item
         existing_data = self._get_patient_record_data(patient)
         
         # Perform field-by-field comparison
@@ -4528,28 +4537,6 @@ class PatientDataComparisonService:
         validation_results['overall_quality_score'] = self._calculate_quality_score(validation_results)
         
         return validation_results
-    
-    def _extract_patient_demographics(self, document):
-        """Extract patient demographic data from document's parsed data."""
-        if not hasattr(document, 'parsed_data') or not document.parsed_data:
-            return {}
-        
-        extraction_data = document.parsed_data.extraction_json
-        if not extraction_data:
-            return {}
-        
-        # Handle different extraction formats
-        if isinstance(extraction_data, dict):
-            return extraction_data
-        elif isinstance(extraction_data, list):
-            # Convert list format to dictionary
-            result = {}
-            for item in extraction_data:
-                if isinstance(item, dict) and 'label' in item:
-                    result[item['label']] = item
-            return result
-        
-        return {}
     
     def _get_patient_record_data(self, patient):
         """Extract relevant data from patient record for comparison."""

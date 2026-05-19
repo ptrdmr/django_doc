@@ -685,57 +685,24 @@ def process_document_async(self, document_id: int):
                         if not validate_after_ai_extraction(document, structured_extraction):
                             logger.warning(f"[{task_id}] Structured extraction validation failed for document {document_id}, proceeding with caution")
                         
-                        # Convert structured data to legacy format for backward compatibility
                         ai_result = {
                             'success': True,
-                            'fields': [
-                                # Convert conditions (with null safety for source)
-                                *[{
-                                    'label': f'diagnosis_{i+1}',
-                                    'value': condition.name,
-                                    'confidence': condition.confidence,
-                                    'source_text': condition.source.text if condition.source else '',
-                                    'char_position': condition.source.start_index if condition.source else 0
-                                } for i, condition in enumerate(structured_extraction.conditions)],
-                                
-                                # Convert medications (with null safety for source)
-                                *[{
-                                    'label': f'medication_{i+1}',
-                                    'value': f"{medication.name} {medication.dosage or ''}".strip(),
-                                    'confidence': medication.confidence,
-                                    'source_text': medication.source.text if medication.source else '',
-                                    'char_position': medication.source.start_index if medication.source else 0
-                                } for i, medication in enumerate(structured_extraction.medications)],
-                                
-                                # Convert vital signs (with null safety for source)
-                                *[{
-                                    'label': f'vital_{vital.measurement.lower().replace(" ", "_")}',
-                                    'value': f"{vital.value} {vital.unit or ''}".strip(),
-                                    'confidence': vital.confidence,
-                                    'source_text': vital.source.text if vital.source else '',
-                                    'char_position': vital.source.start_index if vital.source else 0
-                                } for vital in structured_extraction.vital_signs],
-                                
-                                # Convert lab results (with null safety for source)
-                                *[{
-                                    'label': f'lab_{lab.test_name.lower().replace(" ", "_")}',
-                                    'value': f"{lab.value} {lab.unit or ''}".strip(),
-                                    'confidence': lab.confidence,
-                                    'source_text': lab.source.text if lab.source else '',
-                                    'char_position': lab.source.start_index if lab.source else 0
-                                } for lab in structured_extraction.lab_results]
-                            ],
+                            'fields': [],
                             'model_used': 'structured_extraction_claude',
                             'processing_method': 'structured_pydantic',
-                            'usage': {
-                                'total_tokens': 0,  # Will be updated if available
-                            },
-                            'processing_duration_ms': 0,  # Will be updated if available
-                            # NOTE: Do NOT store Pydantic model here - Celery cannot serialize it
-                            # Structured data is serialized at line 697 using .dict() for storage
+                            'usage': {'total_tokens': 0},
+                            'processing_duration_ms': 0,
                         }
                         
-                        logger.info(f"Structured extraction successful: {len(ai_result['fields'])} fields extracted from structured data")
+                        total_items = (
+                            len(structured_extraction.conditions) +
+                            len(structured_extraction.medications) +
+                            len(structured_extraction.vital_signs) +
+                            len(structured_extraction.lab_results) +
+                            len(structured_extraction.procedures) +
+                            len(structured_extraction.providers)
+                        )
+                        logger.info(f"Structured extraction successful: {total_items} items across all resource types")
                     
                 except Exception as structured_exc:
                     logger.error(f"Structured extraction failed for document {document_id}: {structured_exc}")
@@ -2185,31 +2152,52 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
         
         context = "medical_document"
         ai_analyzer = DocumentAnalyzer(document=document)
+        chunk_threshold = getattr(settings, 'AI_TOKEN_THRESHOLD_FOR_CHUNKING', 20000)
         
-        logger.info(f"[{task_id}] Starting AI structured extraction ({text_length} chars)")
-        structured_extraction = ai_analyzer.analyze_document_structured(
-            document_content=extracted_text,
-            context=context
-        )
+        logger.info(f"[{task_id}] Starting AI structured extraction ({text_length} chars, threshold={chunk_threshold})")
         
-        # MEMORY FIX: Free extracted_text after AI extraction
-        del extracted_text
-        force_memory_cleanup("after AI extraction in continue_processing")
+        if text_length > chunk_threshold:
+            logger.info(f"[{task_id}] Large OCR document ({text_length} chars), chunking for efficiency")
+            from apps.documents.services.ai_extraction import extract_medical_data_structured
+            
+            chunks = document_chunker.chunk_text(extracted_text, preserve_context=True)
+            del extracted_text
+            force_memory_cleanup("after chunking extracted_text in continue_processing")
+            
+            if len(chunks) > 1:
+                all_chunk_data = []
+                total_chunks = len(chunks)
+                
+                for chunk_idx, chunk in enumerate(chunks):
+                    logger.info(f"[{task_id}] Processing chunk {chunk_idx + 1}/{total_chunks}")
+                    chunk_result = extract_medical_data_structured(chunk['text'], context=context)
+                    chunk_data = chunk_result.model_dump()
+                    all_chunk_data.append(chunk_data)
+                    del chunk_result
+                    if chunk_idx < total_chunks - 1:
+                        force_memory_cleanup(f"after chunk {chunk_idx + 1}")
+                
+                structured_extraction = _aggregate_chunked_extractions(all_chunk_data)
+                del all_chunk_data
+                force_memory_cleanup("after chunk aggregation in continue_processing")
+                logger.info(f"[{task_id}] Chunked processing completed: {total_chunks} chunks processed")
+            else:
+                structured_extraction = ai_analyzer.analyze_document_structured(
+                    document_content=chunks[0]['text'], context=context
+                )
+                del chunks
+                force_memory_cleanup("after single-chunk extraction in continue_processing")
+        else:
+            structured_extraction = ai_analyzer.analyze_document_structured(
+                document_content=extracted_text, context=context
+            )
+            del extracted_text
+            force_memory_cleanup("after AI extraction in continue_processing")
         
         if structured_extraction:
-            # Build ai_result for compatibility
             ai_result = {
                 'success': True,
-                'fields': [
-                    *[{'label': f'condition_{i}', 'value': c.name, 'confidence': c.confidence, 'type': 'condition'}
-                      for i, c in enumerate(structured_extraction.conditions)],
-                    *[{'label': f'medication_{i}', 'value': m.name, 'confidence': m.confidence, 'type': 'medication'}
-                      for i, m in enumerate(structured_extraction.medications)],
-                    *[{'label': f'vital_{i}', 'value': f'{v.measurement}: {v.value}', 'confidence': v.confidence, 'type': 'vital_sign'}
-                      for i, v in enumerate(structured_extraction.vital_signs)],
-                    *[{'label': f'lab_{i}', 'value': f'{l.test_name}: {l.value}', 'confidence': l.confidence, 'type': 'lab_result'}
-                      for i, l in enumerate(structured_extraction.lab_results)],
-                ],
+                'fields': [],
                 'model_used': 'structured_extraction_claude',
                 'processing_method': 'async_ocr_then_structured',
             }
@@ -2219,7 +2207,11 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
                 f"{len(structured_extraction.conditions)} conditions, "
                 f"{len(structured_extraction.medications)} medications, "
                 f"{len(structured_extraction.vital_signs)} vitals, "
-                f"{len(structured_extraction.lab_results)} labs"
+                f"{len(structured_extraction.lab_results)} labs, "
+                f"{len(structured_extraction.procedures)} procedures, "
+                f"{len(structured_extraction.providers)} providers, "
+                f"{len(structured_extraction.encounters)} encounters, "
+                f"{len(structured_extraction.allergies)} allergies"
             )
             
             # STEP 3: FHIR Conversion

@@ -367,7 +367,7 @@
                               'text-red-600': doc.status === 'failed'
                           }">
                           <span x-text="doc.status_display"></span>
-                          <span x-show="doc.status === 'review'" class="ml-1 text-gray-400 font-normal">Click to review &rarr;</span>
+                          <span x-show="doc.status === 'review'" class="ml-1 text-gray-400 font-normal">Click to view &rarr;</span>
                        </p>
                    </div>
                    
@@ -407,7 +407,7 @@
                    
                    handleDocClick(doc) {
                        if (doc.status === 'review') {
-                           window.location.href = `/documents/${doc.id}/review/`;
+                           window.location.href = `/documents/${doc.id}/`;
                        }
                    },
                    

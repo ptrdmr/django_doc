@@ -14,7 +14,6 @@ urlpatterns = [
     # Document management
     path('', views.DocumentListView.as_view(), name='list'),
     path('<int:pk>/', views.DocumentDetailView.as_view(), name='detail'),
-    path('<int:pk>/review/', views.DocumentReviewView.as_view(), name='review'),
     path('<int:pk>/retry/', views.DocumentRetryView.as_view(), name='retry'),
     path('<int:pk>/delete/', views.DocumentDeleteView.as_view(), name='delete'),
     
@@ -27,12 +26,6 @@ urlpatterns = [
     # Admin tools
     path('migrate-fhir/', views.MigrateFHIRDataView.as_view(), name='migrate-fhir'),
     
-    # Patient data comparison resolution endpoints
-    path('<int:pk>/resolve/', views.PatientDataResolutionView.as_view(), name='resolve-patient-data'),
-    
-    # Field-level review endpoints
-    path('field/<str:field_id>/approve/', views.approve_field, name='approve-field'),
-    path('field/<str:field_id>/update/', views.update_field_value, name='update-field'),
     path('field/<str:field_id>/flag/', views.flag_field, name='flag-field'),
     
     # Clinical date management endpoints (Task 35.5)
