@@ -2,7 +2,7 @@
 Patient management views.
 """
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import ListView, DetailView, CreateView, UpdateView, TemplateView, View
+from django.views.generic import DetailView, CreateView, UpdateView, TemplateView, View
 from django.db.models import Q, Count
 from django.urls import reverse_lazy
 from django.contrib import messages
@@ -65,143 +65,6 @@ class PatientSearchForm(forms.Form):
             raise ValidationError("Search query contains invalid characters.")
         
         return query
-
-
-@method_decorator(has_permission('patients.view_patient'), name='dispatch')
-class PatientListView(LoginRequiredMixin, ListView):
-    """
-    Display a list of patients with search and pagination functionality.
-    
-    Features:
-    - Search by first name, last name, or MRN
-    - Pagination with 20 patients per page
-    - Sorting by last name
-    - Professional medical UI design
-    """
-    model = Patient
-    template_name = 'patients/patient_list.html'
-    context_object_name = 'patients'
-    paginate_by = 20
-    
-    def validate_search_input(self):
-        """
-        Validate search form input from request.
-        
-        Returns:
-            tuple: (is_valid, search_query)
-        """
-        search_form = PatientSearchForm(self.request.GET)
-        
-        if search_form.is_valid():
-            search_query = search_form.cleaned_data.get('q', '')
-            return True, search_query
-        else:
-            logger.warning(f"Invalid search form data: {search_form.errors}")
-            messages.warning(self.request, "Invalid search criteria. Please try again.")
-            return False, ''
-    
-    def filter_patients_by_search(self, queryset, search_query):
-        """
-        Filter patient queryset by search criteria using search-optimized fields.
-        
-        Uses unencrypted, indexed search fields for efficient case-insensitive searching
-        while maintaining encryption of sensitive PHI data.
-        
-        Args:
-            queryset: Base patient queryset
-            search_query: Validated search string
-            
-        Returns:
-            QuerySet: Filtered queryset
-        """
-        if search_query:
-            # Use search-optimized fields for efficient database lookups
-            search_lower = search_query.lower()
-            return queryset.filter(
-                Q(first_name_search__icontains=search_lower) |
-                Q(last_name_search__icontains=search_lower) |
-                Q(mrn__icontains=search_query)
-            )
-        return queryset
-    
-    def order_patients(self, queryset):
-        """
-        Apply consistent ordering to patient queryset.
-        
-        Args:
-            queryset: Patient queryset to order
-            
-        Returns:
-            QuerySet: Ordered queryset
-        """
-        return queryset.order_by('last_name', 'first_name')
-    
-    def get_queryset(self):
-        """
-        Get filtered and ordered patient queryset.
-        
-        Returns:
-            QuerySet: Filtered patient queryset
-        """
-        try:
-            queryset = super().get_queryset()
-            is_valid, search_query = self.validate_search_input()
-            
-            if is_valid:
-                queryset = self.filter_patients_by_search(queryset, search_query)
-            
-            return self.order_patients(queryset)
-            
-        except (DatabaseError, OperationalError) as database_error:
-            logger.error(f"Database error in patient list view: {database_error}")
-            messages.error(self.request, "There was an error loading patients. Please try again.")
-            return Patient.objects.none()
-    
-    def build_search_context(self):
-        """
-        Build search-related context data.
-        
-        Returns:
-            dict: Search context data
-        """
-        search_form = PatientSearchForm(self.request.GET)
-        search_query = search_form.data.get('q', '') if search_form.data else ''
-        
-        return {
-            'search_form': search_form,
-            'search_query': search_query
-        }
-    
-    def get_patient_count(self):
-        """
-        Get total patient count safely.
-        
-        Returns:
-            int: Total patient count
-        """
-        try:
-            return Patient.objects.count()
-        except (DatabaseError, OperationalError) as count_error:
-            logger.error(f"Error getting patient count: {count_error}")
-            return 0
-    
-    def get_context_data(self, **kwargs):
-        """
-        Add extra context data for the template.
-        
-        Returns:
-            dict: Context data with search query and form
-        """
-        try:
-            context = super().get_context_data(**kwargs)
-            search_context = self.build_search_context()
-            context.update(search_context)
-            context['total_patients'] = self.get_patient_count()
-            return context
-            
-        except (DatabaseError, OperationalError) as context_error:
-            logger.error(f"Error building context for patient list: {context_error}")
-            return super().get_context_data(**kwargs)
 
 
 @method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
@@ -395,6 +258,12 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             # Add FHIR data summary
             context['fhir_summary'] = self.get_fhir_summary()
             
+            # JSON-serialized FHIR bundle for client-side JavaScript (valid JS, not Python repr)
+            context['fhir_data_json'] = json.dumps(
+                self.object.encrypted_fhir_bundle or {},
+                default=str
+            )
+            
             # Add history statistics
             context['history_stats'] = self.get_history_statistics()
             
@@ -409,8 +278,8 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             
             # Add breadcrumb data
             context['breadcrumbs'] = [
-                {'name': 'Home', 'url': '/'},
-                {'name': 'Patients', 'url': '/patients/'},
+                {'name': 'Home', 'url': 'accounts:dashboard'},
+                {'name': 'Patients', 'url': 'accounts:dashboard'},
                 {'name': f'{self.object.first_name} {self.object.last_name}', 'url': None}
             ]
             
@@ -433,7 +302,10 @@ class PatientCreateView(LoginRequiredMixin, CreateView):
     model = Patient
     form_class = PatientForm
     template_name = 'patients/patient_form.html'
-    success_url = reverse_lazy('patients:list')
+
+    def get_success_url(self):
+        """Return to the new patient's detail page after creation."""
+        return self.object.get_absolute_url()
     
     def create_patient_history(self):
         """
@@ -504,8 +376,11 @@ class PatientUpdateView(LoginRequiredMixin, UpdateView):
     model = Patient
     form_class = PatientForm
     template_name = 'patients/patient_form.html'
-    success_url = reverse_lazy('patients:list')
-    
+
+    def get_success_url(self):
+        """Return to the patient's detail page after update."""
+        return self.object.get_absolute_url()
+
     def create_update_history(self):
         """
         Create history record for patient update.
@@ -1037,7 +912,7 @@ class PatientDeleteView(LoginRequiredMixin, View):
         
         if not settings.DEBUG:
             messages.error(request, "Patient deletion is only available in development mode.")
-            return redirect('patients:list')
+            return redirect('accounts:dashboard')
         
         return super().dispatch(request, *args, **kwargs)
     
@@ -1061,7 +936,7 @@ class PatientDeleteView(LoginRequiredMixin, View):
         except Exception as delete_error:
             logger.error(f"Error loading patient deletion page: {delete_error}")
             messages.error(request, "Error loading patient data.")
-            return redirect('patients:list')
+            return redirect('accounts:dashboard')
     
     def post(self, request, pk):
         """Handle patient deletion with cascade cleanup."""
@@ -1101,7 +976,7 @@ class PatientDeleteView(LoginRequiredMixin, View):
                     f"({doc_count} documents, {history_count} history records) have been permanently deleted."
                 )
                 
-                return redirect('patients:list')
+                return redirect('accounts:dashboard')
                 
         except Exception as delete_error:
             logger.error(f"Error deleting patient {pk}: {delete_error}")
@@ -1140,7 +1015,7 @@ class CleanupSoftDeletedView(LoginRequiredMixin, View):
         
         if not settings.DEBUG:
             messages.error(request, "Cleanup functionality is only available in development mode.")
-            return redirect('patients:list')
+            return redirect('accounts:dashboard')
         
         return super().dispatch(request, *args, **kwargs)
     
@@ -1158,7 +1033,7 @@ class CleanupSoftDeletedView(LoginRequiredMixin, View):
         except Exception as cleanup_error:
             logger.error(f"Error loading cleanup page: {cleanup_error}")
             messages.error(request, "Error loading soft-deleted patients.")
-            return redirect('patients:list')
+            return redirect('accounts:dashboard')
     
     def post(self, request):
         """Permanently delete all soft-deleted patients."""
@@ -1170,7 +1045,7 @@ class CleanupSoftDeletedView(LoginRequiredMixin, View):
                 
                 if count == 0:
                     messages.info(request, "No soft-deleted patients found to clean up.")
-                    return redirect('patients:list')
+                    return redirect('accounts:dashboard')
                 
                 # Get MRNs for logging
                 mrns = list(soft_deleted.values_list('mrn', flat=True))
@@ -1202,12 +1077,12 @@ class CleanupSoftDeletedView(LoginRequiredMixin, View):
                     f"MRNs are now available for reuse."
                 )
                 
-                return redirect('patients:list')
+                return redirect('accounts:dashboard')
                 
         except Exception as cleanup_error:
             logger.error(f"Error during soft-delete cleanup: {cleanup_error}")
             messages.error(request, "Error cleaning up soft-deleted patients. Please try again.")
-            return redirect('patients:list')
+            return redirect('accounts:dashboard')
 
 
 # ============================================================================

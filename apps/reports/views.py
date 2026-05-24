@@ -99,7 +99,7 @@ class GenerateReportView(LoginRequiredMixin, FormView):
                 'Patient summary reports are now accessed directly from each '
                 'patient\'s detail page using the Summary panel.'
             )
-            return redirect('patients:list')
+            return redirect('accounts:dashboard')
         return super().get(request, *args, **kwargs)
     
     def get_form_class(self):

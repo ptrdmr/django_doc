@@ -2,13 +2,14 @@
 URL configuration for patients app.
 """
 from django.urls import path
+from django.views.generic import RedirectView
 from . import views
 
 app_name = 'patients'
 
 urlpatterns = [
-    # Patient listing and management
-    path('', views.PatientListView.as_view(), name='list'),
+    # Legacy list URL redirects to unified dashboard home page
+    path('', RedirectView.as_view(url='/dashboard/', permanent=False), name='list'),
     path('add/', views.PatientCreateView.as_view(), name='add'),
     path('<uuid:pk>/', views.PatientDetailView.as_view(), name='detail'),
     path('<uuid:pk>/edit/', views.PatientUpdateView.as_view(), name='edit'),

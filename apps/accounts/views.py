@@ -8,6 +8,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMix
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.utils.decorators import method_decorator
+from django.db import DatabaseError, OperationalError
 from django.db.models import Count, Q
 from django.contrib import messages
 from django.apps import apps
@@ -27,12 +28,12 @@ from apps.core.utils import (
     get_model_count_with_filter,
     ActivityTypes
 )
-from apps.core.models import AuditLog
-
 # Import our RBAC components
 from .models import Role, UserProfile, ProviderInvitation
 from .decorators import admin_required, has_role, has_permission
-from .permissions import PermissionChecker, invalidate_user_permission_cache
+from .permissions import PermissionChecker, invalidate_user_permission_cache, user_has_permission
+from apps.patients.views import PatientSearchForm
+from apps.patients.models import Patient
 from .forms import ProviderInvitationForm, InvitationRegistrationForm, InvitationSearchForm, BulkInvitationForm
 from .services import InvitationService, UserManagementService
 
@@ -41,31 +42,109 @@ logger = logging.getLogger(__name__)
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     """
-    Main dashboard view after user login.
-    Shows quick stats and navigation to main modules.
-    Dynamically loads model data when available, falls back to placeholders.
+    Unified home page after login: metrics plus searchable patient list.
     """
     template_name = 'accounts/dashboard.html'
     login_url = '/accounts/login/'
-    
+    patients_per_page = 10
+
     def get_context_data(self, **kwargs):
-        """
-        Add dashboard statistics and recent activity to context.
-        Uses dynamic model loading to work with or without implemented models.
-        """
+        """Add dashboard statistics and optional patient list to context."""
         context = super().get_context_data(**kwargs)
-        
-        # Get stats counts using utility functions
         context.update(self._get_dashboard_stats())
-        
-        # Get recent activities
-        context['recent_activities'] = self._get_recent_activities()
-        
-        # Add user info for personalization
         context['user_name'] = self.request.user.get_full_name() or self.request.user.username
-        
+        context['has_patient_permission'] = user_has_permission(
+            self.request.user,
+            'patients.view_patient',
+        )
+        context['can_add_patient'] = user_has_permission(
+            self.request.user,
+            'patients.add_patient',
+        )
+
+        if context['has_patient_permission']:
+            context.update(self._get_patient_list_context())
+        else:
+            context.update(self._get_empty_patient_list_context())
+
         return context
-    
+
+    def _validate_search_input(self):
+        """Validate patient search query from the request."""
+        search_form = PatientSearchForm(self.request.GET)
+        if search_form.is_valid():
+            return True, search_form.cleaned_data.get('q', ''), search_form
+        logger.warning(f"Invalid dashboard search form data: {search_form.errors}")
+        messages.warning(self.request, "Invalid search criteria. Please try again.")
+        return False, '', search_form
+
+    def _filter_patients_by_search(self, queryset, search_query):
+        """Filter patients using indexed search fields."""
+        if not search_query:
+            return queryset
+
+        search_lower = search_query.lower()
+        return queryset.filter(
+            Q(first_name_search__icontains=search_lower)
+            | Q(last_name_search__icontains=search_lower)
+            | Q(mrn__icontains=search_query)
+        )
+
+    def _get_patient_queryset(self):
+        """Build ordered patient queryset with optional search filtering."""
+        queryset = Patient.objects.annotate(
+            document_count=Count('documents')
+        )
+        is_valid, search_query, search_form = self._validate_search_input()
+        if is_valid:
+            queryset = self._filter_patients_by_search(queryset, search_query)
+        return queryset.order_by('last_name', 'first_name'), search_form, search_query
+
+    def _get_patient_list_context(self):
+        """Build paginated patient list context for users with view permission."""
+        try:
+            queryset, search_form, search_query = self._get_patient_queryset()
+            paginator = Paginator(queryset, self.patients_per_page)
+            page_number = self.request.GET.get('page', 1)
+            page_obj = paginator.get_page(page_number)
+
+            return {
+                'patients': page_obj.object_list,
+                'page_obj': page_obj,
+                'is_paginated': page_obj.has_other_pages(),
+                'search_form': search_form,
+                'search_query': search_query,
+                'total_patients': self._get_total_patient_count(),
+            }
+        except (DatabaseError, OperationalError) as database_error:
+            logger.error(f"Database error loading dashboard patients: {database_error}")
+            messages.error(
+                self.request,
+                "There was an error loading patients. Please try again.",
+            )
+            return self._get_empty_patient_list_context()
+
+    def _get_empty_patient_list_context(self):
+        """Return empty patient list context when data is unavailable."""
+        search_form = PatientSearchForm(self.request.GET)
+        search_query = search_form.data.get('q', '') if search_form.data else ''
+        return {
+            'patients': [],
+            'page_obj': None,
+            'is_paginated': False,
+            'search_form': search_form,
+            'search_query': search_query,
+            'total_patients': 0,
+        }
+
+    def _get_total_patient_count(self):
+        """Get total patient count safely."""
+        try:
+            return Patient.objects.count()
+        except (DatabaseError, OperationalError) as count_error:
+            logger.error(f"Error getting patient count for dashboard: {count_error}")
+            return 0
+
     def _get_dashboard_stats(self):
         """
         Get dashboard statistics counts using utility functions.
@@ -100,43 +179,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         except Exception as e:
             logger.error(f"Error counting active users: {e}")
             return 0
-    
-    def _get_recent_activities(self, limit=20):
-        """
-        Get recent user activities for the activity feed.
-        Uses the real AuditLog model.
-        
-        Args:
-            limit (int): Maximum number of activities to return (default: 20)
-            
-        Returns:
-            QuerySet: Recent AuditLog entries
-        """
-        try:
-            # Filter for high-value user activities only
-            relevant_types = [
-                ActivityTypes.DOCUMENT_UPLOAD,
-                ActivityTypes.DOCUMENT_PROCESS,
-                ActivityTypes.PATIENT_CREATE,
-                ActivityTypes.PATIENT_UPDATE,
-                ActivityTypes.PROVIDER_CREATE,
-                ActivityTypes.PROVIDER_UPDATE,
-                ActivityTypes.REPORT_GENERATE,
-                ActivityTypes.PROFILE_UPDATE,
-                ActivityTypes.ADMIN,
-            ]
-            
-            # Fetch recent logs for the current user
-            activities = AuditLog.objects.filter(
-                user=self.request.user,
-                event_type__in=relevant_types
-            ).select_related('user').order_by('-timestamp')[:limit]
-            
-            logger.debug(f"Loaded {len(activities)} activities from AuditLog")
-            return activities
-        except Exception as e:
-            logger.error(f"Error fetching AuditLogs: {e}")
-            return []
 
 
 class ProfileView(LoginRequiredMixin, TemplateView):

@@ -120,11 +120,11 @@ class PatientSummaryReportsDeprecationTests(TestCase):
         self.assertNotIn('No reports generated for this patient', content)
 
     def test_reports_generate_patient_summary_redirects(self):
-        """Requesting patient_summary generation redirects to patients list."""
+        """Requesting patient_summary generation redirects to dashboard."""
         url = reverse('reports:generate') + '?type=patient_summary'
         response = self.client.get(url)
         self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse('patients:list'), response.url)
+        self.assertIn(reverse('accounts:dashboard'), response.url)
 
     def test_reports_generate_non_patient_summary_not_redirected(self):
         """Non-patient_summary report types are not redirected."""

@@ -186,12 +186,15 @@ class PatientSearchFunctionalityTest(TestCase):
             created_by=self.user
         )
         
+        self.user.is_superuser = True
+        self.user.save()
+
         self.client = Client()
         self.client.login(username='testuser', password='testpass123')
     
     def test_search_by_first_name_lowercase(self):
         """Test searching by first name with lowercase query."""
-        response = self.client.get(reverse('patients:list') + '?q=john')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=john')
         
         # Should find both 'John' and 'Jonathan'
         patients = response.context['patients']
@@ -203,7 +206,7 @@ class PatientSearchFunctionalityTest(TestCase):
     
     def test_search_by_first_name_uppercase(self):
         """Test searching by first name with uppercase query."""
-        response = self.client.get(reverse('patients:list') + '?q=JOHN')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=JOHN')
         
         # Should find both 'John' and 'Jonathan' (case-insensitive)
         patients = response.context['patients']
@@ -214,7 +217,7 @@ class PatientSearchFunctionalityTest(TestCase):
     
     def test_search_by_last_name(self):
         """Test searching by last name."""
-        response = self.client.get(reverse('patients:list') + '?q=smith')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=smith')
         
         # Should find only Jane Smith
         patients = response.context['patients']
@@ -223,7 +226,7 @@ class PatientSearchFunctionalityTest(TestCase):
     
     def test_search_by_partial_name(self):
         """Test searching with partial name match."""
-        response = self.client.get(reverse('patients:list') + '?q=jon')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=jon')
         
         # Should find John, Jonathan, Johnson
         patients = response.context['patients']
@@ -234,7 +237,7 @@ class PatientSearchFunctionalityTest(TestCase):
     
     def test_search_by_mrn(self):
         """Test searching by MRN."""
-        response = self.client.get(reverse('patients:list') + '?q=TEST-102')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=TEST-102')
         
         # Should find only Jane Smith
         patients = response.context['patients']
@@ -243,7 +246,7 @@ class PatientSearchFunctionalityTest(TestCase):
     
     def test_search_with_special_characters(self):
         """Test searching for name with special characters."""
-        response = self.client.get(reverse('patients:list') + "?q=o'connor")
+        response = self.client.get(reverse('accounts:dashboard') + "?q=o'connor")
         
         # Should find Mary O'Connor
         patients = response.context['patients']
@@ -252,14 +255,14 @@ class PatientSearchFunctionalityTest(TestCase):
     
     def test_empty_search_returns_all_patients(self):
         """Test that empty search query returns all patients."""
-        response = self.client.get(reverse('patients:list'))
+        response = self.client.get(reverse('accounts:dashboard'))
         
         patients = response.context['patients']
         self.assertEqual(len(patients), 4)
     
     def test_search_no_results(self):
         """Test search query that matches no patients."""
-        response = self.client.get(reverse('patients:list') + '?q=nonexistent')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=nonexistent')
         
         patients = response.context['patients']
         self.assertEqual(len(patients), 0)
@@ -276,7 +279,7 @@ class PatientSearchFunctionalityTest(TestCase):
                 created_by=self.user
             )
         
-        response = self.client.get(reverse('patients:list') + '?q=test')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=test')
         
         # Verify search query in context
         self.assertEqual(response.context['search_query'], 'test')
@@ -290,7 +293,7 @@ class PatientSearchFunctionalityTest(TestCase):
         test_queries = ['JoHn', 'SMITH', 'DoE', 'jOnAtHaN']
         
         for query in test_queries:
-            response = self.client.get(reverse('patients:list') + f'?q={query}')
+            response = self.client.get(reverse('accounts:dashboard') + f'?q={query}')
             patients = response.context['patients']
             # Each query should find at least one patient
             self.assertGreater(len(patients), 0, 
@@ -369,6 +372,8 @@ class PatientSearchEdgeCasesTest(TestCase):
             email='test@example.com',
             password='testpass123'
         )
+        self.user.is_superuser = True
+        self.user.save()
         self.client = Client()
         self.client.login(username='testuser', password='testpass123')
         
@@ -384,7 +389,7 @@ class PatientSearchEdgeCasesTest(TestCase):
     def test_search_with_very_long_query(self):
         """Test search with maximum length query string."""
         long_query = 'a' * 100  # Max length from PatientSearchForm
-        response = self.client.get(reverse('patients:list') + f'?q={long_query}')
+        response = self.client.get(reverse('accounts:dashboard') + f'?q={long_query}')
         
         # Should handle gracefully without error
         self.assertEqual(response.status_code, 200)
@@ -401,7 +406,7 @@ class PatientSearchEdgeCasesTest(TestCase):
         ]
         
         for query in special_queries:
-            response = self.client.get(reverse('patients:list') + f'?q={query}')
+            response = self.client.get(reverse('accounts:dashboard') + f'?q={query}')
             # Should handle safely without SQL injection
             self.assertEqual(response.status_code, 200)
     
@@ -416,7 +421,7 @@ class PatientSearchEdgeCasesTest(TestCase):
             created_by=self.user
         )
         
-        response = self.client.get(reverse('patients:list') + '?q=françois')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=françois')
         patients = response.context['patients']
         
         # Should find the patient
@@ -426,7 +431,7 @@ class PatientSearchEdgeCasesTest(TestCase):
     def test_search_with_whitespace(self):
         """Test search query with leading/trailing whitespace."""
         # Whitespace should be stripped by form validation
-        response = self.client.get(reverse('patients:list') + '?q=%20edge%20')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=%20edge%20')
         patients = response.context['patients']
         
         # Should still find the patient
@@ -477,6 +482,8 @@ class PatientSearchIntegrationTest(TestCase):
             email='test@example.com',
             password='testpass123'
         )
+        self.user.is_superuser = True
+        self.user.save()
         self.client = Client()
         self.client.login(username='testuser', password='testpass123')
     
@@ -496,7 +503,7 @@ class PatientSearchIntegrationTest(TestCase):
         self.assertEqual(patient.last_name_search, 'test')
         
         # Search for the patient
-        response = self.client.get(reverse('patients:list') + '?q=workflow')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=workflow')
         patients = response.context['patients']
         
         # Should find the patient
@@ -520,12 +527,12 @@ class PatientSearchIntegrationTest(TestCase):
         patient.save()
         
         # Search with old name - should not find
-        response = self.client.get(reverse('patients:list') + '?q=original')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=original')
         patients = response.context['patients']
         self.assertEqual(len(patients), 0)
         
         # Search with new name - should find
-        response = self.client.get(reverse('patients:list') + '?q=updated')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=updated')
         patients = response.context['patients']
         self.assertEqual(len(patients), 1)
         self.assertEqual(patients[0].mrn, 'UPDATE-001')
@@ -558,7 +565,7 @@ class PatientSearchIntegrationTest(TestCase):
         self.assertEqual(history.count(), 1)
         
         # Verify search still works
-        response = self.client.get(reverse('patients:list') + '?q=updated')
+        response = self.client.get(reverse('accounts:dashboard') + '?q=updated')
         patients = response.context['patients']
         self.assertEqual(len(patients), 1)
 
