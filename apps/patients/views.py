@@ -19,12 +19,23 @@ from difflib import SequenceMatcher
 
 from .models import Patient, PatientHistory
 from .forms import PatientForm
-from apps.accounts.decorators import has_permission, requires_phi_access, provider_required, admin_required
+from django.contrib.auth.decorators import login_required
+from apps.accounts.decorators import moritrac_admin_required
 from apps.core.utils import log_user_activity, ActivityTypes
 from apps.documents.forms import InlineDocumentUploadForm
 from django.utils.decorators import method_decorator
 
 logger = logging.getLogger(__name__)
+
+
+class OwnedPatientMixin:
+    """Restrict queryset so non-staff users only see their own patients."""
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(created_by=self.request.user)
+        return qs
 
 
 class PatientSearchForm(forms.Form):
@@ -67,8 +78,8 @@ class PatientSearchForm(forms.Form):
         return query
 
 
-@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
-class PatientDetailView(LoginRequiredMixin, DetailView):
+@method_decorator([login_required], name='dispatch')
+class PatientDetailView(OwnedPatientMixin, LoginRequiredMixin, DetailView):
     """
     Display detailed information for a specific patient.
     
@@ -273,7 +284,7 @@ class PatientDetailView(LoginRequiredMixin, DetailView):
             return super().get_context_data(**kwargs)
 
 
-@method_decorator([provider_required, has_permission('patients.add_patient')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class PatientCreateView(LoginRequiredMixin, CreateView):
     """
     Create a new patient record.
@@ -347,8 +358,8 @@ class PatientCreateView(LoginRequiredMixin, CreateView):
             return self.form_invalid(form)
 
 
-@method_decorator([provider_required, has_permission('patients.change_patient')], name='dispatch')
-class PatientUpdateView(LoginRequiredMixin, UpdateView):
+@method_decorator([login_required], name='dispatch')
+class PatientUpdateView(OwnedPatientMixin, LoginRequiredMixin, UpdateView):
     """
     Update an existing patient record.
     """
@@ -425,7 +436,7 @@ class PatientUpdateView(LoginRequiredMixin, UpdateView):
 # FHIR Export Views
 # ============================================================================
 
-@method_decorator([provider_required, has_permission('patients.change_patient')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class SetPrimaryDiagnosisView(LoginRequiredMixin, View):
     """
     AJAX endpoint to set primary diagnosis for a patient.
@@ -494,7 +505,7 @@ class SetPrimaryDiagnosisView(LoginRequiredMixin, View):
             }, status=500)
 
 
-@method_decorator([requires_phi_access, has_permission('patients.export_patient_data')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class PatientFHIRExportView(LoginRequiredMixin, View):
     """
     Export patient data as FHIR JSON file download.
@@ -615,7 +626,7 @@ class PatientFHIRExportView(LoginRequiredMixin, View):
         return gender_map.get(gender, 'unknown')
 
 
-@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class PatientSummaryDataView(LoginRequiredMixin, View):
     """
     Return patient summary report data as JSON for the side panel.
@@ -634,7 +645,7 @@ class PatientSummaryDataView(LoginRequiredMixin, View):
             return JsonResponse({'error': 'Unable to retrieve patient summary'}, status=500)
 
 
-@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class PatientSummaryPDFView(LoginRequiredMixin, View):
     """
     Generate and return patient summary report as PDF download.
@@ -671,7 +682,7 @@ class PatientSummaryPDFView(LoginRequiredMixin, View):
             return HttpResponse('Unable to generate PDF', status=500)
 
 
-@method_decorator([provider_required, has_permission('documents.add_document')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class PatientUploadDocumentView(LoginRequiredMixin, View):
     """
     Handle inline document upload from the patient detail page.
@@ -768,7 +779,7 @@ class PatientUploadDocumentView(LoginRequiredMixin, View):
             return redirect('patients:detail', pk=patient.pk)
 
 
-@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class PatientFHIRJSONView(LoginRequiredMixin, View):
     """
     Return patient FHIR data as JSON (for API access).
@@ -803,7 +814,7 @@ class PatientFHIRJSONView(LoginRequiredMixin, View):
 # Patient History Views
 # ============================================================================
 
-@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class PatientHistoryDetailView(LoginRequiredMixin, DetailView):
     """
     Detailed view of patient history timeline.
@@ -849,7 +860,7 @@ class PatientHistoryDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
-@method_decorator([requires_phi_access, has_permission('patients.view_patient')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class PatientHistoryItemView(LoginRequiredMixin, DetailView):
     """
     View individual history record details.
@@ -875,7 +886,7 @@ class PatientHistoryItemView(LoginRequiredMixin, DetailView):
 # Development-Only Deletion Views
 # ============================================================================
 
-@method_decorator([admin_required, has_permission('patients.delete_patient')], name='dispatch')
+@method_decorator([moritrac_admin_required], name='dispatch')
 class PatientDeleteView(LoginRequiredMixin, View):
     """
     Development-only view for deleting patients.
@@ -978,7 +989,7 @@ class PatientDeleteView(LoginRequiredMixin, View):
             logger.error(f"Error during MRN cleanup for {mrn}: {e}")
 
 
-@method_decorator([admin_required], name='dispatch')
+@method_decorator([moritrac_admin_required], name='dispatch')
 class CleanupSoftDeletedView(LoginRequiredMixin, View):
     """
     Development utility to permanently remove soft-deleted patients.
@@ -1068,7 +1079,7 @@ class CleanupSoftDeletedView(LoginRequiredMixin, View):
 # Patient Merge Views
 # ============================================================================
 
-@method_decorator([admin_required, has_permission('patients.view_patient')], name='dispatch')
+@method_decorator([moritrac_admin_required], name='dispatch')
 class FindDuplicatePatientsView(LoginRequiredMixin, TemplateView):
     """
     Find and display potential duplicate patient records.
@@ -1168,7 +1179,7 @@ class FindDuplicatePatientsView(LoginRequiredMixin, TemplateView):
         return SequenceMatcher(None, name1, name2).ratio()
 
 
-@method_decorator([admin_required, has_permission('patients.merge_patients')], name='dispatch')
+@method_decorator([moritrac_admin_required], name='dispatch')
 class PatientMergeListView(LoginRequiredMixin, TemplateView):
     """
     List view for selecting patients to merge.
@@ -1210,7 +1221,7 @@ class PatientMergeListView(LoginRequiredMixin, TemplateView):
         return context
 
 
-@method_decorator([admin_required, has_permission('patients.merge_patients')], name='dispatch')
+@method_decorator([moritrac_admin_required], name='dispatch')
 class PatientMergeView(LoginRequiredMixin, TemplateView):
     """
     Merge two patient records.

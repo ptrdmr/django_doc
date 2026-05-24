@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Admin - {{ target_user.email }}{% endblock %}
+
+{% block content %}
+<div class="p-6">
+    <!-- Breadcrumb -->
+    <nav class="mb-4 text-sm">
+        <a href="{% url 'accounts:user_list' %}" class="text-blue-600 hover:text-blue-800">Admin Panel</a>
+        <span class="text-gray-400 mx-1">/</span>
+        <span class="text-gray-600">{{ target_user.email }}</span>
+    </nav>
+
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-lg font-bold text-blue-600">
+                {{ target_user.email|first|upper }}
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">{{ target_user.get_full_name|default:target_user.email }}</h1>
+                <p class="text-sm text-gray-500">{{ target_user.email }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Info Card -->
+    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+            <div>
+                <p class="text-gray-500">Joined</p>
+                <p class="font-medium">{{ target_user.date_joined|date:"M d, Y" }}</p>
+            </div>
+            <div>
+                <p class="text-gray-500">Last Login</p>
+                <p class="font-medium">{{ target_user.last_login|date:"M d, Y H:i"|default:"Never" }}</p>
+            </div>
+            <div>
+                <p class="text-gray-500">Status</p>
+                <p class="font-medium">
+                    {% if target_user.is_active %}
+                    <span class="text-green-600">Active</span>
+                    {% else %}
+                    <span class="text-red-600">Inactive</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div>
+                <p class="text-gray-500">Role</p>
+                <p class="font-medium">
+                    {% if target_user.is_staff %}<span class="text-blue-600">Moritrac Admin</span>{% else %}User{% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex flex-wrap gap-2 mb-8">
+        <form method="post" action="{% url 'accounts:admin_user_action' user_id=target_user.pk %}" class="inline">
+            {% csrf_token %}
+            {% if target_user.is_active %}
+            <button name="action" value="deactivate" class="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded-lg hover:bg-red-50"
+                    onclick="return confirm('Deactivate this user?')">Deactivate</button>
+            {% else %}
+            <button name="action" value="activate" class="px-3 py-1.5 text-sm border border-green-300 text-green-700 rounded-lg hover:bg-green-50">Activate</button>
+            {% endif %}
+        </form>
+        <form method="post" action="{% url 'accounts:admin_user_action' user_id=target_user.pk %}" class="inline">
+            {% csrf_token %}
+            {% if target_user.is_staff %}
+            <button name="action" value="demote" class="px-3 py-1.5 text-sm border border-yellow-300 text-yellow-700 rounded-lg hover:bg-yellow-50"
+                    onclick="return confirm('Remove admin access?')">Remove Admin</button>
+            {% else %}
+            <button name="action" value="promote" class="px-3 py-1.5 text-sm border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50">Promote to Admin</button>
+            {% endif %}
+        </form>
+        <form method="post" action="{% url 'accounts:admin_user_action' user_id=target_user.pk %}" class="inline">
+            {% csrf_token %}
+            <button name="action" value="reset_password" class="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Send Password Reset</button>
+        </form>
+    </div>
+
+    <!-- Patients Section -->
+    <div class="mb-8">
+        <h2 class="text-lg font-semibold text-gray-900 mb-3">Patients ({{ user_patients|length }})</h2>
+        {% if user_patients %}
+        <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">MRN</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    {% for patient in user_patients %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-2 text-sm">
+                            <a href="{% url 'patients:detail' pk=patient.pk %}" class="text-blue-600 hover:text-blue-800">
+                                {{ patient.first_name }} {{ patient.last_name }}
+                            </a>
+                        </td>
+                        <td class="px-4 py-2 text-sm text-gray-600">{{ patient.mrn }}</td>
+                        <td class="px-4 py-2 text-sm text-gray-500">{{ patient.created_at|date:"M d, Y" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-gray-500 text-sm">No patients created by this user.</p>
+        {% endif %}
+    </div>
+
+    <!-- Documents Section -->
+    <div class="mb-8">
+        <h2 class="text-lg font-semibold text-gray-900 mb-3">Documents ({{ user_documents|length }})</h2>
+
+        {% if failed_documents %}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            <h3 class="text-sm font-semibold text-red-800 mb-2">Failed Documents ({{ failed_documents|length }})</h3>
+            {% for doc in failed_documents %}
+            <div class="flex justify-between items-start py-2 {% if not forloop.last %}border-b border-red-100{% endif %}">
+                <div>
+                    <p class="text-sm font-medium text-red-900">{{ doc.original_filename|default:"Unnamed" }}</p>
+                    <p class="text-xs text-red-600 mt-0.5">{{ doc.error_message|truncatewords:20 }}</p>
+                </div>
+                <span class="text-xs text-red-500">{{ doc.created_at|date:"M d" }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if user_documents %}
+        <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    {% for doc in user_documents %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-2 text-sm">{{ doc.original_filename|default:"Unnamed"|truncatechars:40 }}</td>
+                        <td class="px-4 py-2 text-sm">
+                            {% if doc.status == 'completed' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Completed</span>
+                            {% elif doc.status == 'failed' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Failed</span>
+                            {% elif doc.status == 'processing' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Processing</span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">{{ doc.status|title }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-sm text-gray-500">{{ doc.created_at|date:"M d, Y" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-gray-500 text-sm">No documents uploaded by this user.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

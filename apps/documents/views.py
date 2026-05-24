@@ -20,15 +20,23 @@ from django.utils.decorators import method_decorator
 from .models import Document, ParsedData
 from .forms import DocumentUploadForm
 from apps.patients.models import Patient
-from apps.providers.models import Provider
-from apps.accounts.decorators import has_permission, provider_required, admin_required
-from django.utils.decorators import method_decorator
+from apps.accounts.decorators import moritrac_admin_required
 from apps.core.utils import log_user_activity, ActivityTypes
 
 logger = logging.getLogger(__name__)
 
 
-@method_decorator([provider_required, has_permission('documents.add_document')], name='dispatch')
+class OwnedDocumentMixin:
+    """Restrict queryset so non-staff users only see their own documents."""
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(uploaded_by=self.request.user)
+        return qs
+
+
+@method_decorator([login_required], name='dispatch')
 class DocumentUploadView(LoginRequiredMixin, CreateView):
     """
     Handle document upload with comprehensive validation and error handling.
@@ -211,7 +219,7 @@ class DocumentUploadView(LoginRequiredMixin, CreateView):
         return super().form_invalid(form)
 
 
-@method_decorator([provider_required, has_permission('documents.view_document')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class DocumentUploadSuccessView(LoginRequiredMixin, DetailView):
     """
     Display upload success page with document details.
@@ -256,8 +264,8 @@ class DocumentUploadSuccessView(LoginRequiredMixin, DetailView):
         return context
 
 
-@method_decorator(has_permission('documents.view_document'), name='dispatch')
-class DocumentListView(LoginRequiredMixin, ListView):
+@method_decorator([login_required], name='dispatch')
+class DocumentListView(OwnedDocumentMixin, LoginRequiredMixin, ListView):
     """
     Display list of uploaded documents with search and filtering.
     """
@@ -321,8 +329,8 @@ class DocumentListView(LoginRequiredMixin, ListView):
         return context
 
 
-@method_decorator(has_permission('documents.view_document'), name='dispatch')
-class DocumentDetailView(LoginRequiredMixin, DetailView):
+@method_decorator([login_required], name='dispatch')
+class DocumentDetailView(OwnedDocumentMixin, LoginRequiredMixin, DetailView):
     """
     Display detailed information about a specific document.
     """
@@ -370,7 +378,7 @@ class DocumentDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
-@method_decorator([provider_required, has_permission('documents.change_document')], name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class DocumentRetryView(LoginRequiredMixin, View):
     """
     Handle document processing retry with enhanced error handling.
@@ -447,7 +455,7 @@ class DocumentRetryView(LoginRequiredMixin, View):
                 return redirect('documents:detail', pk=document.pk)
 
 
-@method_decorator(has_permission('documents.view_document'), name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class ProcessingStatusAPIView(LoginRequiredMixin, View):
     """
     API endpoint for real-time processing status monitoring.
@@ -514,7 +522,7 @@ class ProcessingStatusAPIView(LoginRequiredMixin, View):
             }, status=500)
 
 
-@method_decorator(has_permission('documents.view_document'), name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class RecentUploadsAPIView(LoginRequiredMixin, View):
     """
     API endpoint for refreshing recent uploads list.
@@ -547,7 +555,7 @@ class RecentUploadsAPIView(LoginRequiredMixin, View):
             )
 
 
-@method_decorator(has_permission('documents.view_document'), name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class ParsedDataAPIView(LoginRequiredMixin, View):
     """
     API endpoint for getting parsed data with snippet context.
@@ -623,7 +631,7 @@ class ParsedDataAPIView(LoginRequiredMixin, View):
         return SnippetHelper.get_snippet_stats(snippets_data)
 
 
-@method_decorator(has_permission('documents.view_document'), name='dispatch')
+@method_decorator([login_required], name='dispatch')
 class DocumentPreviewAPIView(LoginRequiredMixin, View):
     """
     API endpoint for document preview functionality.
@@ -686,7 +694,7 @@ class DocumentPreviewAPIView(LoginRequiredMixin, View):
 # Development-Only Deletion Views  
 # ============================================================================
 
-@method_decorator([admin_required, has_permission('documents.delete_document')], name='dispatch')
+@method_decorator([moritrac_admin_required], name='dispatch')
 class DocumentDeleteView(LoginRequiredMixin, View):
     """
     Development-only view for deleting documents.
@@ -789,7 +797,7 @@ class DocumentDeleteView(LoginRequiredMixin, View):
             return redirect('documents:detail', pk=pk)
 
 
-@method_decorator([admin_required], name='dispatch')  
+@method_decorator([moritrac_admin_required], name='dispatch')  
 class MigrateFHIRDataView(LoginRequiredMixin, View):
     """
     Simple view to migrate FHIR data from old completed documents.

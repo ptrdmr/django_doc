@@ -17,7 +17,8 @@ import re
 from collections import defaultdict
 
 from .models import Provider, ProviderHistory
-from apps.accounts.decorators import has_permission, provider_required, admin_required
+from django.contrib.auth.decorators import login_required
+from apps.accounts.decorators import moritrac_admin_required
 from django.utils.decorators import method_decorator
 
 logger = logging.getLogger(__name__)
@@ -166,7 +167,7 @@ class ProviderDirectoryForm(forms.Form):
             self.fields['organization'].widget.choices = [('', 'All Organizations')]
 
 
-@method_decorator(has_permission('providers.view_provider'), name='dispatch')
+@method_decorator(login_required, name='dispatch')
 class ProviderListView(LoginRequiredMixin, ListView):
     """
     Display a list of providers with search and pagination functionality.
@@ -318,7 +319,7 @@ class ProviderListView(LoginRequiredMixin, ListView):
             return super().get_context_data(**kwargs)
 
 
-@method_decorator(has_permission('providers.view_provider'), name='dispatch')
+@method_decorator(login_required, name='dispatch')
 class ProviderDirectoryView(LoginRequiredMixin, TemplateView):
     """
     Provider directory view that organizes providers by specialty and provides filtering.
@@ -522,7 +523,7 @@ class ProviderDirectoryView(LoginRequiredMixin, TemplateView):
             return super().get_context_data(**kwargs)
 
 
-@method_decorator(has_permission('providers.view_provider'), name='dispatch')
+@method_decorator(login_required, name='dispatch')
 class ProviderDetailView(LoginRequiredMixin, DetailView):
     """
     Display detailed information for a specific provider.
@@ -803,7 +804,7 @@ class ProviderForm(forms.ModelForm):
         return organization
 
 
-@method_decorator([admin_required, has_permission('providers.add_provider')], name='dispatch')
+@method_decorator([moritrac_admin_required], name='dispatch')
 class ProviderCreateView(LoginRequiredMixin, CreateView):
     """
     Create a new provider record with enhanced validation and error handling.
@@ -855,7 +856,7 @@ class ProviderCreateView(LoginRequiredMixin, CreateView):
             return self.form_invalid(form)
 
 
-@method_decorator([admin_required, has_permission('providers.change_provider')], name='dispatch')
+@method_decorator([moritrac_admin_required], name='dispatch')
 class ProviderUpdateView(LoginRequiredMixin, UpdateView):
     """
     Update an existing provider record with enhanced validation and error handling.
