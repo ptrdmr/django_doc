@@ -26,20 +26,7 @@ urlpatterns = [
     # Admin tools
     path('migrate-fhir/', views.MigrateFHIRDataView.as_view(), name='migrate-fhir'),
     
-    path('field/<str:field_id>/flag/', views.flag_field, name='flag-field'),
-    
     # Clinical date management endpoints (Task 35.5)
     path('clinical-date/save/', views.save_clinical_date, name='save-clinical-date'),
     path('clinical-date/verify/', views.verify_clinical_date, name='verify-clinical-date'),
-    
-    # Flagged documents list view (Task 41.24)
-    path('flagged/', views.FlaggedDocumentsListView.as_view(), name='flagged-list'),
-    
-    # Flagged document detail view (Task 41.25)
-    path('flagged/<int:pk>/', views.FlaggedDocumentDetailView.as_view(), name='flagged-detail'),
-    
-    # Verification action handlers (Task 41.26)
-    path('flagged/<int:pk>/mark-correct/', views.mark_as_correct, name='mark-as-correct'),
-    path('flagged/<int:pk>/correct-data/', views.correct_data, name='correct-data'),
-    path('flagged/<int:pk>/rollback/', views.rollback_merge, name='rollback-merge'),
 ] 

@@ -319,7 +319,7 @@ class DocumentProcessingTestCase(TestCase):
         
         # Verify ParsedData was created with snippet information
         self.document.refresh_from_db()
-        self.assertEqual(self.document.status, 'review')  # Should be set to review
+        self.assertEqual(self.document.status, 'completed')
         
         parsed_data = ParsedData.objects.get(document=self.document)
         

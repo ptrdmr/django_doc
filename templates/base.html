@@ -325,25 +325,15 @@
                </div>
            </template>
        
-           <!-- Recently Completed/Review/Failed Items -->
+           <!-- Recently Completed/Failed Items -->
            <template x-for="doc in recentUploads" :key="doc.id">
                <div class="bg-white rounded-lg shadow-lg border-l-4 p-4 flex items-center space-x-3 transition-colors duration-150"
                     :class="{
                        'border-green-500': doc.status === 'completed',
-                       'border-yellow-500': doc.status === 'review',
-                       'border-red-500': doc.status === 'failed',
-                       'cursor-pointer hover:bg-gray-50': doc.status === 'review'
-                    }"
-                    @click="handleDocClick(doc)">
+                       'border-red-500': doc.status === 'failed'
+                    }">
                    
                    <div class="flex-shrink-0">
-                       <!-- Review Icon (Yellow) -->
-                       <template x-if="doc.status === 'review'">
-                           <svg class="h-5 w-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                           </svg>
-                       </template>
                        <!-- Success Icon (Green) -->
                        <template x-if="doc.status === 'completed'">
                            <svg class="h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -363,11 +353,9 @@
                        <p class="text-xs font-medium" 
                           :class="{
                               'text-green-600': doc.status === 'completed',
-                              'text-yellow-600': doc.status === 'review',
                               'text-red-600': doc.status === 'failed'
                           }">
                           <span x-text="doc.status_display"></span>
-                          <span x-show="doc.status === 'review'" class="ml-1 text-gray-400 font-normal">Click to view &rarr;</span>
                        </p>
                    </div>
                    
@@ -403,12 +391,6 @@
                        
                        this.checkStatus();
                        this.interval = setInterval(() => this.checkStatus(), 3000);
-                   },
-                   
-                   handleDocClick(doc) {
-                       if (doc.status === 'review') {
-                           window.location.href = `/documents/${doc.id}/`;
-                       }
                    },
                    
                    dismiss(id) {

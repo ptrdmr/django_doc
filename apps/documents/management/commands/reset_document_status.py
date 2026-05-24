@@ -1,18 +1,18 @@
 """
-Management command to reset document status for testing review workflow.
+Management command to reset document status for reprocessing.
 """
 from django.core.management.base import BaseCommand, CommandError
 from apps.documents.models import Document
 
 
 class Command(BaseCommand):
-    help = 'Reset document status to review for testing the review workflow'
+    help = 'Reset document status to pending for reprocessing'
 
     def add_arguments(self, parser):
         parser.add_argument(
             'document_id',
             type=int,
-            help='ID of the document to reset to review status'
+            help='ID of the document to reset to pending status'
         )
         parser.add_argument(
             '--force',
@@ -37,11 +37,11 @@ class Command(BaseCommand):
                 f'or only reset completed/failed documents.'
             )
 
-        # Reset document to review status
-        document.status = 'review'
-        document.save()
+        document.status = 'pending'
+        document.processing_message = ''
+        document.error_message = ''
+        document.save(update_fields=['status', 'processing_message', 'error_message'])
         
-        # Reset parsed data approval if it exists
         try:
             parsed_data = document.parsed_data
             parsed_data.is_approved = False
@@ -52,18 +52,18 @@ class Command(BaseCommand):
             
             self.stdout.write(
                 self.style.SUCCESS(
-                    f'Successfully reset document {document_id} from "{old_status}" to "review" status. '
+                    f'Successfully reset document {document_id} from "{old_status}" to "pending". '
                     f'ParsedData approval status also reset.'
                 )
             )
         except Exception:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f'Successfully reset document {document_id} from "{old_status}" to "review" status. '
+                    f'Successfully reset document {document_id} from "{old_status}" to "pending". '
                     f'No parsed data found to reset.'
                 )
             )
             
         self.stdout.write(
-            f'Document "{document.filename}" is now ready for review testing.'
+            f'Document "{document.filename}" is ready for reprocessing.'
         )

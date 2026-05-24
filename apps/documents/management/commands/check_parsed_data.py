@@ -6,50 +6,51 @@ from apps.documents.models import Document, ParsedData
 
 
 class Command(BaseCommand):
-    help = 'Check which documents in review have ParsedData'
+    help = 'Check ParsedData coverage for completed documents'
 
     def handle(self, *args, **options):
         self.stdout.write("=" * 70)
         self.stdout.write(self.style.SUCCESS('PARSEDDATA STATUS CHECK'))
         self.stdout.write("=" * 70)
         
-        # Get all review documents
-        review_docs = Document.objects.filter(status='review')
-        total = review_docs.count()
+        completed_docs = Document.objects.filter(status='completed')
+        total = completed_docs.count()
         
-        self.stdout.write(f"\nTotal documents in 'review' status: {total}")
+        self.stdout.write(f"\nTotal documents in 'completed' status: {total}")
         
         if total == 0:
-            self.stdout.write(self.style.WARNING("No documents in review status."))
+            self.stdout.write(self.style.WARNING("No completed documents found."))
             return
         
-        # Check which have ParsedData
-        with_parsed = review_docs.filter(
+        with_parsed = completed_docs.filter(
             id__in=ParsedData.objects.values_list('document_id', flat=True)
         )
-        without_parsed = review_docs.exclude(
+        without_parsed = completed_docs.exclude(
             id__in=ParsedData.objects.values_list('document_id', flat=True)
         )
         
         with_count = with_parsed.count()
         without_count = without_parsed.count()
+        flagged_count = ParsedData.objects.filter(review_status='flagged').count()
         
-        # Summary
-        self.stdout.write(f"\n[OK] Documents WITH ParsedData: {with_count}")
-        self.stdout.write(f"[X] Documents WITHOUT ParsedData: {without_count}")
+        self.stdout.write(f"\n[OK] Completed documents WITH ParsedData: {with_count}")
+        self.stdout.write(f"[X] Completed documents WITHOUT ParsedData: {without_count}")
+        self.stdout.write(f"[i] ParsedData flagged for audit (internal): {flagged_count}")
         
-        # Show details
         if with_count > 0:
             self.stdout.write(f"\n{self.style.SUCCESS('Documents WITH ParsedData:')}")
-            for doc in with_parsed:
+            for doc in with_parsed[:20]:
                 parsed = ParsedData.objects.get(document=doc)
                 field_count = len(parsed.extraction_json) if parsed.extraction_json else 0
                 fhir_count = len(parsed.fhir_delta_json) if parsed.fhir_delta_json else 0
                 self.stdout.write(
                     f"  [OK] Doc {doc.id}: {doc.file.name} "
                     f"({field_count} fields, {fhir_count} FHIR resources, "
-                    f"confidence: {parsed.extraction_confidence:.2f})"
+                    f"confidence: {parsed.extraction_confidence:.2f}, "
+                    f"review_status: {parsed.review_status})"
                 )
+            if with_count > 20:
+                self.stdout.write(f"  ... and {with_count - 20} more")
         
         if without_count > 0:
             self.stdout.write(f"\n{self.style.ERROR('Documents WITHOUT ParsedData (BROKEN):')}")
@@ -60,12 +61,11 @@ class Command(BaseCommand):
                     f"(uploaded {doc.uploaded_at.strftime('%Y-%m-%d %H:%M')}){error_msg}"
                 )
         
-        # Status summary
         self.stdout.write("\n" + "=" * 70)
         if without_count == 0:
-            self.stdout.write(self.style.SUCCESS("[SUCCESS] All documents have ParsedData"))
+            self.stdout.write(self.style.SUCCESS("[SUCCESS] All completed documents have ParsedData"))
         else:
-            self.stdout.write(self.style.ERROR(f"[ERROR] {without_count} document(s) still missing ParsedData"))
-            self.stdout.write(self.style.WARNING("\nTo fix: python manage.py reprocess_review_documents"))
+            self.stdout.write(
+                self.style.ERROR(f"[ERROR] {without_count} completed document(s) missing ParsedData")
+            )
         self.stdout.write("=" * 70)
-

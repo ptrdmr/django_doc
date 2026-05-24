@@ -42,7 +42,7 @@ class PatientDataComparisonServiceTests(TestCase):
         self.document = Document.objects.create(
             filename='test_document.pdf',
             patient=self.patient,
-            status='review',
+            status='completed',
             uploaded_by=self.user,
             created_by=self.user
         )
@@ -159,7 +159,7 @@ class PatientRecordUpdateServiceTests(TestCase):
         self.document = Document.objects.create(
             filename='test_document.pdf',
             patient=self.patient,
-            status='review',
+            status='completed',
             uploaded_by=self.user,
             created_by=self.user
         )
@@ -361,7 +361,7 @@ class PatientDataValidationSecurityTests(TestCase):
         self.document = Document.objects.create(
             filename='test_document.pdf',
             patient=self.patient,
-            status='review',
+            status='completed',
             uploaded_by=self.user,
             created_by=self.user
         )

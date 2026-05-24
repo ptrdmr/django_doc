@@ -572,7 +572,7 @@ class TestAssertions:
     @staticmethod
     def assert_document_processing_success(document):
         """Assert that document processing completed successfully."""
-        assert document.status in ['review', 'completed']
+        assert document.status == 'completed'
         assert hasattr(document, 'parsed_data')
         assert document.parsed_data is not None
         assert document.processed_at is not None

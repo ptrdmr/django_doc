@@ -741,15 +741,13 @@ def process_document_async(self, document_id: int):
                 if ai_result and ai_result.get('degraded'):
                     logger.warning(f"Document {document_id} processed with degradation: {ai_result.get('error_context', 'Unknown error')}")
                     
-                    # Mark document for manual review
-                    document.status = 'requires_review'
                     document.error_message = f"AI processing degraded: {ai_result.get('error_context', 'All AI services failed')}"
                     
-                    # Log manual review requirement in audit system
+                    # Log degradation in audit system (internal audit trail only)
                     from apps.core.models import AuditLog
                     AuditLog.log_event(
                         event_type='document_requires_review',
-                        description=f"Document {document_id} requires manual review due to AI processing degradation",
+                        description=f"Document {document_id} processed with AI degradation (merge continues)",
                         details={
                             'document_id': document_id,
                             'degradation_reason': ai_result.get('error_context', 'Unknown'),
@@ -1020,6 +1018,12 @@ def process_document_async(self, document_id: int):
                                 f"{'(auto-approved)' if parsed_data.auto_approved else f'(flagged: {flag_reason})'}"
                             )
                             
+                            if review_status == 'flagged':
+                                logger.warning(
+                                    f"[{task_id}] Low-confidence extraction flagged for document {document_id}: "
+                                    f"{flag_reason}. Proceeding with merge (audit only)."
+                                )
+                            
                             # Task 41.28: HIPAA audit logging for review decision
                             from apps.documents.models import audit_extraction_decision
                             audit_extraction_decision(parsed_data, request=None)
@@ -1230,10 +1234,9 @@ def process_document_async(self, document_id: int):
                 'error_message': document.error_message
             }
         
-        # Task 41.13: Set document status based on review status AND merge status
-        # Critical: A document is only truly "completed" if the merge succeeded
+        # Task 41.13: Set document status based on merge status (always complete when merged)
         try:
-            # Get the ParsedData to check review status and merge status
+            # Get the ParsedData to check merge status
             from .models import ParsedData
             parsed_data = ParsedData.objects.filter(document=document).first()
             
@@ -1255,21 +1258,22 @@ def process_document_async(self, document_id: int):
                     f"[{task_id}] Document {document_id} MERGE FAILED - is_merged=False. "
                     f"ParsedData {parsed_data.id} has {len(parsed_data.fhir_delta_json or [])} resources waiting to merge."
                 )
-            elif parsed_data.auto_approved:
-                # High quality extraction AND successfully merged - mark as completed
-                document.status = 'completed'
-                document.processing_message = "Processing completed - data auto-approved and merged"
-                logger.info(f"[{task_id}] Document {document_id} auto-approved and completed")
-            elif parsed_data.review_status == 'flagged':
-                # Lower quality or conflicts - but data IS merged, just needs review
-                document.status = 'review'
-                document.processing_message = f"Merged with flags - review recommended: {parsed_data.flag_reason[:100] if parsed_data.flag_reason else 'Unknown'}"
-                logger.info(f"[{task_id}] Document {document_id} flagged for review: {parsed_data.flag_reason}")
             else:
-                # Fallback for unexpected states
-                document.status = 'review'
-                document.processing_message = "Processing completed - review recommended"
-                logger.warning(f"[{task_id}] Document {document_id} in unexpected state, defaulting to review")
+                document.status = 'completed'
+                if parsed_data.review_status == 'flagged':
+                    logger.warning(
+                        f"[{task_id}] Document {document_id} merged with low-confidence flags: "
+                        f"{parsed_data.flag_reason}"
+                    )
+                    document.processing_message = (
+                        f"Processing completed (flags logged): "
+                        f"{parsed_data.flag_reason[:100] if parsed_data.flag_reason else 'Unknown'}"
+                    )
+                elif parsed_data.auto_approved:
+                    document.processing_message = "Processing completed - data auto-approved and merged"
+                else:
+                    document.processing_message = "Processing completed - data merged"
+                logger.info(f"[{task_id}] Document {document_id} completed")
                 
         except Exception as status_exc:
             # Categorize status update error
@@ -1285,10 +1289,9 @@ def process_document_async(self, document_id: int):
                 }
             )
             
-            # Fallback to review status on error
             try:
-                document.status = 'review'
-                document.processing_message = "Processing completed - review recommended (status update failed)"
+                document.status = 'failed'
+                document.processing_message = "Processing failed - could not determine final status"
                 document.save(update_fields=['status', 'processing_message'])
             except Exception as fallback_error:
                 logger.critical(
@@ -2005,8 +2008,8 @@ def poll_textract_job(self, document_id: int, job_id: str, s3_key: str, attempt:
             logger.error(f"[{task_id}] Failed to chain processing task: {chain_error}")
             # Store OCR text in document for manual recovery
             document.original_text = ocr_text
-            document.status = 'review'
-            document.processing_message = 'OCR complete but processing chain failed - manual review needed'
+            document.status = 'failed'
+            document.processing_message = 'OCR complete but processing chain failed'
             document.save(update_fields=['original_text', 'status', 'processing_message'])
         
         return {
@@ -2075,7 +2078,7 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
     2. Runs DocumentAnalyzer for AI extraction
     3. Converts to FHIR resources via StructuredDataConverter
     4. Creates ParsedData with optimistic merge
-    5. Sets Document.status to 'completed' or 'review'
+    5. Sets Document.status to 'completed' when merge succeeds
     
     This mirrors the sync processing path after text extraction, reusing
     as much code as possible from process_document_async.
@@ -2299,6 +2302,12 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
                 
                 logger.info(f"[{task_id}] Review status: {review_status}")
                 
+                if review_status == 'flagged':
+                    logger.warning(
+                        f"[{task_id}] Low-confidence extraction flagged for document {document_id}: "
+                        f"{flag_reason}. Proceeding with merge (audit only)."
+                    )
+                
                 # Optimistic merge into patient record
                 if serialized_fhir_resources and document.patient:
                     merge_success = document.patient.add_fhir_resources(
@@ -2331,8 +2340,7 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
         processing_errors.append(str(pipeline_exc))
         ai_result = ai_result or {'success': False, 'error': str(pipeline_exc), 'fields': []}
     
-    # Set final document status based on ParsedData review status and merge status
-    # (mirrors Task 41.13 logic from process_document_async)
+    # Set final document status based on merge status (always complete when merged)
     try:
         parsed_data_final = ParsedData.objects.filter(document=document).first()
         
@@ -2347,23 +2355,26 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
                 f"ParsedData ID: {parsed_data_final.id} contains the extracted data."
             )
             logger.error(f"[{task_id}] Document {document_id} MERGE FAILED")
-        elif parsed_data_final.auto_approved:
-            # High quality + merged → completed (no human review needed)
-            document.status = 'completed'
-            document.processing_message = "Processing completed - data auto-approved and merged"
-            logger.info(f"[{task_id}] Document {document_id} auto-approved and completed")
-        elif parsed_data_final.review_status == 'flagged':
-            # Merged but flagged → needs human review
-            document.status = 'review'
-            document.processing_message = f"Merged with flags - review recommended: {parsed_data_final.flag_reason[:100] if parsed_data_final.flag_reason else 'Unknown'}"
-            logger.info(f"[{task_id}] Document {document_id} flagged for review: {parsed_data_final.flag_reason}")
         else:
-            document.status = 'review'
-            document.processing_message = "Processing completed - review recommended"
+            document.status = 'completed'
+            if parsed_data_final.review_status == 'flagged':
+                logger.warning(
+                    f"[{task_id}] Document {document_id} merged with low-confidence flags: "
+                    f"{parsed_data_final.flag_reason}"
+                )
+                document.processing_message = (
+                    f"Processing completed (flags logged): "
+                    f"{parsed_data_final.flag_reason[:100] if parsed_data_final.flag_reason else 'Unknown'}"
+                )
+            elif parsed_data_final.auto_approved:
+                document.processing_message = "Processing completed - data auto-approved and merged"
+            else:
+                document.processing_message = "Processing completed - data merged"
+            logger.info(f"[{task_id}] Document {document_id} completed")
     except Exception as status_exc:
         logger.error(f"[{task_id}] Error determining final status: {status_exc}")
-        document.status = 'review'
-        document.processing_message = "Processing completed - review recommended (status check failed)"
+        document.status = 'failed'
+        document.processing_message = "Processing failed - could not determine final status"
     
     if processing_errors:
         document.error_message = '; '.join(processing_errors[:3])

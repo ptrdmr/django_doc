@@ -25,7 +25,6 @@ import random
 from apps.core.utils import (
     log_user_activity, 
     get_model_count,
-    get_model_count_with_filter,
     ActivityTypes
 )
 # Import our RBAC components
@@ -157,7 +156,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             # provider_count omitted while Providers UI is MVP-hidden; re-add when re-enabling nav
             'document_count': get_model_count('documents', 'Document'),
             'active_users_count': self._get_active_users_count(),
-            'flagged_extractions_count': get_model_count_with_filter('documents', 'ParsedData', review_status='flagged'),
         }
         
         logger.debug(f"Dashboard stats: {stats}")

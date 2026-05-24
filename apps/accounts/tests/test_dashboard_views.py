@@ -4,10 +4,7 @@ Tests for dashboard views.
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.urls import reverse
-from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.patients.models import Patient
-from apps.documents.models import Document, ParsedData
-from django.utils import timezone
 
 
 class DashboardViewTests(TestCase):
@@ -82,91 +79,6 @@ class DashboardViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context['has_patient_permission'])
         self.assertEqual(len(response.context['patients']), 0)
-
-    def test_dashboard_shows_flagged_count_zero(self):
-        """Test that dashboard shows zero flagged extractions when none exist."""
-        response = self.client.get(self.dashboard_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('flagged_extractions_count', response.context)
-        self.assertEqual(response.context['flagged_extractions_count'], 0)
-
-    def test_dashboard_shows_flagged_count_with_flagged_data(self):
-        """Test that dashboard shows correct flagged count when flagged data exists."""
-        fake_file = SimpleUploadedFile("test.pdf", b"fake pdf content", content_type="application/pdf")
-        document = Document.objects.create(
-            patient=self.patient,
-            filename='test.pdf',
-            file=fake_file,
-            status='completed',
-            uploaded_by=self.user,
-        )
-
-        ParsedData.objects.create(
-            document=document,
-            patient=self.patient,
-            review_status='flagged',
-            flag_reason='Low confidence score',
-            extraction_confidence=0.75,
-            ai_model_used='claude-3-sonnet',
-            extraction_json={'test': 'data'},
-            fhir_delta_json={'resourceType': 'Bundle', 'entry': []},
-        )
-
-        response = self.client.get(self.dashboard_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['flagged_extractions_count'], 1)
-
-    def test_dashboard_counts_multiple_flagged_extractions(self):
-        """Test that dashboard correctly counts multiple flagged extractions."""
-        for i in range(2):
-            fake_file = SimpleUploadedFile(f"test{i}.pdf", b"fake pdf content", content_type="application/pdf")
-            document = Document.objects.create(
-                patient=self.patient,
-                filename=f'test{i}.pdf',
-                file=fake_file,
-                status='completed',
-                uploaded_by=self.user,
-            )
-
-            ParsedData.objects.create(
-                document=document,
-                patient=self.patient,
-                review_status='flagged',
-                flag_reason='Test flag',
-                extraction_confidence=0.70,
-                ai_model_used='claude-3-sonnet',
-                extraction_json={'test': 'data'},
-                fhir_delta_json={'resourceType': 'Bundle', 'entry': []},
-            )
-
-        response = self.client.get(self.dashboard_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['flagged_extractions_count'], 2)
-
-    def test_dashboard_ignores_non_flagged_extractions(self):
-        """Test that dashboard only counts flagged extractions, not auto-approved ones."""
-        fake_file = SimpleUploadedFile("test.pdf", b"fake pdf content", content_type="application/pdf")
-        document = Document.objects.create(
-            patient=self.patient,
-            filename='test.pdf',
-            file=fake_file,
-            status='completed',
-            uploaded_by=self.user,
-        )
-
-        ParsedData.objects.create(
-            document=document,
-            patient=self.patient,
-            review_status='auto_approved',
-            extraction_confidence=0.95,
-            ai_model_used='claude-3-sonnet',
-            extraction_json={'test': 'data'},
-            fhir_delta_json={'resourceType': 'Bundle', 'entry': []},
-        )
-
-        response = self.client.get(self.dashboard_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['flagged_extractions_count'], 0)
 
     def test_dashboard_requires_authentication(self):
         """Test that dashboard requires user to be logged in."""

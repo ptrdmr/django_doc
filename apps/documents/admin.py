@@ -224,22 +224,20 @@ class ParsedDataAdmin(admin.ModelAdmin):
                 'extraction_quality_score',
             ]
         }),
-        ('Review and Approval', {
-            'fields': [
-                'review_status',
-                'is_approved',
-                'reviewed_by',
-                'reviewed_at',
-                'review_notes',
-                'rejection_reason',
-            ]
-        }),
         ('Integration Status', {
             'fields': [
                 'is_merged',
                 'merged_at',
                 'fhir_resource_count',
             ]
+        }),
+        ('Audit Metadata', {
+            'fields': [
+                'review_status',
+                'flag_reason',
+                'auto_approved',
+            ],
+            'classes': ['collapse'],
         }),
         ('Data Content', {
             'fields': [
@@ -251,7 +249,7 @@ class ParsedDataAdmin(admin.ModelAdmin):
         }),
     ]
     
-    actions = ['approve_extraction', 'mark_as_merged']
+    actions = ['mark_as_merged']
     
     def fhir_resource_count(self, obj):
         """Display count of FHIR resources."""
@@ -284,18 +282,6 @@ class ParsedDataAdmin(admin.ModelAdmin):
             )
         return '-'
     view_document_link.short_description = 'Source Document'
-    
-    def approve_extraction(self, request, queryset):
-        """Action to manually approve extracted data (sets status to 'reviewed')."""
-        count = 0
-        for parsed_data in queryset:
-            # Only approve if not already reviewed or rejected
-            if parsed_data.review_status not in ('reviewed', 'rejected'):
-                parsed_data.approve_extraction(request.user, "Approved via admin action")
-                count += 1
-        
-        self.message_user(request, f'{count} extractions approved (status set to reviewed).')
-    approve_extraction.short_description = 'Approve selected extractions (manual review)'
     
     def mark_as_merged(self, request, queryset):
         """Action to mark data as merged."""

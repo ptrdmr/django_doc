@@ -41,7 +41,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--status',
-            choices=['pending', 'processing', 'completed', 'failed', 'review'],
+            choices=['pending', 'processing', 'completed', 'failed'],
             help='Only reprocess documents with specific status',
         )
         parser.add_argument(
@@ -305,7 +305,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"    ✓ {action} ParsedData with {len(fhir_resources)} FHIR resources")
                 
                 # Update document status
-                document.status = 'review'  # Mark for review since we reset approval
+                document.status = 'completed'
                 document.processed_at = timezone.now()
                 document.error_message = ''
                 document.save()
