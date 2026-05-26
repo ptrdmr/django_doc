@@ -99,6 +99,11 @@ class StructuredDataValidationMiddleware(MiddlewareMixin):
         Returns:
             Modified response with validation headers
         """
+        # Skip streaming responses (SSE endpoints) to avoid interfering
+        # with Django's StreamingHttpResponse iteration.
+        if getattr(response, 'streaming', False):
+            return response
+
         if hasattr(request, 'validation_context'):
             validation_time = (time.time() - self.validation_start_time) * 1000
             

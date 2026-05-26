@@ -188,6 +188,26 @@ class Document(BaseModel):
         blank=True,
         help_text="AI processing time in milliseconds"
     )
+    queue_wait_time_ms = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Time spent waiting in queue before processing started (milliseconds)"
+    )
+    pdf_extraction_time_ms = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="PDF/OCR text extraction time in milliseconds"
+    )
+    ai_extraction_time_ms = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="AI structured extraction time in milliseconds"
+    )
+    fhir_conversion_time_ms = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="FHIR conversion time in milliseconds"
+    )
     
     # Enhanced error tracking
     error_log = models.JSONField(

@@ -40,9 +40,51 @@ class CostCalculator:
             'gpt-4-turbo-preview': {'input': 0.01, 'output': 0.03},
             'gpt-3.5-turbo': {'input': 0.0015, 'output': 0.002},
             'gpt-3.5-turbo-16k': {'input': 0.003, 'output': 0.004},
-        }
+        },
+        'aws_textract': {
+            'detect_document_text': {'per_page': 0.0015},
+            'analyze_document': {'per_page': 0.015},
+            'start_document_text_detection': {'per_page': 0.0015},
+            'start_document_analysis': {'per_page': 0.015},
+        },
     }
     
+    @classmethod
+    def calculate_textract_cost(cls, mode: str, page_count: int) -> Decimal:
+        """
+        Calculate AWS Textract OCR cost based on pages processed.
+
+        Args:
+            mode: Textract API mode (detect_document_text, analyze_document, etc.)
+            page_count: Number of pages processed
+
+        Returns:
+            Cost in USD as Decimal
+        """
+        if page_count <= 0:
+            return Decimal('0.00')
+
+        mode_key = (mode or 'detect_document_text').lower()
+        textract_pricing = cls.MODEL_PRICING.get('aws_textract', {})
+
+        if mode_key in ('detect', 'start_document_text_detection'):
+            mode_key = 'detect_document_text'
+        elif mode_key in ('analyze', 'start_document_analysis'):
+            mode_key = 'analyze_document'
+
+        pricing = textract_pricing.get(mode_key)
+        if not pricing:
+            logger.warning(f"Unknown Textract pricing mode: {mode}")
+            return Decimal('0.00')
+
+        per_page = Decimal(str(pricing['per_page']))
+        total_cost = per_page * Decimal(str(page_count))
+        logger.debug(
+            f"Textract cost: mode={mode_key}, pages={page_count}, "
+            f"per_page=${per_page}, total=${total_cost:.6f}"
+        )
+        return total_cost
+
     @classmethod
     def calculate_cost(cls, provider: str, model: str, input_tokens: int, output_tokens: int) -> Decimal:
         """
@@ -58,7 +100,11 @@ class CostCalculator:
             Cost in USD as Decimal
         """
         try:
-            pricing = cls.MODEL_PRICING[provider.lower()][model.lower()]
+            provider_key = provider.lower()
+            if provider_key == 'aws_textract':
+                return cls.calculate_textract_cost(model, input_tokens)
+
+            pricing = cls.MODEL_PRICING[provider_key][model.lower()]
             
             # Convert tokens to thousands for pricing calculation
             input_cost = Decimal(str(input_tokens)) * Decimal(str(pricing['input'])) / 1000
@@ -170,6 +216,42 @@ class APIUsageMonitor:
         except Exception as e:
             logger.error(f"Failed to log API usage: {e}")
             raise
+
+    @classmethod
+    def log_textract_usage(
+        cls,
+        document,
+        patient,
+        session_id,
+        mode: str,
+        page_count: int,
+        start_time,
+        end_time,
+        success: bool = True,
+        error_message: Optional[str] = None,
+    ) -> APIUsageLog:
+        """
+        Log AWS Textract OCR usage with page-based cost calculation.
+
+        For Textract, page_count is stored in input_tokens/total_tokens fields.
+        """
+        if page_count <= 0:
+            raise ValueError("page_count must be positive for Textract usage logging")
+
+        return cls.log_api_usage(
+            document=document,
+            patient=patient,
+            session_id=session_id,
+            provider='aws_textract',
+            model=mode,
+            input_tokens=page_count,
+            output_tokens=0,
+            total_tokens=page_count,
+            start_time=start_time,
+            end_time=end_time,
+            success=success,
+            error_message=error_message,
+        )
     
     @classmethod
     def get_usage_by_patient(cls, patient, date_from=None, date_to=None) -> Dict[str, Any]:

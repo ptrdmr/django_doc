@@ -104,6 +104,9 @@
                             <a href="{% url 'accounts:user_list' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors">
                                 Admin Panel
                             </a>
+                            <a href="{% url 'core:monitor-dashboard' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                                Pipeline Monitor
+                            </a>
                             {% endif %}
                             <hr class="border-gray-200 my-1">
                             <a href="{% url 'account_logout' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors">
@@ -186,6 +189,7 @@
                         {% if user.is_staff or user.is_superuser %}
                         <p class="px-3 pt-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Administration</p>
                         <a href="{% url 'accounts:user_list' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-800 hover:bg-blue-50 hover:text-blue-700" @click="mobileOpen = false">Admin Panel</a>
+                        <a href="{% url 'core:monitor-dashboard' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-gray-800 hover:bg-blue-50 hover:text-blue-700" @click="mobileOpen = false">Pipeline Monitor</a>
                         {% endif %}
                         <hr class="border-gray-200 my-2">
                         <a href="{% url 'account_logout' %}" class="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-red-700 hover:bg-red-50" @click="mobileOpen = false">Logout</a>

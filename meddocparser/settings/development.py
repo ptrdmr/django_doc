@@ -113,11 +113,12 @@ LOGGING['loggers']['meddocparser']['handlers'].append('console')
 #     }
 # }
 
-# Debug toolbar (uncomment when django-debug-toolbar is installed)
-# if DEBUG:
-#     INSTALLED_APPS += ['debug_toolbar']
-#     MIDDLEWARE.insert(0, 'debug_toolbar.middleware.DebugToolbarMiddleware')
-#     INTERNAL_IPS = ['127.0.0.1']
+# Debug toolbar middleware is intentionally NOT added here.
+# django-debug-toolbar 5.x crashes on StreamingHttpResponse (SSE endpoints)
+# even when SHOW_TOOLBAR_CALLBACK returns False, because its instrumentation
+# hooks interfere with wsgiref's chunked write path in the threaded dev server.
+# The toolbar's URL routes and panels still work for manual inspection via
+# /__debug__/ if needed — only the auto-inject middleware is disabled.
 
 # Redis/Cache: When Redis is not reachable (e.g. local dev without a broker), use
 # in-memory cache so login/sessions work. Celery runs eagerly in that case.

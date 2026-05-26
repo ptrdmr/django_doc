@@ -1,0 +1,922 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Processing Pipeline Monitor{% endblock %}
+
+{% block extra_css %}
+<style>
+.dashboard-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.metric-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #2563eb;
+}
+
+.metric-label {
+    font-size: 0.875rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.stage-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: #eff6ff;
+    color: #1d4ed8;
+    margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.chart-container {
+    height: 300px;
+    position: relative;
+}
+
+.monitor-table {
+    font-size: 0.875rem;
+}
+
+.monitor-table th {
+    background-color: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.badge-success { background-color: #d1fae5; color: #065f46; }
+.badge-warning { background-color: #fef3c7; color: #92400e; }
+.badge-error { background-color: #fee2e2; color: #991b1b; }
+.badge-info { background-color: #dbeafe; color: #1e40af; }
+.badge-neutral { background-color: #f3f4f6; color: #374151; }
+
+.progress-track {
+    background: #e5e7eb;
+    border-radius: 9999px;
+    height: 0.5rem;
+    overflow: hidden;
+}
+
+.progress-fill {
+    background: #2563eb;
+    height: 100%;
+    border-radius: 9999px;
+}
+
+.pipeline-flow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 1rem 0.5rem 1.5rem;
+    overflow-x: auto;
+    min-height: 80px;
+}
+
+.pipeline-node {
+    flex: 1;
+    min-width: 110px;
+    text-align: center;
+    position: relative;
+}
+
+.pipeline-node-box {
+    border: 2px solid #dbeafe;
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 0.75rem 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.pipeline-node-idle .pipeline-node-box {
+    opacity: 0.55;
+}
+
+.pipeline-node-active .pipeline-node-box {
+    border-color: #2563eb;
+    background: #eff6ff;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+    animation: pipelinePulse 1.8s ease-in-out infinite;
+}
+
+.pipeline-node-flash .pipeline-node-box {
+    border-color: #10b981;
+    background: #ecfdf5;
+    animation: pipelineFlash 0.8s ease;
+}
+
+.pipeline-node-count {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1d4ed8;
+    line-height: 1.2;
+}
+
+.pipeline-node-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.pipeline-connector {
+    flex: 0 0 48px;
+    height: 3px;
+    background: #dbeafe;
+    border-radius: 9999px;
+    position: relative;
+    overflow: hidden;
+}
+
+.pipeline-connector-dot {
+    position: absolute;
+    top: 50%;
+    left: -8px;
+    width: 8px;
+    height: 8px;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: #2563eb;
+    opacity: 0;
+}
+
+.pipeline-connector-animate .pipeline-connector-dot {
+    animation: connectorTravel 1.4s ease-in-out;
+}
+
+.doc-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 180px;
+}
+
+.doc-stepper-step {
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    background: #e5e7eb;
+    border: 2px solid #e5e7eb;
+    transition: all 0.25s ease;
+}
+
+.doc-stepper-step.done {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+
+.doc-stepper-step.current {
+    background: #fff;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    animation: pipelinePulse 1.8s ease-in-out infinite;
+}
+
+.doc-stepper-step.failed {
+    background: #fee2e2;
+    border-color: #ef4444;
+}
+
+.doc-stepper-line {
+    flex: 1;
+    height: 2px;
+    background: #e5e7eb;
+    min-width: 8px;
+}
+
+.doc-stepper-line.done {
+    background: #2563eb;
+}
+
+.connection-live {
+    color: #059669;
+}
+
+.connection-polling {
+    color: #d97706;
+}
+
+@keyframes pipelinePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+}
+
+@keyframes pipelineFlash {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
+    100% { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+}
+
+@keyframes connectorTravel {
+    0% { left: -8px; opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { left: calc(100% + 8px); opacity: 0; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8 flex justify-between items-start">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Processing Pipeline Monitor</h1>
+            <p class="mt-2 text-gray-600">Live document processing progress, stage timing, success rates, and cost</p>
+        </div>
+        <div class="text-sm text-gray-500 text-right">
+            <div>Last updated: <span id="last-update">{{ "now"|date:"H:i:s" }}</span></div>
+            <div class="mt-1">Connection: <span id="connection-status" class="connection-live">Connecting...</span></div>
+        </div>
+    </div>
+
+    <div class="dashboard-card mb-8">
+        <div class="flex flex-wrap justify-between items-center mb-2">
+            <h3 class="text-lg font-semibold text-gray-900">Pipeline Flow</h3>
+            <span class="text-sm text-gray-500">Live stage distribution</span>
+        </div>
+        <div id="pipeline-flow" class="pipeline-flow" aria-label="Document processing pipeline flow"></div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="dashboard-card">
+            <div class="metric-value" id="metric-processed">{{ summary.documents_processed }}</div>
+            <div class="metric-label">Processed (24h)</div>
+            <div class="mt-2 text-sm text-gray-500">
+                <span id="metric-failed">{{ summary.documents_failed }}</span> failed
+            </div>
+        </div>
+        <div class="dashboard-card">
+            <div class="metric-value" id="metric-avg-time">{{ summary.avg_pipeline_seconds }}s</div>
+            <div class="metric-label">Avg Pipeline Time</div>
+            <div class="mt-2 text-sm text-gray-500">End-to-end processing</div>
+        </div>
+        <div class="dashboard-card">
+            <div class="metric-value" id="metric-success-rate">{{ summary.success_rate }}%</div>
+            <div class="metric-label">Success Rate</div>
+            <div class="mt-2 text-sm text-gray-500">Completed vs failed</div>
+        </div>
+        <div class="dashboard-card">
+            <div class="metric-value" id="metric-cost">${{ summary.cost_today_usd|floatformat:2 }}</div>
+            <div class="metric-label">Cost (24h)</div>
+            <div class="mt-2 text-sm text-gray-500">
+                Avg $<span id="metric-cost-per-doc">{{ summary.avg_cost_per_document_usd|floatformat:4 }}</span>/doc
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-card mb-8">
+        <div class="flex flex-wrap justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold text-gray-900">Live Queue</h3>
+            <span class="text-sm text-gray-500"><span id="live-total">{{ live_data.total_active }}</span> active</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="monitor-table min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">MRN</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Progress</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Elapsed</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Attempts</th>
+                    </tr>
+                </thead>
+                <tbody id="live-documents-body" class="bg-white divide-y divide-gray-200">
+                    {% for doc in live_data.documents %}
+                    <tr data-document-id="{{ doc.id }}">
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ doc.filename|truncatechars:40 }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ doc.patient_mrn|default:"-" }}</td>
+                        <td class="px-4 py-3" data-stepper-cell data-stage-key="{{ doc.stage_key }}"></td>
+                        <td class="px-4 py-3 text-sm text-gray-500 elapsed-cell">{% if doc.elapsed_seconds %}{{ doc.elapsed_seconds }}s{% else %}-{% endif %}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ doc.attempts }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="px-4 py-6 text-center text-sm text-gray-500">No documents currently in the pipeline</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Throughput (24h)</h3>
+            <div class="chart-container">
+                <canvas id="throughputChart"></canvas>
+            </div>
+        </div>
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Avg Stage Timing (ms)</h3>
+            <div class="chart-container">
+                <canvas id="stageTimingChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Success Rates</h3>
+            <div id="success-rates-panel" class="space-y-4">
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span>Overall</span>
+                        <span id="overall-success-rate">{{ summary.success_rate }}%</span>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill" id="overall-success-bar" style="width: {{ summary.success_rate }}%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Cost Breakdown (24h)</h3>
+            <div class="chart-container">
+                <canvas id="costChart"></canvas>
+            </div>
+            <div class="mt-4 text-sm text-gray-600">
+                Total: $<span id="cost-total">{{ cost_summary.total_cost_usd|floatformat:2 }}</span>
+                · Avg/doc: $<span id="cost-avg-doc">{{ cost_summary.avg_cost_per_document_usd|floatformat:4 }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-card">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Recent Completions</h3>
+        <div class="overflow-x-auto">
+            <table class="monitor-table min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Document</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">MRN</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Queue</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PDF</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">AI</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">FHIR</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cost</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Completed</th>
+                    </tr>
+                </thead>
+                <tbody id="recent-completions-body" class="bg-white divide-y divide-gray-200">
+                    {% for doc in recent_completions %}
+                    <tr>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ doc.filename|truncatechars:30 }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ doc.patient_mrn|default:"-" }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ doc.queue_wait_ms|default:"-" }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ doc.pdf_extraction_ms|default:"-" }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ doc.ai_extraction_ms|default:"-" }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ doc.fhir_conversion_ms|default:"-" }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">${{ doc.cost_usd|floatformat:4 }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ doc.processed_at|slice:":16" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="px-4 py-6 text-center text-sm text-gray-500">No recent completions</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const MONITOR_URLS = {
+    pipeline: "{% url 'core:monitor-api-pipeline' %}",
+    live: "{% url 'core:monitor-api-live' %}",
+    cost: "{% url 'core:monitor-api-cost' %}",
+    events: "{% url 'core:monitor-api-events' %}",
+};
+
+const PIPELINE_STAGES = [
+    { key: 'queued', label: 'Queue' },
+    { key: 'pdf_ocr', label: 'PDF/OCR' },
+    { key: 'ai_processing', label: 'AI Extract' },
+    { key: 'fhir_converting', label: 'FHIR' },
+    { key: 'done', label: 'Done' },
+];
+
+const STEPPER_STAGE_KEYS = ['queued', 'pdf_ocr', 'ai_processing', 'fhir_converting', 'done'];
+
+let throughputChart = null;
+let stageTimingChart = null;
+let costChart = null;
+let evtSource = null;
+let pollIntervalId = null;
+let liveDocuments = [];
+let elapsedTickerId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    try { initializeCharts(); } catch(e) { console.error('initializeCharts failed:', e); }
+    try { initializePipelineFlow({}); } catch(e) { console.error('initializePipelineFlow failed:', e); }
+    try { renderInitialSteppers(); } catch(e) { console.error('renderInitialSteppers failed:', e); }
+    refreshDashboard();
+    connectEventStream();
+    elapsedTickerId = setInterval(tickElapsedTimes, 1000);
+    setInterval(refreshDashboard, 5000);
+});
+
+function initializeCharts() {
+    const throughputCtx = document.getElementById('throughputChart').getContext('2d');
+    throughputChart = new Chart(throughputCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Completed',
+                    data: [],
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    tension: 0.3,
+                },
+                {
+                    label: 'Failed',
+                    data: [],
+                    borderColor: '#ef4444',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    tension: 0.3,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } },
+        },
+    });
+
+    const stageCtx = document.getElementById('stageTimingChart').getContext('2d');
+    stageTimingChart = new Chart(stageCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Queue', 'PDF/OCR', 'AI', 'FHIR'],
+            datasets: [{
+                label: 'Avg ms',
+                data: [0, 0, 0, 0],
+                backgroundColor: ['#93c5fd', '#60a5fa', '#3b82f6', '#1d4ed8'],
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } },
+        },
+    });
+
+    const costCtx = document.getElementById('costChart').getContext('2d');
+    costChart = new Chart(costCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'],
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+        },
+    });
+}
+
+let sseRetryCount = 0;
+const SSE_MAX_RETRIES = 3;
+
+function connectEventStream() {
+    if (typeof EventSource === 'undefined') {
+        console.warn('EventSource not supported, using polling');
+        startPollingFallback();
+        return;
+    }
+
+    if (sseRetryCount >= SSE_MAX_RETRIES) {
+        console.warn('SSE max retries reached, falling back to polling');
+        setConnectionStatus('Polling (SSE unavailable)', 'connection-polling');
+        startPollingFallback();
+        return;
+    }
+
+    if (evtSource) {
+        evtSource.close();
+    }
+
+    setConnectionStatus('Connecting...', 'connection-polling');
+    evtSource = new EventSource(MONITOR_URLS.events);
+
+    evtSource.onopen = function() {
+        setConnectionStatus('Live (SSE)', 'connection-live');
+        sseRetryCount = 0;
+        if (pollIntervalId) {
+            clearInterval(pollIntervalId);
+            pollIntervalId = null;
+        }
+    };
+
+    evtSource.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            handleMonitorEvent(data);
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+        } catch (error) {
+            console.error('Failed to parse monitor SSE payload:', error);
+        }
+    };
+
+    evtSource.onerror = function(e) {
+        console.warn('SSE connection error, readyState:', evtSource.readyState);
+        if (evtSource) {
+            evtSource.close();
+            evtSource = null;
+        }
+        sseRetryCount++;
+        if (sseRetryCount < SSE_MAX_RETRIES) {
+            setConnectionStatus(`Reconnecting (${sseRetryCount}/${SSE_MAX_RETRIES})...`, 'connection-polling');
+            setTimeout(connectEventStream, 3000);
+        } else {
+            setConnectionStatus('Polling (SSE unavailable)', 'connection-polling');
+            startPollingFallback();
+        }
+    };
+}
+
+function startPollingFallback() {
+    if (pollIntervalId) {
+        return;
+    }
+    setConnectionStatus('Polling fallback', 'connection-polling');
+    pollIntervalId = setInterval(refreshDashboard, 5000);
+}
+
+function setConnectionStatus(label, className) {
+    const statusEl = document.getElementById('connection-status');
+    statusEl.textContent = label;
+    statusEl.className = className;
+}
+
+function handleMonitorEvent(data) {
+    if (data.type === 'stage_change') {
+        handleStageChangeEvent(data);
+        return;
+    }
+
+    if (data.type === 'snapshot') {
+        if (data.live) {
+            liveDocuments = data.live.documents || [];
+            updateLiveQueue(data.live);
+        }
+        if (data.summary) {
+            updateSummary(data.summary);
+        }
+        document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+    }
+}
+
+function buildLivePayloadFromState() {
+    const stageCounts = {
+        queued: 0,
+        pdf_extracting: 0,
+        ocr_pending: 0,
+        ai_processing: 0,
+        fhir_converting: 0,
+        processing: 0,
+    };
+
+    liveDocuments.forEach(doc => {
+        const key = doc.stage_key || 'processing';
+        if (key === 'queued') stageCounts.queued += 1;
+        else if (key === 'pdf_ocr') stageCounts.pdf_extracting += 1;
+        else if (key === 'ai_processing') stageCounts.ai_processing += 1;
+        else if (key === 'fhir_converting') stageCounts.fhir_converting += 1;
+        else stageCounts.processing += 1;
+    });
+
+    return {
+        total_active: liveDocuments.length,
+        stage_counts: stageCounts,
+        documents: liveDocuments,
+    };
+}
+
+function upsertLiveDocument(eventData) {
+    if (eventData.status === 'completed' || eventData.status === 'failed') {
+        liveDocuments = liveDocuments.filter(doc => doc.id !== eventData.document_id);
+        return;
+    }
+
+    const existingIndex = liveDocuments.findIndex(doc => doc.id === eventData.document_id);
+    const nextDoc = {
+        id: eventData.document_id,
+        filename: eventData.filename,
+        patient_mrn: eventData.patient_mrn,
+        stage: eventData.stage,
+        stage_key: eventData.stage_key,
+        elapsed_seconds: eventData.elapsed_seconds,
+        attempts: eventData.attempts || 0,
+        status: eventData.status,
+    };
+
+    if (existingIndex >= 0) {
+        liveDocuments[existingIndex] = { ...liveDocuments[existingIndex], ...nextDoc };
+    } else {
+        liveDocuments.unshift(nextDoc);
+    }
+}
+
+function flowCountsFromStageCounts(counts) {
+    return {
+        queued: counts.queued || 0,
+        pdf_ocr: (counts.pdf_extracting || 0) + (counts.ocr_pending || 0),
+        ai_processing: (counts.ai_processing || 0) + (counts.processing || 0),
+        fhir_converting: counts.fhir_converting || 0,
+        done: 0,
+    };
+}
+
+function initializePipelineFlow(stageCounts) {
+    updatePipelineFlow({ stage_counts: stageCounts || {} });
+}
+
+function updatePipelineFlow(livePayload) {
+    const counts = flowCountsFromStageCounts(livePayload.stage_counts || {});
+    const container = document.getElementById('pipeline-flow');
+    container.innerHTML = PIPELINE_STAGES.map((stage, index) => {
+        const count = counts[stage.key] || 0;
+        const nodeClass = count > 0 ? 'pipeline-node pipeline-node-active' : 'pipeline-node pipeline-node-idle';
+        const connector = index < PIPELINE_STAGES.length - 1
+            ? `<div class="pipeline-connector" data-connector-index="${index}"><span class="pipeline-connector-dot"></span></div>`
+            : '';
+        return `
+            ${index > 0 ? '' : ''}
+            <div class="${nodeClass}" data-flow-stage="${stage.key}">
+                <div class="pipeline-node-box">
+                    <div class="pipeline-node-count">${count}</div>
+                    <div class="pipeline-node-label">${stage.label}</div>
+                </div>
+            </div>
+            ${connector}
+        `;
+    }).join('');
+}
+
+function animateStageTransition(eventData) {
+    const stageKey = eventData.stage_key;
+    const node = document.querySelector(`[data-flow-stage="${stageKey}"]`);
+    if (node) {
+        node.classList.remove('pipeline-node-idle');
+        node.classList.add('pipeline-node-active', 'pipeline-node-flash');
+        setTimeout(() => node.classList.remove('pipeline-node-flash'), 900);
+    }
+
+    const stageIndex = STEPPER_STAGE_KEYS.indexOf(stageKey);
+    if (stageIndex > 0) {
+        const connector = document.querySelector(`[data-connector-index="${stageIndex - 1}"]`);
+        if (connector) {
+            connector.classList.remove('pipeline-connector-animate');
+            void connector.offsetWidth;
+            connector.classList.add('pipeline-connector-animate');
+            setTimeout(() => connector.classList.remove('pipeline-connector-animate'), 1400);
+        }
+    }
+}
+
+function renderDocStepper(stageKey, stageLabel) {
+    const currentIndex = STEPPER_STAGE_KEYS.indexOf(stageKey);
+    const activeIndex = currentIndex >= 0 ? currentIndex : 0;
+    const isFailed = stageKey === 'failed';
+
+    const parts = [];
+    STEPPER_STAGE_KEYS.forEach((key, index) => {
+        let stepClass = 'doc-stepper-step';
+        if (isFailed && index === activeIndex) {
+            stepClass += ' failed';
+        } else if (index < activeIndex) {
+            stepClass += ' done';
+        } else if (index === activeIndex) {
+            stepClass += ' current';
+        }
+
+        parts.push(`<span class="${stepClass}" title="${PIPELINE_STAGES[index].label}"></span>`);
+        if (index < STEPPER_STAGE_KEYS.length - 1) {
+            parts.push(`<span class="doc-stepper-line${index < activeIndex ? ' done' : ''}"></span>`);
+        }
+    });
+
+    return `
+        <div class="doc-stepper" aria-label="${escapeHtml(stageLabel || 'Pipeline progress')}">
+            ${parts.join('')}
+        </div>
+    `;
+}
+
+function renderInitialSteppers() {
+    document.querySelectorAll('[data-stepper-cell]').forEach(cell => {
+        const stageKey = cell.dataset.stageKey || 'queued';
+        cell.innerHTML = renderDocStepper(stageKey, stageKey);
+    });
+}
+
+function tickElapsedTimes() {
+    liveDocuments.forEach(doc => {
+        if (doc.elapsed_seconds == null) {
+            return;
+        }
+        doc.elapsed_seconds = Math.round((doc.elapsed_seconds + 1) * 10) / 10;
+        const row = document.querySelector(`tr[data-document-id="${doc.id}"]`);
+        if (row) {
+            const elapsedCell = row.querySelector('.elapsed-cell');
+            if (elapsedCell) {
+                elapsedCell.textContent = `${doc.elapsed_seconds}s`;
+            }
+        }
+    });
+}
+
+async function refreshDashboard() {
+    try {
+        const [pipelineRes, liveRes, costRes] = await Promise.all([
+            fetch(MONITOR_URLS.pipeline),
+            fetch(MONITOR_URLS.live),
+            fetch(MONITOR_URLS.cost),
+        ]);
+
+        const pipeline = await pipelineRes.json();
+        const live = await liveRes.json();
+        const cost = await costRes.json();
+
+        if (pipeline.success) {
+            updateSummary(pipeline.summary);
+            updateThroughputChart(pipeline.throughput);
+            updateStageTimingChart(pipeline.stage_timing);
+            updateSuccessRates(pipeline.success_rates);
+            updateRecentCompletions(pipeline.recent_completions);
+        }
+
+        if (live.success) {
+            updateLiveQueue(live);
+        }
+
+        if (cost.success) {
+            updateCostChart(cost);
+        }
+
+        document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+    } catch (error) {
+        console.error('Monitor refresh failed:', error);
+    }
+}
+
+function updateSummary(summary) {
+    document.getElementById('metric-processed').textContent = summary.documents_processed;
+    document.getElementById('metric-failed').textContent = summary.documents_failed;
+    document.getElementById('metric-avg-time').textContent = `${summary.avg_pipeline_seconds}s`;
+    document.getElementById('metric-success-rate').textContent = `${summary.success_rate}%`;
+    document.getElementById('metric-cost').textContent = `$${summary.cost_today_usd.toFixed(2)}`;
+    document.getElementById('metric-cost-per-doc').textContent = summary.avg_cost_per_document_usd.toFixed(4);
+}
+
+function updateThroughputChart(throughput) {
+    if (!throughputChart) return;
+    throughputChart.data.labels = throughput.labels || [];
+    throughputChart.data.datasets[0].data = throughput.completed || [];
+    throughputChart.data.datasets[1].data = throughput.failed || [];
+    throughputChart.update();
+}
+
+function updateStageTimingChart(stageTiming) {
+    if (!stageTimingChart) return;
+    stageTimingChart.data.datasets[0].data = [
+        stageTiming.queue_wait_ms || 0,
+        stageTiming.pdf_extraction_ms || 0,
+        stageTiming.ai_extraction_ms || 0,
+        stageTiming.fhir_conversion_ms || 0,
+    ];
+    stageTimingChart.update();
+}
+
+function updateSuccessRates(successRates) {
+    const rate = successRates.overall_success_rate || 0;
+    const panel = document.getElementById('success-rates-panel');
+    if (!panel) return;
+    panel.innerHTML = `
+        <div>
+            <div class="flex justify-between text-sm mb-1">
+                <span>Overall (${successRates.completed || 0} ok / ${successRates.failed || 0} failed)</span>
+                <span>${rate}%</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" style="width:${rate}%;"></div></div>
+        </div>
+    `;
+
+    Object.values(successRates.stages || {}).forEach(stage => {
+        const block = document.createElement('div');
+        block.innerHTML = `
+            <div class="flex justify-between text-sm mb-1">
+                <span>${stage.label} (${stage.active || 0} active)</span>
+                <span>${stage.success_rate || 0}%</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" style="width:${stage.success_rate || 0}%;"></div></div>
+        `;
+        panel.appendChild(block);
+    });
+}
+
+function updateLiveQueue(live) {
+    document.getElementById('live-total').textContent = live.total_active || 0;
+    liveDocuments = live.documents || [];
+    initializePipelineFlow(live.stage_counts || {});
+
+    const tbody = document.getElementById('live-documents-body');
+    if (!live.documents || live.documents.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-sm text-gray-500">No documents currently in the pipeline</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = live.documents.map(doc => `
+        <tr data-document-id="${doc.id}">
+            <td class="px-4 py-3 text-sm font-medium text-gray-900">${escapeHtml(truncate(doc.filename, 40))}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(doc.patient_mrn || '-')}</td>
+            <td class="px-4 py-3" data-stepper-cell data-stage-key="${escapeHtml(doc.stage_key || 'processing')}">
+                ${renderDocStepper(doc.stage_key || 'processing', doc.stage)}
+            </td>
+            <td class="px-4 py-3 text-sm text-gray-500 elapsed-cell">${doc.elapsed_seconds != null ? doc.elapsed_seconds + 's' : '-'}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${doc.attempts || 0}</td>
+        </tr>
+    `).join('');
+}
+
+function handleStageChangeEvent(data) {
+    animateStageTransition(data);
+    upsertLiveDocument(data);
+    updateLiveQueue(buildLivePayloadFromState());
+}
+
+function updateRecentCompletions(rows) {
+    const tbody = document.getElementById('recent-completions-body');
+    if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-6 text-center text-sm text-gray-500">No recent completions</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = rows.map(doc => `
+        <tr>
+            <td class="px-4 py-3 text-sm font-medium text-gray-900">${escapeHtml(truncate(doc.filename, 30))}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${escapeHtml(doc.patient_mrn || '-')}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${doc.queue_wait_ms ?? '-'}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${doc.pdf_extraction_ms ?? '-'}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${doc.ai_extraction_ms ?? '-'}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${doc.fhir_conversion_ms ?? '-'}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">$${(doc.cost_usd || 0).toFixed(4)}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">${doc.processed_at ? doc.processed_at.slice(0, 16) : '-'}</td>
+        </tr>
+    `).join('');
+}
+
+function updateCostChart(cost) {
+    if (!costChart) return;
+    const providers = cost.providers || [];
+    costChart.data.labels = providers.map(p => p.provider);
+    costChart.data.datasets[0].data = providers.map(p => p.total_cost);
+    costChart.update();
+
+    document.getElementById('cost-total').textContent = (cost.total_cost_usd || 0).toFixed(2);
+    document.getElementById('cost-avg-doc').textContent = (cost.avg_cost_per_document_usd || 0).toFixed(4);
+}
+
+function truncate(value, maxLength) {
+    if (!value) return '';
+    return value.length > maxLength ? value.slice(0, maxLength) + '...' : value;
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+</script>
+{% endblock %}

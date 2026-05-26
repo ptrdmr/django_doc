@@ -12,6 +12,8 @@ import time
 import logging
 import json
 import gc
+import uuid
+from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 from typing import Dict, Any, List, Optional
@@ -47,6 +49,83 @@ from .exceptions import (
 from .performance import performance_monitor, document_chunker
 
 logger = logging.getLogger(__name__)
+
+
+def _get_processing_session_id(task_id: str):
+    """Return a UUID for API usage logging from a Celery task id."""
+    try:
+        return uuid.UUID(str(task_id))
+    except (ValueError, AttributeError, TypeError):
+        return uuid.uuid4()
+
+
+def _textract_mode_to_model(mode: Optional[str]) -> str:
+    """Map Textract mode/job_type to APIUsageLog model identifier."""
+    mode_key = (mode or getattr(settings, 'TEXTRACT_MODE', 'detect') or 'detect').lower()
+    if mode_key in ('analyze', 'start_document_analysis'):
+        return 'analyze_document'
+    return 'detect_document_text'
+
+
+def _log_textract_usage(document, textract_metadata, session_id, textract_mode=None):
+    """Persist Textract OCR cost/usage after sync or async OCR completes."""
+    if not textract_metadata:
+        return
+
+    page_count = textract_metadata.get('page_count', 0)
+    if not page_count:
+        return
+
+    from apps.core.services import APIUsageMonitor
+
+    extraction_time_ms = textract_metadata.get('extraction_time_ms', 0) or 0
+    end_time = timezone.now()
+    start_time = end_time - timedelta(milliseconds=extraction_time_ms)
+
+    try:
+        APIUsageMonitor.log_textract_usage(
+            document=document,
+            patient=getattr(document, 'patient', None),
+            session_id=session_id,
+            mode=_textract_mode_to_model(textract_mode),
+            page_count=page_count,
+            start_time=start_time,
+            end_time=end_time,
+            success=True,
+        )
+    except Exception as log_error:
+        logger.warning(f"Failed to log Textract usage for document {document.id}: {log_error}")
+
+
+def _save_document_stage_timing(document, **timing_fields):
+    """Persist per-stage timing metrics without overwriting unrelated fields."""
+    if not timing_fields:
+        return
+    for field_name, value in timing_fields.items():
+        setattr(document, field_name, value)
+    document.save(update_fields=list(timing_fields.keys()))
+
+
+def _compute_queue_wait_ms(document) -> Optional[int]:
+    """Calculate queue wait time from upload to processing start."""
+    if not document.uploaded_at or not document.processing_started_at:
+        return None
+    delta = document.processing_started_at - document.uploaded_at
+    return max(int(delta.total_seconds() * 1000), 0)
+
+
+def _notify_monitor_stage(document) -> None:
+    """Publish document stage updates for the admin monitor dashboard."""
+    try:
+        from apps.core.monitor_service import PipelineMetricsService
+
+        PipelineMetricsService.publish_document_stage(document)
+    except Exception as notify_error:
+        logger.debug(
+            "Monitor stage notification skipped for document %s: %s",
+            document.id,
+            notify_error,
+        )
 
 
 def _field_label_to_category(label: str) -> str:
@@ -379,9 +458,13 @@ def process_document_async(self, document_id: int):
             document.processing_message = "Initializing processing..."
             document.processing_started_at = timezone.now()
             document.increment_processing_attempts()
+            queue_wait_ms = _compute_queue_wait_ms(document)
+            if queue_wait_ms is not None:
+                document.queue_wait_time_ms = queue_wait_ms
             document.save()
             
             logger.info(f"[{task_id}] Document status updated to processing (attempt #{document.processing_attempts})")
+            _notify_monitor_stage(document)
             
         except Exception as e:
             logger.error(f"[{task_id}] Failed to update document status: {e}")
@@ -390,6 +473,7 @@ def process_document_async(self, document_id: int):
         # STEP 1: Enhanced PDF text extraction with detailed error handling
         document.processing_message = "Extracting text from PDF..."
         document.save(update_fields=['processing_message'])
+        _notify_monitor_stage(document)
         
         pdf_step_start = time.time()
         logger.info(f"[{task_id}] Step 1: Starting PDF text extraction from {document.file.path}")
@@ -455,6 +539,7 @@ def process_document_async(self, document_id: int):
                     f"Sending to AWS Textract for OCR processing..."
                 )
                 document.save(update_fields=['status', 'processing_message'])
+                _notify_monitor_stage(document)
                 
                 # Trigger the async Textract chain (already built in 42.10/42.11/42.12)
                 from .tasks import start_textract_async_job
@@ -491,6 +576,20 @@ def process_document_async(self, document_id: int):
             
             logger.info(f"[{task_id}] PDF extraction successful: {extraction_result.get('page_count', 0)} pages, "
                        f"{len(extracted_text)} characters in {pdf_step_time:.2f}s")
+
+            _save_document_stage_timing(
+                document,
+                pdf_extraction_time_ms=int(pdf_step_time * 1000),
+            )
+            _notify_monitor_stage(document)
+
+            textract_metadata = extraction_result.get('metadata', {}).get('textract_metadata')
+            if textract_metadata:
+                _log_textract_usage(
+                    document,
+                    textract_metadata,
+                    _get_processing_session_id(task_id),
+                )
             
         except PDFExtractionError as pdf_error:
             processing_errors.append(str(pdf_error))
@@ -594,8 +693,11 @@ def process_document_async(self, document_id: int):
             try:
                 document.processing_message = "Analyzing document with AI..."
                 document.save(update_fields=['processing_message'])
+                _notify_monitor_stage(document)
                 
                 logger.info(f"Step 2: Starting AI analysis with structured extraction pipeline for document {document_id}")
+                
+                ai_step_start = time.time()
                 
                 # Initialize document analyzer
                 ai_analyzer = DocumentAnalyzer(document=document)
@@ -727,6 +829,10 @@ def process_document_async(self, document_id: int):
                         'model_used': 'structured_extraction_failed',
                         'processing_method': 'failed'
                     }
+
+                ai_step_time_ms = int((time.time() - ai_step_start) * 1000)
+                _save_document_stage_timing(document, ai_extraction_time_ms=ai_step_time_ms)
+                _notify_monitor_stage(document)
                 
                 # FALLBACK: Use legacy extraction if structured extraction failed
                 # KEEP DISABLED TO FORCE STRUCTURED EXTRACTION AND EXPOSE REAL ERRORS
@@ -767,10 +873,12 @@ def process_document_async(self, document_id: int):
                 if ai_result and ai_result.get('success'):
                     document.processing_message = "Converting to FHIR format..."
                     document.save(update_fields=['processing_message'])
+                    _notify_monitor_stage(document)
                     
                     logger.info(f"AI analysis successful: {len(ai_result['fields'])} fields extracted")
                     
                     # STEP 3: Convert to FHIR format using appropriate converter
+                    fhir_step_start = time.time()
                     patient_id = str(document.patient.id) if document.patient else None
                     
                     # Task 35.7: Retrieve existing ParsedData for clinical date lookup
@@ -878,6 +986,10 @@ def process_document_async(self, document_id: int):
                     except Exception as metrics_exc:
                         logger.warning(f"Metrics calculation failed for document {document_id}: {metrics_exc}")
                         # Don't fail the task if metrics calculation fails
+
+                    fhir_step_time_ms = int((time.time() - fhir_step_start) * 1000)
+                    _save_document_stage_timing(document, fhir_conversion_time_ms=fhir_step_time_ms)
+                    _notify_monitor_stage(document)
                     
                     # FHIR resources are now stored in ParsedData for review workflow
                     # Actual accumulation to patient record happens after user approval
@@ -1301,6 +1413,7 @@ def process_document_async(self, document_id: int):
         document.processed_at = timezone.now()
         document.error_message = ''
         document.save()
+        _notify_monitor_stage(document)
         
         logger.info(f"Document {document_id} processed successfully - status: {document.status}")
         
@@ -1997,6 +2110,13 @@ def poll_textract_job(self, document_id: int, job_id: str, s3_key: str, attempt:
             )
         except Exception:
             pass
+
+        _log_textract_usage(
+            document,
+            result.to_audit_dict(),
+            _get_processing_session_id(task_id),
+            textract_mode=textract_job_type,
+        )
         
         # Chain to continue_document_processing
         try:
@@ -2117,6 +2237,7 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
     document.status = 'processing'
     document.processing_message = "OCR complete, analyzing document with AI..."
     document.save(update_fields=['original_text', 'status', 'processing_message'])
+    _notify_monitor_stage(document)
     
     # Get page count from structured_data if available
     textract_data = (document.structured_data or {}).get('textract_async', {})
@@ -2152,12 +2273,15 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
         # STEP 2: AI Structured Extraction
         document.processing_message = "Analyzing document with AI..."
         document.save(update_fields=['processing_message'])
+        _notify_monitor_stage(document)
         
         context = "medical_document"
         ai_analyzer = DocumentAnalyzer(document=document)
         chunk_threshold = getattr(settings, 'AI_TOKEN_THRESHOLD_FOR_CHUNKING', 20000)
         
         logger.info(f"[{task_id}] Starting AI structured extraction ({text_length} chars, threshold={chunk_threshold})")
+        
+        ai_step_start = time.time()
         
         if text_length > chunk_threshold:
             logger.info(f"[{task_id}] Large OCR document ({text_length} chars), chunking for efficiency")
@@ -2197,6 +2321,10 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
             del extracted_text
             force_memory_cleanup("after AI extraction in continue_processing")
         
+        ai_step_time_ms = int((time.time() - ai_step_start) * 1000)
+        _save_document_stage_timing(document, ai_extraction_time_ms=ai_step_time_ms)
+        _notify_monitor_stage(document)
+        
         if structured_extraction:
             ai_result = {
                 'success': True,
@@ -2220,7 +2348,9 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
             # STEP 3: FHIR Conversion
             document.processing_message = "Converting to FHIR format..."
             document.save(update_fields=['processing_message'])
+            _notify_monitor_stage(document)
             
+            fhir_step_start = time.time()
             patient_id = str(document.patient.id) if document.patient else None
             structured_converter = StructuredDataConverter()
             
@@ -2235,6 +2365,10 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
                 structured_extraction, conversion_metadata, document.patient
             )
             logger.info(f"[{task_id}] FHIR conversion: {len(fhir_resources)} resources created")
+
+            fhir_step_time_ms = int((time.time() - fhir_step_start) * 1000)
+            _save_document_stage_timing(document, fhir_conversion_time_ms=fhir_step_time_ms)
+            _notify_monitor_stage(document)
             
             # STEP 4: Serialize and store
             document.processing_message = "Saving results..."
@@ -2383,6 +2517,7 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
     
     document.processed_at = timezone.now()
     document.save(update_fields=['status', 'processing_message', 'processed_at', 'error_message'])
+    _notify_monitor_stage(document)
     
     processing_time = time.time() - start_time
     

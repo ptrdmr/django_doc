@@ -75,8 +75,10 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_htmx.middleware.HtmxMiddleware',
-    'debug_toolbar.middleware.DebugToolbarMiddleware',  # Development only
 ]
+
+# Debug toolbar is conditionally added in development.py only when
+# it won't interfere with StreamingHttpResponse endpoints (SSE).
 
 ROOT_URLCONF = 'meddocparser.urls'
 
@@ -564,4 +566,17 @@ NODE_PATH = config('NODE_PATH', default='C:/Program Files/nodejs/node.exe')
 INTERNAL_IPS = [
     '127.0.0.1',
     'localhost',
-] 
+]
+
+
+def show_toolbar_callback(request):
+    """Skip debug toolbar for SSE streaming endpoints."""
+    if '/api/events/' in request.path:
+        return False
+    from debug_toolbar.middleware import show_toolbar
+    return show_toolbar(request)
+
+
+DEBUG_TOOLBAR_CONFIG = {
+    'SHOW_TOOLBAR_CALLBACK': 'meddocparser.settings.base.show_toolbar_callback',
+} 

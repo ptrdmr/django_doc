@@ -31,7 +31,7 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         # Content Security Policy - very strict for medical data
         csp_directives = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com",  # Allow unpkg CDN for Alpine.js and htmx
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net",  # Allow CDNs for Alpine.js, htmx, Chart.js
             "style-src 'self' 'unsafe-inline'",   # Allow inline styles for Tailwind
             "img-src 'self' data:",               # Allow data URLs for icons
             "font-src 'self'",
@@ -131,6 +131,11 @@ class AuditLoggingMiddleware(MiddlewareMixin):
         Returns:
             Response object
         """
+        # Skip streaming responses (SSE endpoints) — auditing them would
+        # force premature iteration of the streaming content.
+        if getattr(response, 'streaming', False):
+            return response
+
         # Only log if we have start time
         if hasattr(request, '_audit_start_time'):
             # Calculate response time

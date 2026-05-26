@@ -472,6 +472,7 @@ class APIUsageLog(models.Model):
     PROVIDER_CHOICES = [
         ('anthropic', 'Anthropic (Claude)'),
         ('openai', 'OpenAI (GPT)'),
+        ('aws_textract', 'AWS Textract (OCR)'),
     ]
     
     # Session and relationship fields
