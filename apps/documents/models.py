@@ -1387,6 +1387,95 @@ class PatientDataAudit(BaseModel):
         )
 
 
+class DocumentChunkResult(BaseModel):
+    """
+    Per-chunk extraction checkpoint ledger for large document processing.
+
+    Each row records the outcome of one AI extraction call for one chunk of a
+    document. On retry/resume, chunks with a 'succeeded' row and a matching
+    content hash are skipped entirely — no re-billing of completed work.
+
+    The content hash covers chunk text + extraction version + model, so any
+    change to chunking config, prompts, or model correctly invalidates stale
+    checkpoints.
+    """
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('succeeded', 'Succeeded'),
+        ('failed', 'Failed'),
+    ]
+
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.CASCADE,
+        related_name='chunk_results',
+        help_text="Document this chunk belongs to"
+    )
+    chunk_index = models.PositiveIntegerField(
+        help_text="Zero-based position of this chunk within the document"
+    )
+    content_hash = models.CharField(
+        max_length=64,
+        help_text="SHA-256 of chunk text + extraction version + model; invalidates stale checkpoints"
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+        help_text="Extraction outcome for this chunk"
+    )
+
+    # Extraction payload (encrypted for HIPAA compliance)
+    structured_json = encrypt(models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="StructuredMedicalExtraction dump for this chunk - encrypted at rest"
+    ))
+
+    # Cost and usage tracking
+    input_tokens = models.PositiveIntegerField(
+        default=0,
+        help_text="Input tokens billed for this chunk (excludes cache reads)"
+    )
+    output_tokens = models.PositiveIntegerField(
+        default=0,
+        help_text="Output tokens billed for this chunk"
+    )
+    cost_usd = models.DecimalField(
+        max_digits=10,
+        decimal_places=6,
+        default=0,
+        help_text="Estimated API cost for this chunk in USD"
+    )
+
+    attempts = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of extraction attempts for this chunk"
+    )
+    error_message = models.TextField(
+        blank=True,
+        help_text="Last error message if extraction failed (no PHI)"
+    )
+
+    class Meta:
+        db_table = 'document_chunk_results'
+        ordering = ['document', 'chunk_index']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['document', 'chunk_index', 'content_hash'],
+                name='unique_document_chunk_hash'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['document', 'status']),
+        ]
+
+    def __str__(self):
+        return f"Chunk {self.chunk_index} of doc {self.document_id} ({self.status})"
+
+
 # ============================================================================
 # HIPAA Audit Logging Helpers (Task 41.28)
 # ============================================================================

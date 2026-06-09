@@ -373,10 +373,16 @@
          x-transition:leave-start="opacity-100 translate-x-0"
          x-transition:leave-end="opacity-0 translate-x-full"
          @keydown.escape.window="if (isOpen) toggle()"
-         class="fixed top-0 right-0 h-full w-full max-w-full sm:max-w-md md:w-[min(90vw,28rem)] lg:w-[25vw] lg:min-w-[320px] lg:max-w-[100vw] bg-white shadow-xl flex flex-col z-40"
+         class="fixed top-0 right-0 h-full min-h-0 max-w-full bg-white shadow-xl flex flex-col z-40"
+         :style="'width:' + (panelWidth || Math.round(window.innerWidth * 0.5)) + 'px'"
          x-cloak>
+        <!-- Left-edge resize handle -->
+        <div @pointerdown="startResize($event)"
+             class="absolute top-0 left-0 h-full w-1.5 cursor-col-resize hover:bg-blue-400/40 active:bg-blue-500/60 z-50"
+             :class="isResizing ? 'bg-blue-500/60' : 'bg-transparent'"
+             title="Drag to resize" aria-hidden="true"></div>
         <!-- Panel header -->
-        <div class="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+        <div class="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
             <h2 class="text-lg font-semibold text-gray-900">Patient Summary</h2>
             <div class="flex items-center space-x-2">
                 <button type="button" @click="downloadPdf()"
@@ -392,8 +398,16 @@
                 </button>
             </div>
         </div>
+        <!-- Export options -->
+        <div class="flex-shrink-0 flex items-center px-4 py-2 border-b border-gray-200 bg-white">
+            <label class="inline-flex items-center text-xs text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" x-model="includeUnlinked"
+                       class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2">
+                Include unlinked / undated results in PDF
+            </label>
+        </div>
         <!-- Panel content (scrollable) -->
-        <div class="flex-1 overflow-hidden">
+        <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
             {% include "patients/partials/_summary_panel.html" %}
         </div>
     </div>
@@ -439,7 +453,8 @@
 <script>
 // Patient Summary Panel Alpine component
 function patientSummaryPanel(patientId) {
-    const STORAGE_KEY = 'patient-summary-panel-open';
+    const WIDTH_KEY = 'patient-summary-panel-width';
+    const MIN_WIDTH = 360;
     return {
         patientId: patientId,
         isOpen: false,
@@ -448,24 +463,160 @@ function patientSummaryPanel(patientId) {
         summaryData: null,
         error: null,
 
+        // PDF export option: include unlinked/undated labs & vitals (default off).
+        includeUnlinked: false,
+
+        // --- Resizable panel state ---
+        panelWidth: 0,      // px; 0 until first opened, then defaults to ~50vw
+        isResizing: false,
+
+        // --- Tab state ---
+        activeTab: 'overview',
+        moreOpen: false,
+        tabs: [
+            { id: 'overview', label: 'Overview' },
+            { id: 'problems', label: 'Problems' },
+            { id: 'labs', label: 'Labs' },
+            { id: 'meds', label: 'Meds' },
+            { id: 'visits', label: 'Visits' },
+        ],
+        moreTabs: [
+            { id: 'vitals', label: 'Vitals' },
+            { id: 'procedures', label: 'Procedures' },
+            { id: 'immunizations', label: 'Immunizations' },
+            { id: 'careplans', label: 'Allergies & Care' },
+            { id: 'reports', label: 'Diagnostic Reports' },
+        ],
+        tabBadge(id) {
+            switch (id) {
+                case 'problems': return this.conditions.length;
+                case 'labs': return this.labPanelCount;
+                case 'meds': return this.activeMeds.length;
+                case 'visits': return this.encounters.length;
+                case 'vitals': return this.vitalsByVisit.reduce((n, v) => n + (v.total || 0), 0);
+                case 'procedures': return this.procedures.length;
+                case 'immunizations': return this.immunizations.length;
+                case 'careplans': return this.carePlans.length + this.allergies.length;
+                case 'reports': return this.diagnosticReports.length;
+                default: return 0;
+            }
+        },
+
+        // --- Convenience getters over the report payload ---
+        get cs() { return this.summaryData?.clinical_summary || {}; },
+        get pi() { return this.summaryData?.patient_info || {}; },
+        get conditions() { return this.cs.conditions || []; },
+        get encounters() { return this.cs.encounters || []; },
+        get procedures() { return this.cs.procedures || []; },
+        get immunizations() { return this.cs.immunizations || []; },
+        get allergies() { return this.cs.allergies || []; },
+        get carePlans() { return this.cs.care_plans || []; },
+        get diagnosticReports() { return this.cs.diagnostic_reports || []; },
+        get activeMeds() { return this.cs.medications_deduped?.active || this.cs.medications || []; },
+        get historicalMeds() { return this.cs.medications_deduped?.historical || []; },
+        get labsByVisit() { return this.cs.labs_by_visit?.visits || []; },
+        get vitalsByVisit() { return this.cs.vitals_by_visit?.visits || []; },
+        get weightTimeline() { return this.cs.weight_timeline || { has_data: false }; },
+        get lastEncounter() { return this.encounters[0] || null; },
+        get labPanelCount() {
+            return this.labsByVisit.reduce((n, v) => n + (v.panels ? v.panels.length : 0), 0);
+        },
+        get flaggedLabs() {
+            const out = [];
+            for (const v of this.labsByVisit) {
+                for (const p of (v.panels || [])) {
+                    for (const o of (p.observations || [])) {
+                        if (o.flag) out.push(o);
+                    }
+                }
+                for (const o of (v.other_results || [])) {
+                    if (o.flag) out.push(o);
+                }
+            }
+            return out;
+        },
+        get statCards() {
+            return [
+                { label: 'Problems', value: this.conditions.length, tab: 'problems' },
+                { label: 'Active Meds', value: this.activeMeds.length, tab: 'meds' },
+                { label: 'Lab Panels', value: this.labPanelCount, tab: 'labs' },
+                { label: 'Visits', value: this.encounters.length, tab: 'visits' },
+                { label: 'Vaccines', value: this.immunizations.length, tab: 'immunizations' },
+                { label: 'Vitals', value: this.vitalsByVisit.reduce((n, v) => n + (v.total || 0), 0), tab: 'vitals' },
+            ];
+        },
+
+        // --- Helpers ---
+        selectTab(id) { this.activeTab = id; this.moreOpen = false; },
+        fmtDate(d) {
+            if (!d) return '—';
+            const s = String(d);
+            const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) return `${m[2]}/${m[3]}/${m[1]}`;
+            const dt = new Date(s);
+            return isNaN(dt.getTime()) ? s : dt.toLocaleDateString();
+        },
+        flagClass(flag) {
+            return { 'text-red-600': flag === 'H', 'text-blue-600': flag === 'L', 'text-amber-600': flag === 'A' };
+        },
+        badgeClass(typeCode) {
+            return {
+                'bg-red-100 text-red-800': typeCode === 'inpatient',
+                'bg-orange-100 text-orange-800': typeCode === 'emergency',
+                'bg-blue-100 text-blue-800': (typeCode === 'ambulatory' || !typeCode),
+            };
+        },
+        medSig(m) {
+            if (!m || !m.dosage || !m.dosage.length) return '';
+            return m.dosage.map(d => d.text || d.dose).filter(Boolean).join('; ');
+        },
+
+        // Clamp a candidate width to [MIN_WIDTH, 95vw].
+        clampWidth(w) {
+            const max = Math.round(window.innerWidth * 0.95);
+            return Math.min(Math.max(w, MIN_WIDTH), max);
+        },
+
         initFromStorage() {
+            // The panel never auto-opens on page entry; we only restore the
+            // user's preferred width so it's ready when they do open it.
             try {
-                const stored = localStorage.getItem(STORAGE_KEY);
-                if (stored === 'true') {
-                    this.isOpen = true;
-                    this.fetchSummary();
+                const storedWidth = parseInt(localStorage.getItem(WIDTH_KEY), 10);
+                if (!isNaN(storedWidth)) {
+                    this.panelWidth = this.clampWidth(storedWidth);
                 }
             } catch (e) { /* localStorage may be unavailable */ }
         },
 
         toggle() {
             this.isOpen = !this.isOpen;
-            try {
-                localStorage.setItem(STORAGE_KEY, this.isOpen.toString());
-            } catch (e) { /* ignore */ }
+            if (this.isOpen && !this.panelWidth) {
+                // First open with no saved preference: start at ~50% of screen.
+                this.panelWidth = this.clampWidth(Math.round(window.innerWidth * 0.5));
+            }
             if (this.isOpen && !this.summaryData && !this.error) {
                 this.fetchSummary();
             }
+        },
+
+        // Pointer-driven left-edge resize handle.
+        startResize(event) {
+            event.preventDefault();
+            this.isResizing = true;
+            const onMove = (e) => {
+                // Panel is right-anchored: width = distance from cursor to right edge.
+                this.panelWidth = this.clampWidth(window.innerWidth - e.clientX);
+            };
+            const onUp = () => {
+                this.isResizing = false;
+                document.removeEventListener('pointermove', onMove);
+                document.removeEventListener('pointerup', onUp);
+                document.body.style.userSelect = '';
+                try { localStorage.setItem(WIDTH_KEY, String(this.panelWidth)); } catch (e) { /* ignore */ }
+            };
+            document.body.style.userSelect = 'none';
+            document.addEventListener('pointermove', onMove);
+            document.addEventListener('pointerup', onUp);
         },
 
         async fetchSummary() {
@@ -487,7 +638,8 @@ function patientSummaryPanel(patientId) {
 
         downloadPdf() {
             this.pdfLoading = true;
-            window.location.href = `/patients/${this.patientId}/summary-pdf/`;
+            const qs = this.includeUnlinked ? '?include_unlinked=1' : '';
+            window.location.href = `/patients/${this.patientId}/summary-pdf/${qs}`;
             setTimeout(() => { this.pdfLoading = false; }, 2000);
         }
     };

@@ -11,6 +11,7 @@ from uuid import uuid4
 from datetime import datetime
 from apps.core.date_parser import ClinicalDateParser
 from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
+from apps.fhir.services.keyword_matching import is_vaccine_name
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,18 @@ class ProcedureService:
         self.logger = logger
         self.date_parser = ClinicalDateParser()
         
-    def process_procedures(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _is_vaccine_procedure(self, procedure_dict: Dict[str, Any],
+                              claimed_vaccines: Optional[set]) -> bool:
+        """Return True when a procedure entry is a vaccine administration.
+
+        Delegates to the shared, word-boundary-aware matcher so this stays in
+        lockstep with ImmunizationService: every vaccine-like procedure skipped
+        here is guaranteed to be picked up there (no data loss, no double count).
+        """
+        return is_vaccine_name(procedure_dict.get('name'), claimed_vaccines)
+
+    def process_procedures(self, extracted_data: Dict[str, Any],
+                          claimed_vaccines: Optional[set] = None) -> List[Dict[str, Any]]:
         """
         Process all procedures from extracted data into FHIR Procedure resources.
         
@@ -39,6 +51,9 @@ class ProcedureService:
             extracted_data: Dictionary containing either:
                 - 'structured_data' dict with 'procedures' list (Pydantic Procedure models)
                 - 'fields' list with procedure data (legacy format)
+            claimed_vaccines: Optional set of lowercased vaccine names already
+                represented as Immunization resources. Matching procedures are
+                skipped to prevent double-counting (D1).
             
         Returns:
             List of FHIR Procedure resources
@@ -58,11 +73,24 @@ class ProcedureService:
                 procedures_list = structured_data['procedures']
                 if procedures_list:
                     self.logger.info(f"Processing {len(procedures_list)} procedures via structured path")
+                    skipped_vaccines = 0
                     for procedure_dict in procedures_list:
                         if isinstance(procedure_dict, dict):
+                            if self._is_vaccine_procedure(procedure_dict, claimed_vaccines):
+                                skipped_vaccines += 1
+                                self.logger.debug(
+                                    "Skipping vaccine procedure (handled as Immunization): %s",
+                                    procedure_dict.get('name')
+                                )
+                                continue
                             procedure_resource = self._create_procedure_from_structured(procedure_dict, patient_id, clinical_date=clinical_date)
                             if procedure_resource:
                                 procedures.append(procedure_resource)
+                    if skipped_vaccines:
+                        self.logger.info(
+                            "Skipped %s vaccine procedure(s) deferred to ImmunizationService",
+                            skipped_vaccines,
+                        )
                     self.logger.info(f"Successfully processed {len(procedures)} procedures via structured path")
                     return procedures
         

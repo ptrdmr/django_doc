@@ -53,9 +53,17 @@ DateGranularityLiteral = Literal['year', 'month', 'day']
 
 # Initialize AI clients following project patterns with enhanced error handling
 def _initialize_ai_clients():
-    """Initialize AI clients with comprehensive error handling and validation."""
+    """
+    Initialize AI clients with comprehensive error handling and validation.
+
+    Returns (anthropic_client, openai_client, anthropic_raw_client). The raw
+    client is kept un-patched because instructor's wrapper replaces
+    messages.create with a signature requiring response_model — the manual
+    JSON fallback path needs the original SDK call.
+    """
     anthropic_client = None
     openai_client = None
+    anthropic_raw_client = None
     
     try:
         # Validate configuration
@@ -73,11 +81,27 @@ def _initialize_ai_clients():
                 }
             )
         
-        # Initialize Anthropic Claude (primary)
+        # Initialize Anthropic Claude (primary) with explicit HTTP timeouts.
+        # Without a timeout the SDK default (~10 min read) lets hung connections
+        # burn the entire Celery task budget. max_retries=1 stops the SDK from
+        # silently multiplying API cost on transient failures.
         if anthropic_key:
             try:
-                anthropic_client = anthropic.Anthropic(api_key=anthropic_key)
-                logger.info("Anthropic Claude client initialized successfully (primary)")
+                request_timeout = float(getattr(settings, 'AI_REQUEST_TIMEOUT', 120))
+                anthropic_client = anthropic.Anthropic(
+                    api_key=anthropic_key,
+                    timeout=anthropic.Timeout(
+                        connect=10.0,
+                        read=request_timeout,
+                        write=request_timeout,
+                        pool=30.0,
+                    ),
+                    max_retries=1,
+                )
+                logger.info(
+                    f"Anthropic Claude client initialized successfully (primary, "
+                    f"timeout={request_timeout}s, max_retries=1)"
+                )
             except Exception as e:
                 logger.error(f"Failed to initialize Anthropic client: {e}")
                 anthropic_client = None
@@ -91,8 +115,10 @@ def _initialize_ai_clients():
                 logger.error(f"Failed to initialize OpenAI client: {e}")
                 openai_client = None
         
-        # Try to patch Anthropic client with instructor for Pydantic support
+        # Try to patch Anthropic client with instructor for Pydantic support,
+        # keeping the raw client for the manual JSON fallback path
         if anthropic_client:
+            anthropic_raw_client = anthropic_client
             try:
                 from instructor import from_anthropic
                 anthropic_client = from_anthropic(anthropic_client)
@@ -108,7 +134,7 @@ def _initialize_ai_clients():
             )
         
         logger.info(f"AI clients initialized - Claude: {bool(anthropic_client)}, OpenAI: {bool(openai_client)}")
-        return anthropic_client, openai_client
+        return anthropic_client, openai_client, anthropic_raw_client
         
     except ConfigurationError:
         raise
@@ -121,11 +147,12 @@ def _initialize_ai_clients():
 
 # Initialize clients
 try:
-    anthropic_client, openai_client = _initialize_ai_clients()
+    anthropic_client, openai_client, anthropic_raw_client = _initialize_ai_clients()
 except ConfigurationError as e:
     logger.warning(f"AI client initialization failed: {e}")
     anthropic_client = None
     openai_client = None
+    anthropic_raw_client = None
 
 
 class SourceContext(BaseModel):
@@ -150,22 +177,47 @@ class MedicalCondition(BaseModel):
         description="Status of the condition",
         default="active"
     )
+    evidence_type: Optional[Literal[
+        "explicit_diagnosis",   # Provider wrote "Diagnosis: ..."
+        "problem_list",         # Listed in a problem list
+        "assessment",           # Stated in assessment/impression section
+        "history",              # Documented in past medical history
+        "inferred",             # VIOLATION MARKER: AI derived this -- should not happen
+    ]] = Field(
+        default=None,
+        description=(
+            "How this condition was identified in the document. You should NEVER need to "
+            "use 'inferred' -- only extract conditions a provider explicitly states. "
+            "If this is set to 'inferred', the system will flag it as a data quality issue."
+        )
+    )
     confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     onset_date: Optional[str] = Field(default=None, description="When condition was diagnosed")
     date_precision: Optional[DateGranularityLiteral] = Field(
         default=None,
         description="Granularity of onset_date only: year (YYYY), month (YYYY-MM), or full day (YYYY-MM-DD)."
     )
-    icd_code: Optional[str] = Field(default=None, description="ICD-10 code if mentioned")
+    icd_code: Optional[str] = Field(default=None, description="ICD-10 code if present in the document")
+    snomed_code: Optional[str] = Field(default=None, description="SNOMED CT code if present in the document")
     source: SourceContext = Field(description="Source context in the document")
 
 
 class Medication(BaseModel):
     """A medication, drug, or therapeutic substance."""
-    name: str = Field(description="The medication name")
-    dosage: Optional[str] = Field(default=None, description="Dosage amount")
-    route: Optional[str] = Field(default=None, description="Route of administration")
-    frequency: Optional[str] = Field(default=None, description="Dosing frequency")
+    name: str = Field(description="The medication name (as written; prefer the primary label)")
+    generic_name: Optional[str] = Field(default=None, description="Generic drug name if stated")
+    brand_name: Optional[str] = Field(default=None, description="Brand/trade name if stated")
+    dosage: Optional[str] = Field(default=None, description="Strength only (e.g., '0.4 mg', '10 mg')")
+    dosage_form: Optional[str] = Field(default=None, description="Form (capsule, tablet, solution, etc.)")
+    quantity: Optional[str] = Field(default=None, description="Amount per dose (e.g., '1 capsule', '2 tablets')")
+    route: Optional[str] = Field(default=None, description="Route of administration (oral, IV, topical, etc.)")
+    frequency: Optional[str] = Field(default=None, description="Dosing frequency (daily, BID, every 6 hours, etc.)")
+    sig: Optional[str] = Field(
+        default=None,
+        description="Complete SIG/instruction text verbatim (e.g., 'Take 1 capsule twice a day by oral route'). Do NOT truncate."
+    )
+    refills: Optional[str] = Field(default=None, description="Refills authorized if stated (e.g., '3', '0', 'PRN')")
+    prescriber: Optional[str] = Field(default=None, description="Prescribing provider if stated")
     status: str = Field(description="Medication status", default="active")
     confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     start_date: Optional[str] = Field(default=None, description="When medication was started")
@@ -177,11 +229,26 @@ class Medication(BaseModel):
     source: SourceContext = Field(description="Source context in the document")
 
 
+class VitalSignComponent(BaseModel):
+    """A single component of a multi-part vital sign (e.g., systolic/diastolic of a BP)."""
+    measurement: str = Field(description="Component name (e.g., 'systolic', 'diastolic')")
+    value: str = Field(description="The measured value for this component")
+    unit: Optional[str] = Field(default=None, description="Unit of measurement")
+
+
 class VitalSign(BaseModel):
     """A vital sign measurement."""
     measurement: str = Field(description="Type of vital sign")
     value: str = Field(description="The measured value")
     unit: Optional[str] = Field(default=None, description="Unit of measurement")
+    category: Optional[str] = Field(
+        default="vital-signs",
+        description="Observation category: 'vital-signs' (default), 'exam', or 'social-history'."
+    )
+    components: List[VitalSignComponent] = Field(
+        default_factory=list,
+        description="Sub-measurements for composite vitals (e.g., systolic + diastolic for blood pressure)."
+    )
     timestamp: Optional[str] = Field(default=None, description="When measurement was taken")
     date_precision: Optional[DateGranularityLiteral] = Field(
         default=None,
@@ -196,7 +263,22 @@ class LabResult(BaseModel):
     test_name: str = Field(description="Name of the laboratory test")
     value: str = Field(description="Test result value")
     unit: Optional[str] = Field(default=None, description="Unit of measurement")
-    reference_range: Optional[str] = Field(default=None, description="Normal reference range")
+    reference_range: Optional[str] = Field(default=None, description="Normal reference range exactly as shown in the lab table row")
+    abnormal_flag: Optional[str] = Field(
+        default=None,
+        description="Abnormal flag if shown (e.g., 'H', 'L', 'HH', 'LL', 'A', 'critical')."
+    )
+    category: Optional[str] = Field(
+        default="laboratory",
+        description="Observation category: 'laboratory' (default), 'vital-signs', 'exam', or 'social-history'."
+    )
+    panel_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "Lab panel this test belongs to if identifiable (e.g., 'Comprehensive Metabolic Panel', "
+            "'CBC with Differential', 'Lipid Panel'). Used to group results into diagnostic reports."
+        )
+    )
     status: Optional[str] = Field(default=None, description="Result status")
     test_date: Optional[str] = Field(default=None, description="Date test was performed")
     date_precision: Optional[DateGranularityLiteral] = Field(
@@ -210,12 +292,39 @@ class LabResult(BaseModel):
 class Procedure(BaseModel):
     """A medical procedure or intervention."""
     name: str = Field(description="Name of the procedure")
+    cpt_code: Optional[str] = Field(default=None, description="CPT code if present in the document")
     procedure_date: Optional[str] = Field(default=None, description="Date procedure was performed")
     provider: Optional[str] = Field(default=None, description="Provider who performed procedure")
     outcome: Optional[str] = Field(default=None, description="Outcome or result")
     date_precision: Optional[DateGranularityLiteral] = Field(
         default=None,
         description="Granularity of procedure_date when present."
+    )
+    confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
+    source: SourceContext = Field(description="Source context in the document")
+
+
+class Immunization(BaseModel):
+    """A vaccine administration or immunization record."""
+    vaccine_name: str = Field(description="Name of the vaccine (e.g., 'Influenza', 'Tdap', 'COVID-19')")
+    cvx_code: Optional[str] = Field(default=None, description="CVX vaccine code if present in the document")
+    date_administered: Optional[str] = Field(default=None, description="Date the vaccine was administered")
+    date_precision: Optional[DateGranularityLiteral] = Field(
+        default=None,
+        description="Granularity of date_administered when present."
+    )
+    lot_number: Optional[str] = Field(default=None, description="Vaccine lot number if stated")
+    manufacturer: Optional[str] = Field(default=None, description="Vaccine manufacturer if stated")
+    dose_number: Optional[str] = Field(default=None, description="Dose number in series (e.g., '1', '2', 'booster')")
+    route: Optional[str] = Field(default=None, description="Route of administration (e.g., intramuscular, subcutaneous)")
+    site: Optional[str] = Field(default=None, description="Body site of administration (e.g., left deltoid)")
+    status: Optional[str] = Field(
+        default="completed",
+        description="Status: completed, entered-in-error, not-done. Default completed for documented administrations."
+    )
+    is_forecast: bool = Field(
+        default=False,
+        description="True if this is a recommended/forecast/due vaccine rather than an administered one."
     )
     confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     source: SourceContext = Field(description="Source context in the document")
@@ -254,6 +363,10 @@ class ServiceRequest(BaseModel):
     priority: Optional[str] = Field(default=None, description="Priority: routine, urgent, stat, asap")
     clinical_context: Optional[str] = Field(default=None, description="Additional clinical context")
     request_date: Optional[str] = Field(default=None, description="Date order was placed")
+    forecast_due_date: Optional[str] = Field(
+        default=None,
+        description="For vaccine forecasts or scheduled orders, the due/overdue date if stated."
+    )
     confidence: float = Field(description="Confidence score (0.0-1.0)", ge=0.0, le=1.0, default=0.8)
     source: SourceContext = Field(description="Source context in the document")
 
@@ -303,6 +416,21 @@ class Organization(BaseModel):
     """A healthcare organization or facility."""
     organization_id: Optional[str] = Field(default=None, description="Unique identifier")
     name: str = Field(description="Organization or facility name")
+    role_in_document: Optional[Literal[
+        "care_site",        # Treating facility / clinic / hospital
+        "performing_lab",   # Lab that ran the tests
+        "ordering_org",     # Organization that ordered the service
+        "pharmacy",         # Dispensing pharmacy
+        "payer",            # Insurance / payer
+        "fax_header",       # Fax routing header (administrative noise)
+        "admin",            # Other administrative/routing org (noise)
+    ]] = Field(
+        default=None,
+        description=(
+            "Role this organization plays in the document. Used to filter administrative "
+            "noise (fax headers, release-form boilerplate, CC lists) from clinically relevant orgs."
+        )
+    )
     identifier: Optional[str] = Field(default=None, description="NPI, tax ID, or other identifier")
     organization_type: Optional[str] = Field(default=None, description="Type: hospital, clinic, lab, pharmacy, payer, etc.")
     address: Optional[str] = Field(default=None, description="Physical address")
@@ -371,6 +499,10 @@ class StructuredMedicalExtraction(BaseModel):
         default_factory=list,
         description="All medical procedures and interventions"
     )
+    immunizations: List[Immunization] = Field(
+        default_factory=list,
+        description="All vaccine administrations and immunization records"
+    )
     providers: List[Provider] = Field(
         default_factory=list,
         description="All healthcare providers mentioned"
@@ -413,6 +545,18 @@ class StructuredMedicalExtraction(BaseModel):
     )
     
     # Metadata
+    clinical_date: Optional[str] = Field(
+        default=None,
+        description=(
+            "Primary clinical date of this document (visit date, lab collection date, "
+            "service date). Use the date the care described actually occurred, not the "
+            "print/fax date. Partial dates allowed (YYYY or YYYY-MM)."
+        )
+    )
+    clinical_date_source: Optional[str] = Field(
+        default=None,
+        description="Where the clinical date was found (e.g., 'encounter header', 'lab collection date')."
+    )
     extraction_timestamp: str = Field(description="When this extraction was performed")
     document_type: Optional[str] = Field(default=None, description="Type of clinical document")
     confidence_average: Optional[float] = Field(default=None, description="Average confidence")
@@ -472,9 +616,9 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
             details={'text_length': len(text), 'extraction_id': extraction_id}
         )
     
-    if len(text) > 50000:  # Reasonable limit to prevent excessive API costs
-        logger.warning(f"[{extraction_id}] Text is very long ({len(text)} chars), truncating to 50000")
-        text = text[:50000]
+    if len(text) > 100000:  # Safety guard; chunking keeps normal chunks well below this
+        logger.warning(f"[{extraction_id}] Text is very long ({len(text)} chars), truncating to 100000")
+        text = text[:100000]
     
     # Check if any AI clients are available
     if not anthropic_client and not openai_client:
@@ -488,7 +632,10 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
     cache_context = {
         'ai_model': primary_model,
         'context': context or '',
-        'extraction_version': '2.0'
+        # WP1: bumped from 2.0 to invalidate cached extractions after prompt/schema changes
+        # (strict assertion rules, expanded medication SIG, codes, clinical_date, etc.)
+        # WP2: bumped to 4.0 for new immunizations list + schema_prompt sync.
+        'extraction_version': '4.0'
     }
     cache_key = document_cache.get_ai_extraction_cache_key(text, primary_model, cache_context)
     
@@ -504,211 +651,74 @@ def extract_medical_data_structured(text: str, context: Optional[str] = None) ->
         except Exception as cache_error:
             logger.warning(f"[{extraction_id}] Cache result invalid, proceeding with fresh extraction: {cache_error}")
             # Continue with fresh extraction if cache is corrupted
-    # Use comprehensive prompts for maximum data capture (90%+ target)
-    # Try to use comprehensive prompts, fall back to basic prompts if not available
-    try:
-        from apps.documents.services.ai_extraction_service import AIExtractionService
-        prompt_service = AIExtractionService()
-        use_comprehensive = True
-    except ImportError:
-        prompt_service = None
-        use_comprehensive = False
-        logger.warning("AIExtractionService not available - using fallback prompts")
-    
-    if use_comprehensive and prompt_service:
-        try:
-            # Use comprehensive prompt from ai_extraction_service.py for maximum data capture
-            comprehensive_prompt = prompt_service._get_comprehensive_extraction_prompt()
-            
-            # Add context-specific instructions if available
-            context_instructions = ""
-            if context:
-                context_specific = prompt_service._get_context_specific_instructions(context)
-                if context_specific:
-                    context_instructions = f"\n\nContext-Specific Instructions:\n{context_specific}"
-            
-            # Build enhanced system prompt with comprehensive extraction targets
-            system_prompt = f"""{comprehensive_prompt}{context_instructions}
+    # Canonical static system prompt — single source of truth shared with the
+    # cached extraction path (see apps/documents/services/extraction_prompts.py).
+    # Context-specific guidance is variable content and lives in the user
+    # message so the static system prefix stays byte-identical across calls
+    # (required for Anthropic prompt-cache prefix matching).
+    from apps.documents.services.extraction_prompts import (
+        get_canonical_system_prompt,
+        get_context_instructions,
+    )
 
-CRITICAL REQUIREMENTS FOR STRUCTURED OUTPUT:
-1. Extract EVERY piece of medical information mentioned
-2. Provide source context for each extracted item (use exact text snippets)
-3. Assign accurate confidence scores based on clarity and certainty
-4. Use proper medical terminology and classifications
-5. Include dates, values, and units exactly as written
-6. **EXTRACT ALL DATES**: Look for dates near each medical finding and extract them aggressively
-
-DATE EXTRACTION PRIORITY (CRITICAL):
-- Look for dates in any format: MM/DD/YYYY, MM/DD/YY, YYYY-MM-DD, spelled out dates
-- Extract dates that appear within or immediately adjacent to medical information
-- For vital signs: Extract timestamps (e.g., "HR: 90 10/19/24 03:47" → timestamp: "2024-10-19")
-- For procedures: Extract dates in parentheses (e.g., "CYSTOSCOPY (12/28/2023)" → procedure_date: "2023-12-28")
-- For conditions: Extract onset dates (e.g., "diabetes since 2015" → onset_date: "2015")
-- For medications: Extract start dates if mentioned (e.g., "started 10/2024" → start_date: "2024-10")
-- For lab results: Extract test dates (e.g., "Glucose 105 on 10/19/24" → test_date: "2024-10-19")
-- ALWAYS extract dates even if approximate (e.g., "2018" is valid, "Oct 2024" is valid)
-
-DATE GRANULARITY (CRITICAL — DO NOT FABRICATE PRECISION):
-- If only a YEAR is documented (e.g. "since 2012", "Dx 2012"), emit the shortest string `"2012"`, set `date_precision` to `"year"`, and NEVER output `"2012-01-01"`.
-- If only YEAR-MONTH is documented, emit `"YYYY-MM"`, `date_precision` `"month"` — NEVER pad missing day as `-01`.
-- If a specific calendar DAY is documented, emit ISO date `YYYY-MM-DD` and `date_precision` `"day"`.
-- Apply the same pattern to medications (`start_date`/`stop_date` + `date_precision`), vitals (`timestamp` + `date_precision`), lab results (`test_date` + `date_precision`), procedures (`procedure_date` + `date_precision`), and conditions (`onset_date` + `date_precision`).
-- Omit `date_precision` or use null when the corresponding date field is absent.
-- Dates must reflect the document text exactly — do not shift days for timezones.
-
-CONFIDENCE SCORING:
-- 0.9-1.0: Information explicitly and clearly stated
-- 0.7-0.9: Information clearly implied or inferred  
-- 0.5-0.7: Information mentioned but with some ambiguity
-- 0.3-0.5: Information suggested but unclear
-- 0.1-0.3: Information possibly mentioned but very unclear
-
-STRUCTURED OUTPUT PRIORITY:
-- Medications (highest priority): names, dosages, routes, frequencies, START DATES with source context
-- Conditions: diagnoses, symptoms, clinical findings, ONSET DATES with source context
-- Vital signs: all measurements with values, units, TIMESTAMPS, and source context
-- Lab results: test names, values, reference ranges, TEST DATES with source context
-- Procedures: surgical and diagnostic procedures with PROCEDURE DATES and source context
-- Providers: all healthcare professionals mentioned with source context
-- Encounters: ALL visit/encounter details with DATES, location, reason, participants
-- Service Requests: ALL orders, referrals, requests with REQUEST DATES and priority
-- Diagnostic Reports: ALL test results, findings, conclusions, REPORT DATES
-- Allergies: ALL documented allergies with allergen, reaction, severity, dates
-- Care Plans: ALL treatment plans with goals, activities, timelines
-- Organizations: ALL healthcare facilities with names, types, addresses
-
-ENCOUNTER EXTRACTION (NEW - Phase 2):
-Extract ALL encounter/visit information:
-- encounter_type: Type of visit (office visit, emergency, ER visit, telehealth, virtual visit, inpatient, hospital admission, outpatient, etc.)
-- encounter_date: Start date/time of encounter
-- encounter_end_date: End date/time if applicable (discharge date for admissions)
-- location: Facility or clinic name
-- reason: Chief complaint or reason for visit
-- participants: ALL provider names involved (attending, consultants, specialists, nurses)
-- status: If mentioned (planned, arrived, in-progress, finished, cancelled)
-Examples: "Patient seen in ER on 10/20/24", "Office visit with Dr. Smith 09/15/24", "Admitted 08/01 discharged 08/05"
-
-SERVICE REQUEST EXTRACTION (NEW - Phase 2):
-Extract ALL orders, referrals, and requests:
-- request_type: Type (lab test, imaging study, specialist referral, consultation, procedure order)
-- requester: Ordering provider name
-- reason: Clinical indication or reason for request
-- priority: Priority level if mentioned (routine, urgent, stat, asap)
-- clinical_context: Additional context
-- request_date: Date order was placed
-Examples: "Referred to cardiology", "Order chest X-ray stat", "Labs ordered: CBC, CMP", "MRI brain with contrast"
-
-DIAGNOSTIC REPORT EXTRACTION (NEW - Phase 2):
-Extract ALL test results and diagnostic findings:
-- report_type: Type of report (lab, radiology, pathology, cardiology, pulmonary, etc.)
-- findings: Key findings and results (REQUIRED - capture ALL results)
-- conclusion: Diagnostic conclusion or impression
-- recommendations: Recommended follow-up or actions
-- status: Report status if mentioned (preliminary, final, amended, corrected)
-- report_date: Date report was generated
-- ordering_provider: Provider who ordered the test
-Examples: "CT scan shows...", "Lab results: Glucose 105", "Echo report: EF 55%", "Path report: benign tissue"
-
-ALLERGY/INTOLERANCE EXTRACTION (NEW - Phase 3):
-Extract ALL documented allergies:
-- allergen: Substance causing allergy (medication, food, environmental agent)
-- reaction: Type of reaction (rash, anaphylaxis, GI upset, swelling, etc.)
-- severity: Severity level (mild, moderate, severe, life-threatening)
-- onset_date: Date allergy first observed or documented
-- status: Current status (active, inactive, resolved)
-- verification_status: Verification level (confirmed, unconfirmed, refuted)
-Examples: "NKDA", "Penicillin allergy - anaphylaxis", "Allergic to shellfish", "Latex sensitivity"
-
-CARE PLAN EXTRACTION (NEW - Phase 3):
-Extract documented treatment plans:
-- plan_description: Overview of care plan or treatment plan (REQUIRED)
-- goals: List of care goals and objectives
-- activities: List of planned activities and interventions
-- period_start: Care plan start date
-- period_end: Care plan end date
-- status: Plan status (draft, active, completed, cancelled)
-- intent: Intent (proposal, plan, order)
-Examples: "Diabetes management plan", "Post-op care protocol", "CHF treatment plan"
-
-ORGANIZATION EXTRACTION (NEW - Phase 3):
-Extract healthcare organizations and facilities:
-- name: Organization or facility name (REQUIRED)
-- identifier: NPI, tax ID, or other identifier
-- organization_type: Type (hospital, clinic, lab, pharmacy, payer, etc.)
-- address: Physical address
-- city, state, postal_code: Location details
-- phone: Contact phone number
-Examples: "General Hospital", "Community Clinic", "Regional Lab Services", "Springfield Medical Center"
-
-CRITICAL for ALL extractions:
-- Look for "allergy to", "allergic to", "NKDA" → AllergyIntolerance
-- Look for "care plan", "treatment plan", "protocol", "goals:" → CarePlan
-- Look for "Hospital", "Clinic", "Medical Center", "Lab" → Organization
-- Look for "referred to", "order for", "consult with" → ServiceRequest
-- Look for "ER visit", "admitted to", "seen in clinic" → Encounter  
-- Look for "report shows", "results:", "findings:", "impression:" → DiagnosticReport"""
-            
-            logger.info(f"[{extraction_id}] Using comprehensive extraction prompts (90%+ data capture target)")
-            
-        except Exception as e:
-            logger.warning(f"[{extraction_id}] Error using comprehensive prompts: {e}, falling back to standard prompt")
-            use_comprehensive = False  # Disable for this session
-    
-    if not use_comprehensive:
-        # Fallback to standard prompt
-        system_prompt = """You are MediExtract Pro, an expert medical data extraction AI. 
-
-Your task is to extract ALL medical information from clinical documents with the highest possible accuracy and completeness. 
-
-CRITICAL REQUIREMENTS:
-1. Extract EVERY piece of medical information mentioned
-2. Provide source context for each extracted item (use the exact text snippet)
-3. Assign accurate confidence scores based on clarity
-4. **EXTRACT ALL DATES AGGRESSIVELY** - Look for dates in any format near medical findings (MM/DD/YY, MM/DD/YYYY, spelled out, etc.)
-5. Use proper medical terminology and classifications
-6. Include dates, values, and units exactly as written
-
-DATE GRANULARITY — DO NOT FABRICATE DAYS OR MONTHS:
-Set `date_precision` to "year", "month", or "day" for conditions (onset_date), medications (start/stop dates), vitals (timestamp), labs (test_date), procedures (procedure_date). Use "2012" + "year" for year-only; "2012-06" + "month" for month precision; never use "2012-01-01" unless January 1 is explicitly documented. Do not shift calendar days due to timezone.
-
-CONFIDENCE SCORING:
-- 0.9-1.0: Information explicitly and clearly stated
-- 0.7-0.9: Information clearly implied or inferred
-- 0.5-0.7: Information mentioned but with some ambiguity
-- 0.3-0.5: Information suggested but unclear
-- 0.1-0.3: Information possibly mentioned but very unclear
-
-Extract these 12 resource types:
-- Conditions: diagnoses, symptoms, clinical findings with onset dates
-- Medications: names, dosages, routes, frequencies with start/stop dates
-- Vital Signs: measurements with values, units, timestamps
-- Lab Results: test names, values, reference ranges, test dates
-- Procedures: surgical and diagnostic procedures with procedure dates
-- Providers: healthcare professionals with specialties and roles
-- Encounters: ALL visits, admissions, encounters with dates, location, reason, participants
-- Service Requests: ALL orders, referrals, requests with type, requester, reason, priority, request dates
-- Diagnostic Reports: ALL test results with report type, findings (required), conclusions, recommendations, report dates
-- Allergies: ALL documented allergies with allergen, reaction, severity, verification
-- Care Plans: ALL treatment plans with description (required), goals, activities, timelines
-- Organizations: ALL healthcare facilities with name (required), type, address, contact info
-
-Focus on:
-- Medications (highest priority): names, dosages, routes, frequencies
-- Conditions: diagnoses, symptoms, clinical findings
-- Vital signs: all measurements with values and units
-- Lab results: test names, values, reference ranges, dates
-- Procedures: surgical and diagnostic procedures with dates
-- Providers: all healthcare professionals mentioned"""
-        
-        logger.info(f"[{extraction_id}] Using standard extraction prompts")
+    system_prompt = get_canonical_system_prompt()
+    context_instructions = get_context_instructions(context)
+    logger.info(f"[{extraction_id}] Using canonical extraction prompt")
 
     user_prompt = f"""Extract all medical information from this clinical document:
 
 {text}
 
-Document context: {context or 'General clinical document'}
+Document context: {context or 'General clinical document'}{context_instructions}
 
 Return structured data with complete source context for each item."""
+
+    # Prompt-cached extraction path (primary when enabled): static system
+    # prefix with cache_control cuts input cost ~50-65% on chunks 2..N.
+    # Bypasses Instructor entirely. Falls back to the legacy paths below on
+    # unexpected failure; rate-limit/timeout errors propagate for task retry.
+    if getattr(settings, 'AI_USE_CACHED_EXTRACTION', True) and anthropic_client:
+        try:
+            from apps.documents.services.cached_extraction import get_cached_extractor
+
+            extractor = get_cached_extractor()
+            extraction = extractor.extract(text, context=context, extraction_id=extraction_id)
+
+            total_items = (len(extraction.conditions) + len(extraction.medications) +
+                           len(extraction.vital_signs) + len(extraction.lab_results) +
+                           len(extraction.procedures) + len(extraction.providers))
+            logger.info(
+                f"[{extraction_id}] Cached-path extraction successful: {total_items} items, "
+                f"confidence {extraction.confidence_average:.3f}"
+            )
+
+            try:
+                cache_data = {
+                    'structured_data': extraction.model_dump(),
+                    'extraction_metadata': {
+                        'total_items': total_items,
+                        'confidence_average': extraction.confidence_average,
+                        'extraction_timestamp': extraction.extraction_timestamp,
+                        'ai_service': 'claude_cached',
+                        'usage': extractor.last_usage,
+                    }
+                }
+                document_cache.cache_ai_extraction(cache_key, cache_data)
+                del cache_data
+            except Exception as cache_error:
+                logger.warning(f"[{extraction_id}] Failed to cache extraction result: {cache_error}")
+
+            return extraction
+
+        except (AIServiceRateLimitError, AIServiceTimeoutError) as retryable_error:
+            # Propagate so the Celery layer can back off and retry properly
+            logger.warning(f"[{extraction_id}] Cached-path extraction hit retryable error: {retryable_error}")
+            raise
+        except Exception as cached_path_error:
+            logger.warning(
+                f"[{extraction_id}] Cached-path extraction failed: {cached_path_error}, "
+                f"falling back to legacy extraction path"
+            )
 
     # Try Claude first (primary AI service)
     claude_errors = []
@@ -732,7 +742,10 @@ Return structured data with complete source context for each item."""
                             {"role": "user", "content": user_prompt}
                         ],
                         temperature=0.1,
-                        max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096)
+                        max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096),
+                        # Cap instructor's validation-retry loop: each silent retry
+                        # re-sends the full prompt + failed response at full price.
+                        max_retries=1
                     )
                     
                     api_duration = time.time() - start_time
@@ -775,212 +788,20 @@ Return structured data with complete source context for each item."""
             except Exception as instructor_error:
                 logger.info(f"[{extraction_id}] Instructor approach failed: {instructor_error}, falling back to manual JSON parsing")
                 
-                # Fallback: Manual JSON parsing approach (original implementation)
-                # Create a detailed schema prompt for Claude with ALL resource types
-                schema_prompt = f"""
-Return valid JSON that exactly matches this schema structure.
-CRITICAL: Use EXACT field names as shown - do not abbreviate or rename fields!
-
-{{
-  "conditions": [
-    {{
-      "name": "condition name",
-      "status": "active",
-      "confidence": 0.9,
-      "onset_date": null,
-      "date_precision": null,
-      "icd_code": null,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "medications": [
-    {{
-      "name": "medication name",
-      "dosage": "dosage amount",
-      "route": null,
-      "frequency": "frequency",
-      "status": "active",
-      "confidence": 0.9,
-      "start_date": null,
-      "stop_date": null,
-      "date_precision": null,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "vital_signs": [
-    {{
-      "measurement": "vital sign type",
-      "value": "measurement value",
-      "unit": "unit",
-      "timestamp": null,
-      "date_precision": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "lab_results": [
-    {{
-      "test_name": "lab test name",
-      "value": "test value",
-      "unit": "unit",
-      "reference_range": null,
-      "status": "final",
-      "test_date": null,
-      "date_precision": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "procedures": [
-    {{
-      "name": "procedure name",
-      "procedure_date": null,
-      "provider": null,
-      "outcome": null,
-      "date_precision": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "providers": [
-    {{
-      "name": "provider name",
-      "specialty": null,
-      "role": null,
-      "contact_info": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "encounters": [
-    {{
-      "encounter_id": null,
-      "encounter_type": "office visit",
-      "encounter_date": null,
-      "encounter_end_date": null,
-      "location": null,
-      "reason": null,
-      "participants": [],
-      "status": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "service_requests": [
-    {{
-      "request_id": null,
-      "request_type": "lab test",
-      "requester": null,
-      "reason": null,
-      "priority": null,
-      "clinical_context": null,
-      "request_date": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "diagnostic_reports": [
-    {{
-      "report_id": null,
-      "report_type": "lab",
-      "findings": "key findings",
-      "conclusion": null,
-      "recommendations": null,
-      "status": null,
-      "report_date": null,
-      "ordering_provider": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "allergies": [
-    {{
-      "allergy_id": null,
-      "allergen": "substance name",
-      "reaction": null,
-      "severity": null,
-      "onset_date": null,
-      "status": null,
-      "verification_status": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "care_plans": [
-    {{
-      "plan_id": null,
-      "plan_description": "care plan overview",
-      "goals": [],
-      "activities": [],
-      "period_start": null,
-      "period_end": null,
-      "status": null,
-      "intent": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "organizations": [
-    {{
-      "organization_id": null,
-      "name": "organization name",
-      "identifier": null,
-      "organization_type": null,
-      "address": null,
-      "city": null,
-      "state": null,
-      "postal_code": null,
-      "phone": null,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "family_history": [
-    {{
-      "relationship": "mother",
-      "condition": "breast cancer",
-      "onset_age": null,
-      "deceased": false,
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "physical_exam_findings": [
-    {{
-      "body_site": "cardiovascular",
-      "finding": "Regular rate and rhythm",
-      "status": "normal",
-      "confidence": 0.85,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "social_history": [
-    {{
-      "category": "tobacco",
-      "description": "Former smoker, quit 2015",
-      "confidence": 0.9,
-      "source": {{"text": "exact text from document", "start_index": 0, "end_index": 10}}
-    }}
-  ],
-  "extraction_timestamp": "",
-  "document_type": "",
-  "confidence_average": null
-}}
-
-CRITICAL FIELD NAME REQUIREMENTS:
-- encounters: Use "encounter_type" NOT "type"
-- service_requests: Use "request_type" NOT "service" or "type"
-- diagnostic_reports: Use "report_type" NOT "type"
-- vital_signs: Use "measurement" NOT "type"
-- Every extracted item MUST include a "source" object with exact text snippet
-- date_precision MUST be null or one of: "year", "month", "day" — NEVER pad partial dates into full YYYY-MM-DD
-- Use exact field names as shown above - do not abbreviate or substitute"""
+                # Fallback: Manual JSON parsing approach using the canonical
+                # schema prompt (single source of truth in extraction_prompts.py)
+                from apps.documents.services.extraction_prompts import SCHEMA_PROMPT
+                schema_prompt = SCHEMA_PROMPT
                 
                 # Reset start time for manual approach
                 start_time = time.time()
                 
                 try:
-                    response = anthropic_client.messages.create(
+                    # Use the raw SDK client: the instructor wrapper's
+                    # messages.create requires response_model and would
+                    # TypeError here instead of making the API call
+                    manual_client = anthropic_raw_client or anthropic_client
+                    response = manual_client.messages.create(
                         model=getattr(settings, 'AI_MODEL_PRIMARY', 'claude-sonnet-4-5-20250929'),
                         max_tokens=getattr(settings, 'AI_MAX_TOKENS_PER_REQUEST', 4096),
                         temperature=0.1,
@@ -1382,6 +1203,6 @@ __all__ = [
     'LabResult',
     'Procedure',
     'Provider',
+    'Immunization',
     'SourceContext',
-    'COMPREHENSIVE_PROMPTS_AVAILABLE'
 ]

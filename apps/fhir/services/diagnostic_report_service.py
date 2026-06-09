@@ -6,11 +6,14 @@ DiagnosticReport resources for procedures like EKG, X-rays, lab results, etc.
 """
 
 import logging
+from collections import defaultdict
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 
 from apps.fhir.services.extensions import append_extraction_extensions, source_snippet_from_field
+from apps.fhir.services.encounter_linker import normalize_date_parts
+from apps.fhir.services.keyword_matching import contains_any_keyword
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,59 @@ class DiagnosticReportService:
     EKGs, and other diagnostic tests with their conclusions and results.
     """
     
+    # Keyword signatures for fallback lab-panel detection (B1). Each entry maps a
+    # canonical panel name to the keywords commonly found in its member tests,
+    # a LOINC panel code, and the minimum number of member matches required to
+    # confidently assert the panel.
+    LAB_PANEL_SIGNATURES = {
+        'Comprehensive Metabolic Panel': {
+            'keywords': ['glucose', 'bun', 'creatinine', 'sodium', 'potassium',
+                         'chloride', 'co2', 'carbon dioxide', 'calcium', 'albumin',
+                         'bilirubin', 'alkaline phosphatase', 'ast', 'alt',
+                         'total protein', 'egfr'],
+            'loinc': '24323-8',
+            'min_matches': 8,
+        },
+        'Basic Metabolic Panel': {
+            'keywords': ['glucose', 'bun', 'creatinine', 'sodium', 'potassium',
+                         'chloride', 'co2', 'carbon dioxide', 'calcium', 'egfr'],
+            'loinc': '24321-2',
+            'min_matches': 6,
+        },
+        'CBC with Differential': {
+            'keywords': ['wbc', 'rbc', 'hemoglobin', 'hematocrit', 'platelet',
+                         'neutrophil', 'lymphocyte', 'monocyte', 'eosinophil',
+                         'basophil', 'mcv', 'mch', 'mchc', 'rdw'],
+            'loinc': '57021-8',
+            'min_matches': 6,
+        },
+        'Lipid Panel': {
+            'keywords': ['cholesterol', 'hdl', 'ldl', 'triglyceride', 'vldl'],
+            'loinc': '24331-1',
+            'min_matches': 3,
+        },
+        'Hemoglobin A1C': {
+            'keywords': ['a1c', 'hba1c', 'hemoglobin a1c', 'glycated'],
+            'loinc': '4548-4',
+            'min_matches': 1,
+        },
+        'Thyroid Panel': {
+            'keywords': ['tsh', 'free t4', 'free t3', 't4', 't3', 'thyroid'],
+            'loinc': '24348-5',
+            'min_matches': 1,
+        },
+        'NMR LipoProfile': {
+            'keywords': ['ldl-p', 'hdl-p', 'small ldl', 'lp-ir', 'ldl size'],
+            'loinc': '63550-2',
+            'min_matches': 2,
+        },
+        'PSA': {
+            'keywords': ['psa', 'prostate specific antigen'],
+            'loinc': '2857-1',
+            'min_matches': 1,
+        },
+    }
+
     def __init__(self):
         self.logger = logger
         
@@ -409,6 +465,271 @@ class DiagnosticReportService:
             self.logger.error(f"Failed to create DiagnosticReport: {e}")
             return None
             
+    def synthesize_lab_panels(self, structured_data: Dict[str, Any],
+                              lab_observations: List[Dict[str, Any]],
+                              patient_id: Optional[str],
+                              explicit_reports: Optional[List[Dict[str, Any]]] = None
+                              ) -> List[Dict[str, Any]]:
+        """
+        Synthesize DiagnosticReport resources by grouping lab Observations (B1).
+
+        Many lab documents (e.g. multi-page panels) yield dozens of Observations
+        but zero DiagnosticReports because the AI doesn't emit explicit report
+        objects for tabular data. This groups the lab Observations into panels so
+        the summary can present coherent reports with ``result`` references.
+
+        Grouping strategy (applied independently per draw date so analytes from
+        different dates are never fused into one fabricated panel):
+            1. Primary: AI-provided ``panel_name`` on each LabResult.
+            2. Fallback: keyword signature matching (CMP, CBC, Lipid, etc.).
+            3. Remainder: a single "Miscellaneous Lab Results" report.
+
+        Observations already referenced by an explicit DiagnosticReport are
+        excluded so we never emit a duplicate panel for the same labs.
+
+        Args:
+            structured_data: The model_dump dict; reads ``lab_results``.
+            lab_observations: All Observation dicts already created this run; the
+                lab-category ones are matched to their source LabResult by name.
+            patient_id: Patient UUID for subject reference.
+            explicit_reports: DiagnosticReports already produced this run; their
+                ``result`` Observation references are excluded from synthesis.
+
+        Returns:
+            List of synthesized DiagnosticReport resource dicts (may be empty).
+        """
+        if not patient_id:
+            return []
+
+        lab_results = structured_data.get('lab_results') or []
+        if not lab_results:
+            return []
+
+        # Map normalized test name -> ordered list of Observation dicts.
+        name_to_obs = self._build_lab_observation_index(lab_observations)
+        if not name_to_obs:
+            self.logger.debug("No lab observations available for panel synthesis")
+            return []
+
+        # Observation ids already covered by explicit reports must not be
+        # re-synthesized (prevents duplicate panels for the same labs).
+        covered_obs_ids = self._collect_reported_observation_ids(explicit_reports)
+
+        # Build the pool of linkable lab entries. Each LabResult consumes a
+        # distinct Observation of the same name, so repeated analytes (e.g. two
+        # glucose draws) map 1:1 instead of collapsing onto the first one.
+        consumed: Dict[str, int] = defaultdict(int)
+        entries: List[Dict[str, Any]] = []
+        for lab in lab_results:
+            if not isinstance(lab, dict):
+                continue
+            test_name = (lab.get('test_name') or '').strip()
+            if not test_name:
+                continue
+            obs_list = name_to_obs.get(test_name.lower())
+            if not obs_list:
+                continue
+            idx = consumed[test_name.lower()]
+            if idx >= len(obs_list):
+                continue  # more lab rows than observations for this name
+            obs = obs_list[idx]
+            consumed[test_name.lower()] += 1
+            if not obs.get('id') or obs['id'] in covered_obs_ids:
+                continue
+            entries.append({
+                'test_name': test_name,
+                'obs_id': obs['id'],
+                'effective': obs.get('effectiveDateTime'),
+                'ai_panel': (lab.get('panel_name') or '').strip(),
+                'flagged': bool((lab.get('abnormal_flag') or '').strip()),
+            })
+
+        if not entries:
+            return []
+
+        # Partition entries by normalized draw date so each synthesized panel
+        # covers a single date. Undated labs share one bucket.
+        date_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for entry in entries:
+            date_key = "-".join(normalize_date_parts(entry['effective'])) or "__undated__"
+            date_groups[date_key].append(entry)
+
+        reports: List[Dict[str, Any]] = []
+        for group_entries in date_groups.values():
+            reports.extend(self._group_entries_into_reports(group_entries, patient_id))
+
+        self.logger.info(
+            "Synthesized %s lab-panel DiagnosticReport(s) from %s lab result(s)",
+            len(reports), len(lab_results),
+        )
+        return reports
+
+    def _group_entries_into_reports(self, entries: List[Dict[str, Any]],
+                                    patient_id: str) -> List[Dict[str, Any]]:
+        """Bucket a single date's lab entries into panel DiagnosticReports."""
+        panels: Dict[str, Dict[str, Any]] = {}
+
+        def _add_to_panel(panel_name: str, entry: Dict[str, Any]) -> None:
+            bucket = panels.setdefault(panel_name, {
+                'observation_ids': [], 'effective_dates': [], 'flagged': 0,
+            })
+            bucket['observation_ids'].append(entry['obs_id'])
+            if entry['effective']:
+                bucket['effective_dates'].append(entry['effective'])
+            if entry['flagged']:
+                bucket['flagged'] += 1
+
+        # Phase A (primary): honor AI-provided panel_name.
+        remaining = []
+        for entry in entries:
+            if entry['ai_panel']:
+                _add_to_panel(entry['ai_panel'], entry)
+            else:
+                remaining.append(entry)
+
+        # Phase B (fallback): collection-based signature detection. Check larger
+        # panels first (by min_matches desc) so e.g. CMP claims shared analytes
+        # before BMP. A panel is asserted only when enough members are present.
+        # Keyword membership uses word-boundary matching so "ast" no longer
+        # matches "fasting" nor "alt" matches "cobalt".
+        ordered_signatures = sorted(
+            self.LAB_PANEL_SIGNATURES.items(),
+            key=lambda kv: kv[1]['min_matches'], reverse=True,
+        )
+        for panel_name, sig in ordered_signatures:
+            if not remaining:
+                break
+            matched = [
+                e for e in remaining
+                if contains_any_keyword(e['test_name'], sig['keywords'])
+            ]
+            if len(matched) >= sig['min_matches']:
+                for entry in matched:
+                    _add_to_panel(panel_name, entry)
+                matched_ids = {id(e) for e in matched}
+                remaining = [e for e in remaining if id(e) not in matched_ids]
+
+        # Phase C: leftover labs become a single catch-all report.
+        for entry in remaining:
+            _add_to_panel('Miscellaneous Lab Results', entry)
+
+        reports: List[Dict[str, Any]] = []
+        for panel_name, bucket in panels.items():
+            if not bucket['observation_ids']:
+                continue
+            report = self._create_panel_report(panel_name, bucket, patient_id)
+            if report:
+                reports.append(report)
+        return reports
+
+    def _collect_reported_observation_ids(
+        self, explicit_reports: Optional[List[Dict[str, Any]]]
+    ) -> set:
+        """Return Observation ids already referenced by explicit DiagnosticReports."""
+        covered: set = set()
+        for report in explicit_reports or []:
+            if not isinstance(report, dict):
+                continue
+            for ref in report.get('result', []) or []:
+                reference = (ref or {}).get('reference', '')
+                if reference.startswith('Observation/'):
+                    covered.add(reference.split('/', 1)[1])
+        return covered
+
+    def _build_lab_observation_index(
+        self, observations: List[Dict[str, Any]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Index lab-category Observations by lowercased code text.
+
+        Returns a name -> ordered list of Observations so repeated analytes
+        (multiple draws of the same test) are all retained rather than collapsed
+        onto the first occurrence.
+        """
+        index: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for obs in observations or []:
+            if not isinstance(obs, dict) or obs.get('resourceType') != 'Observation':
+                continue
+            if not self._is_lab_observation(obs):
+                continue
+            name = ((obs.get('code') or {}).get('text') or '').strip().lower()
+            if name:
+                index[name].append(obs)
+        return index
+
+    def _is_lab_observation(self, observation: Dict[str, Any]) -> bool:
+        """Detect lab-category Observations via category coding or extraction tag."""
+        for cat in observation.get('category', []) or []:
+            for coding in (cat.get('coding') or []):
+                if (coding.get('code') or '').lower() == 'laboratory':
+                    return True
+        # Fallback: ObservationService tags structured lab observations.
+        meta_tags = (observation.get('meta') or {}).get('tag', []) or []
+        for tag in meta_tags:
+            display = (tag.get('display') or '').lower()
+            if 'lab_result' in display or 'laboratory' in display:
+                return True
+        return False
+
+    def _create_panel_report(self, panel_name: str, bucket: Dict[str, Any],
+                             patient_id: str) -> Optional[Dict[str, Any]]:
+        """Build a single DiagnosticReport for a resolved lab panel."""
+        loinc = None
+        for sig_name, sig in self.LAB_PANEL_SIGNATURES.items():
+            if sig_name == panel_name:
+                loinc = sig['loinc']
+                break
+
+        code_block: Dict[str, Any] = {"text": panel_name}
+        if loinc:
+            code_block["coding"] = [{
+                "system": "http://loinc.org",
+                "code": loinc,
+                "display": panel_name,
+            }]
+
+        report = {
+            "resourceType": "DiagnosticReport",
+            "id": str(uuid4()),
+            "status": "final",
+            "category": [{
+                "coding": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                    "code": "LAB",
+                    "display": "Laboratory",
+                }]
+            }],
+            "code": code_block,
+            "subject": {"reference": f"Patient/{patient_id}"},
+            "result": [
+                {"reference": f"Observation/{obs_id}"}
+                for obs_id in bucket['observation_ids']
+            ],
+            "meta": {
+                "versionId": "1",
+                "lastUpdated": datetime.now().isoformat(),
+                "source": "DiagnosticReportService-panel-synthesis",
+                "tag": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                    "code": "synthesized-panel",
+                    "display": "Synthesized lab panel",
+                }],
+            },
+        }
+
+        # Earliest effective date across members (panels share a draw date).
+        effective_dates = sorted(d for d in bucket['effective_dates'] if d)
+        if effective_dates:
+            report["effectiveDateTime"] = effective_dates[0]
+
+        result_count = len(bucket['observation_ids'])
+        flagged = bucket['flagged']
+        report["conclusion"] = (
+            f"{panel_name}: {result_count} result(s)"
+            + (f", {flagged} flagged" if flagged else "")
+        )
+
+        return report
+
     def _determine_category(self, procedure_type: str) -> Optional[Dict[str, str]]:
         """
         Determine the appropriate category for a diagnostic report.

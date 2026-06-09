@@ -663,6 +663,12 @@ class PatientSummaryPDFView(LoginRequiredMixin, View):
             report_data = patient.get_comprehensive_report()
             report_data.setdefault('report_metadata', {})['report_type'] = 'patient_summary'
             report_data['report_metadata']['title'] = 'Patient Summary Report'
+            # Unlinked/undated labs & vitals are excluded by default; the user
+            # can opt in via the "Include unlinked results" checkbox, which adds
+            # ?include_unlinked=1 to the download URL.
+            report_data['include_unlinked'] = (
+                request.GET.get('include_unlinked', '').lower() in ('1', 'true', 'on', 'yes')
+            )
 
             generator = PDFGenerator(template='reports/pdf/patient_summary.html')
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
@@ -694,6 +700,22 @@ class PatientUploadDocumentView(LoginRequiredMixin, View):
     http_method_names = ['post']
 
     def post(self, request, pk):
+        # #region agent log
+        from apps.core.utils import agent_debug_log
+        agent_debug_log(
+            'apps/patients/views.py:PatientUploadDocumentView.post',
+            'Inline upload view reached (CSRF passed)',
+            {
+                'path': request.path,
+                'has_csrf_post': 'csrfmiddlewaretoken' in request.POST,
+                'post_token_len': len(request.POST.get('csrfmiddlewaretoken', '')),
+                'has_csrf_header': bool(request.META.get('HTTP_X_CSRFTOKEN')),
+                'hx_request': request.headers.get('HX-Request'),
+                'files_keys': list(request.FILES.keys()),
+            },
+            hypothesis_id='H1,H2,H5',
+        )
+        # #endregion
         patient = get_object_or_404(Patient, pk=pk)
 
         form = InlineDocumentUploadForm(request.POST, request.FILES)

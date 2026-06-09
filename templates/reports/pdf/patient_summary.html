@@ -1,521 +1,566 @@
 {% extends "reports/pdf/base.html" %}
+{% comment %}
+Print-optimized patient summary for handing to a physician.
+- No cover page; jumps straight into clinical content.
+- Static HTML only (no <details>/<summary> -- WeasyPrint renders them blank).
+- Tables for structured data; page-break-inside:avoid on logical groups.
+- Labs grouped by visit > panel > result with H/L flags.
+{% endcomment %}
 
 {% block custom_styles %}
 <style>
-    /* Override base template page margins */
     @page {
-        margin: 0.75in;
+        size: letter portrait;
+        margin: 0.6in 0.6in 0.85in 0.6in;
     }
-    
-    /* Reset and Base */
-    * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
+    /* Patient identity banner repeats at the top of every page. */
+    @page {
+        @top-center {
+            content: "{{ data.patient_info.name|default:'Patient' }}  |  DOB: {{ data.patient_info.date_of_birth|date:'m/d/Y' }}";
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-size: 7.5pt;
+            color: #6b7280;
+            vertical-align: bottom;
+            padding-bottom: 4pt;
+        }
     }
-    
+    @page :first {
+        @top-center { content: ""; }
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-        background: #f5f5f5;
-        color: #333;
-        line-height: 1.4;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 9pt;
+        color: #1f2937;
+        line-height: 1.35;
     }
-    
-    /* Dashboard Container */
-    .dashboard {
-        max-width: 100%;
-        background: white;
-        padding: 30px;
+
+    /* Document header (first page only) */
+    .doc-header {
+        border-bottom: 2pt solid #1e40af;
+        padding-bottom: 8pt;
+        margin-bottom: 14pt;
     }
-    
-    h1 {
-        color: #2c3e50;
-        margin-bottom: 10px;
-        font-size: 28px;
+    .doc-header h1 {
+        font-size: 17pt;
+        font-weight: 700;
+        color: #1e40af;
+        margin-bottom: 4pt;
+    }
+    .patient-identity {
+        font-size: 10pt;
+        color: #111827;
         font-weight: 600;
     }
-    
-    .generated-date {
-        font-size: 11px;
-        color: #666;
-        margin-bottom: 20px;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #e0e0e0;
-    }
-    
-    /* Section Styling */
-    .section {
-        margin-bottom: 25px;
-        padding: 20px;
-        background: #fafafa;
-        border-radius: 6px;
-        border-left: 4px solid #4a90e2;
-        page-break-inside: avoid;
-    }
-    
+    .patient-identity .sep { color: #9ca3af; font-weight: 400; padding: 0 4pt; }
+    .doc-meta { font-size: 8pt; color: #6b7280; margin-top: 3pt; }
+
+    /* Section */
+    .section { margin-bottom: 14pt; page-break-inside: auto; }
+    /* Numbered sections flow one after another as a continuous, alternating-
+       shade ledger. Equal padding keeps shaded and plain bands aligned, and
+       margin:0 lets adjacent bands sit flush so the stripes read clearly. */
+    .section.numbered { padding: 8pt 10pt; margin-bottom: 0; }
+    .section.numbered.shaded { background: #eef0f3; }
     .section-title {
-        font-size: 18px;
-        font-weight: 600;
-        color: #333;
-        margin-bottom: 15px;
-        display: flex;
-        align-items: center;
+        font-size: 11.5pt;
+        font-weight: 700;
+        color: #1e40af;
+        text-transform: uppercase;
+        letter-spacing: 0.4pt;
+        border-bottom: 1pt solid #cbd5e1;
+        padding-bottom: 3pt;
+        margin-bottom: 6pt;
+        page-break-after: avoid;
     }
-    
-    .section-number {
-        background: #4a90e2;
-        color: white;
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-right: 10px;
-        font-size: 14px;
-        font-weight: 600;
-        flex-shrink: 0;
+    /* Small, non-uppercased qualifier shown next to a section title. */
+    .section-note {
+        font-size: 8pt;
+        font-weight: 400;
+        font-style: italic;
+        color: #6b7280;
+        text-transform: none;
+        letter-spacing: 0;
     }
-    
-    /* Field Grid for Demographics */
-    .field-list {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 12px;
-        margin-top: 10px;
+    .subsection-title {
+        font-size: 9.5pt;
+        font-weight: 700;
+        color: #374151;
+        margin: 8pt 0 3pt 0;
+        page-break-after: avoid;
     }
-    
-    .field {
-        padding: 10px 12px;
-        background: white;
-        border-radius: 4px;
-        border: 1px solid #e0e0e0;
-        font-size: 13px;
-        color: #555;
-    }
-    
-    .field strong {
-        color: #333;
-        font-weight: 600;
-    }
-    
-    .comorbidities-list {
-        margin-top: 12px;
-        padding: 10px 12px;
-        background: white;
-        border-radius: 4px;
-        border: 1px solid #e0e0e0;
-        font-size: 13px;
-        color: #555;
-    }
-    
-    /* Table Styling */
-    .table-container {
-        background: white;
-        border-radius: 4px;
-        border: 1px solid #e0e0e0;
-        padding: 10px;
-        margin-top: 10px;
-    }
-    
-    .table-row {
-        padding: 10px;
-        border-bottom: 1px solid #f0f0f0;
-        font-size: 13px;
-        color: #666;
-        line-height: 1.6;
-    }
-    
-    .table-row:last-child {
-        border-bottom: none;
-    }
-    
-    .table-row strong {
-        color: #333;
-        font-weight: 600;
-    }
-    
-    /* Weight Chart */
-    .chart-placeholder {
-        height: 200px;
-        background: white;
-        border-radius: 4px;
-        border: 2px dashed #d0d0d0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #999;
-        font-size: 14px;
-        margin-top: 10px;
-    }
-    
-    .weight-table {
+
+    /* Demographics strip */
+    .demographics {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 10px;
-        background: white;
+        margin-bottom: 4pt;
     }
-    
-    .weight-table th {
+    .demographics td {
+        font-size: 9pt;
+        padding: 3pt 6pt;
+        vertical-align: top;
+        width: 50%;
+    }
+    .demographics .lbl { color: #6b7280; font-weight: 600; }
+
+    /* Data tables */
+    table.data {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 4pt;
+        font-size: 8.5pt;
+        background: #ffffff;
+    }
+    table.data thead { display: table-header-group; }
+    table.data th {
         background: #f1f5f9;
-        color: #1e40af;
-        padding: 8px;
+        color: #1e3a8a;
         text-align: left;
-        border: 1px solid #e0e0e0;
-        font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 8pt;
+        padding: 4pt 6pt;
+        border-bottom: 1pt solid #cbd5e1;
     }
-    
-    .weight-table td {
-        padding: 8px;
-        border: 1px solid #e0e0e0;
-        font-size: 12px;
-        color: #555;
+    table.data td {
+        padding: 3.5pt 6pt;
+        border-bottom: 0.5pt solid #e5e7eb;
+        vertical-align: top;
     }
-    
-    .weight-table tr:nth-child(even) {
-        background: #f8fafc;
+    table.data tr { page-break-inside: avoid; }
+    table.data tr:nth-child(even) td { background: #fafbfc; }
+    td.num { text-align: right; white-space: nowrap; }
+    td.nowrap, th.nowrap { white-space: nowrap; }
+
+    /* Flags */
+    .flag { font-weight: 700; font-size: 8.5pt; }
+    .flag-H { color: #b91c1c; }
+    .flag-L { color: #1d4ed8; }
+    .flag-A { color: #b45309; }
+
+    /* Visit / panel blocks for labs.
+       NOTE: do NOT use page-break-inside:avoid here -- large visits (e.g. a
+       31-result panel) are taller than a page, so "avoid" strands a nearly
+       empty page and pushes the whole block forward. Instead we let the block
+       flow across pages and keep the header/panel-name glued to their rows. */
+    .visit-block {
+        margin-bottom: 8pt;
     }
-    
-    /* Empty State */
+    .visit-header {
+        background: #eef2ff;
+        border-left: 3pt solid #1e40af;
+        padding: 4pt 8pt;
+        font-size: 9pt;
+        font-weight: 700;
+        color: #1e3a8a;
+        margin-bottom: 3pt;
+        page-break-after: avoid;
+    }
+    .visit-header .vh-meta { font-weight: 400; color: #4b5563; font-size: 8pt; }
+    .panel-name {
+        font-size: 8.5pt;
+        font-weight: 700;
+        color: #374151;
+        margin: 4pt 0 2pt 0;
+        page-break-after: avoid;
+    }
+    .panel-name .flagged { color: #b91c1c; font-weight: 700; }
+
+    /* Badges */
+    .badge {
+        display: inline-block;
+        padding: 1pt 5pt;
+        border-radius: 3pt;
+        font-size: 7.5pt;
+        font-weight: 700;
+    }
+    .badge.inpatient { background: #fee2e2; color: #991b1b; }
+    .badge.emergency { background: #ffedd5; color: #9a3412; }
+    .badge.ambulatory { background: #dbeafe; color: #1e40af; }
+    .status-active { color: #047857; font-weight: 700; }
+    .status-inactive { color: #6b7280; }
+
     .empty-state {
-        font-size: 13px;
-        color: #888;
+        font-size: 8.5pt;
+        color: #9ca3af;
         font-style: italic;
-        padding: 15px;
-        text-align: center;
-        background: white;
-        border-radius: 4px;
-        margin-top: 10px;
+        padding: 4pt 0;
     }
-    
-    .note {
-        font-size: 11px;
-        color: #888;
-        font-style: italic;
-        margin-top: 8px;
-    }
-    
-    /* Footer */
-    .report-footer {
-        margin-top: 40px;
-        padding-top: 20px;
-        border-top: 2px solid #ddd;
-        font-size: 9px;
-        color: #666;
+    .note { font-size: 7.5pt; color: #9ca3af; font-style: italic; margin-top: 3pt; }
+
+    .disclaimer {
+        margin-top: 16pt;
+        padding-top: 8pt;
+        border-top: 1pt solid #d1d5db;
+        font-size: 7pt;
+        color: #6b7280;
         line-height: 1.4;
     }
 </style>
 {% endblock %}
 
-{% block report_header %}
-{# Override base header #}
-{% endblock %}
-
-{% block report_footer %}
-{# Override base footer #}
-{% endblock %}
+{% block report_header %}{% endblock %}
+{% block report_footer %}{% endblock %}
 
 {% block content %}
-<div class="dashboard">
-    <!-- HEADER -->
-    <h1>{{ title|default:"Patient Summary Report" }}</h1>
-    <div class="generated-date">Generated: {{ generated_at|date:"m/d/Y" }}</div>
-    
-    <!-- SECTION 1: Demographics & Context -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">1</span>
-            Demographics & Context
-        </div>
-        <div class="field-list">
-            <div class="field"><strong>Age:</strong> {{ data.patient_info.age|default:"N/A" }}</div>
-            <div class="field"><strong>Gender:</strong> {{ data.patient_info.gender|default:"N/A" }}</div>
-            <div class="field">
-                <strong>Primary Diagnosis:</strong><br>
-                {% if data.patient_info.primary_diagnosis %}
-                    {{ data.patient_info.primary_diagnosis.display_name|default:"N/A" }}
-                {% else %}
-                    Not specified
-                {% endif %}
-            </div>
-            <div class="field">
-                <strong>ICD-10:</strong>
-                {% if data.patient_info.primary_diagnosis and data.patient_info.primary_diagnosis.codes.0.code %}
-                    {{ data.patient_info.primary_diagnosis.codes.0.code }}
-                {% else %}
-                    N/A
-                {% endif %}
-            </div>
-            <div class="field">
-                <strong>Date of Initial Diagnosis:</strong>
-                {% if data.patient_info.initial_diagnosis_date %}
-                    {{ data.patient_info.initial_diagnosis_date|date:"m/d/Y" }}{% if data.patient_info.primary_diagnosis and data.patient_info.primary_diagnosis.onset_date_precision != 'day' %}*{% endif %}
-                {% else %}
-                    N/A
-                {% endif %}
-            </div>
-            <div class="field"><strong>Current Living Setting:</strong> {{ data.patient_info.living_setting|default:"N/A" }}</div>
-        </div>
-        
-        {% if data.patient_info.comorbidities %}
-        <div class="comorbidities-list">
-            <strong>Comorbidities:</strong>
-            {% for condition in data.patient_info.comorbidities %}
-                {{ condition.display_name }}{% if not forloop.last %}; {% endif %}
-            {% endfor %}
-        </div>
-        {% endif %}
+{% with ci=data.clinical_summary pi=data.patient_info %}
+<!-- DOCUMENT HEADER (first page) -->
+<div class="doc-header">
+    <h1>Patient Summary</h1>
+    <div class="patient-identity">
+        {{ pi.name|default:"Unknown Patient" }}
+        <span class="sep">|</span> DOB: {{ pi.date_of_birth|date:"m/d/Y"|default:"N/A" }}
+        <span class="sep">|</span> Age: {{ pi.age|default:"N/A" }}
+        <span class="sep">|</span> Sex: {{ pi.gender|default:"N/A" }}
     </div>
-    
-    <!-- SECTION 2: List of Diagnoses with Clinical Onset Dates -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">2</span>
-            List of Diagnoses with Clinical Onset Dates
-        </div>
-        
-        {% if data.clinical_summary.conditions %}
-        <div class="table-container">
-            {% for condition in data.clinical_summary.conditions %}
-            <div class="table-row">
-                <strong>{{ condition.display_name }}</strong> | 
-                ICD-10: {{ condition.codes.0.code|default:"Not coded" }} | 
-                Onset: {% if condition.onset_date %}{{ condition.onset_date|date:"m/d/Y" }}{% if condition.onset_date_precision != 'day' %}*{% endif %}{% else %}Not recorded{% endif %}
-                {% if condition.severity %} | Severity: {{ condition.severity }}{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        <div class="note">*Asterisk indicates approximate date (exact day unknown)</div>
-        {% else %}
-        <div class="empty-state">No diagnoses recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- SECTION 3: Weight Tracking -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">3</span>
-            Weight Tracking
-        </div>
-        
-        {% if data.clinical_summary.weight_timeline.has_data %}
-        <table class="weight-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Weight ({{ data.clinical_summary.weight_timeline.unit }})</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for point in data.clinical_summary.weight_timeline.data_points %}
-                <tr>
-                    <td>{{ point.date|date:"m/d/Y" }}</td>
-                    <td>{{ point.weight }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="empty-state">No weight data recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- SECTION 4: Hospitalizations -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">4</span>
-            Hospitalizations
-        </div>
-        
-        {% if data.clinical_summary.encounters %}
-        <div class="table-container">
-            {% for encounter in data.clinical_summary.encounters %}
-            <div class="table-row">
-                <strong>
-                    {% if encounter.period.start %}{{ encounter.period.start|date:"m/d/Y" }}{% else %}Unknown{% endif %}
-                    {% if encounter.period.end %} - {{ encounter.period.end|date:"m/d/Y" }}{% else %} - Ongoing{% endif %}
-                </strong> | 
-                Reason: {% if encounter.reason %}{% for r in encounter.reason|slice:":1" %}{{ r.display|default:r.code }}{% endfor %}{% else %}Not specified{% endif %} | 
-                Notes: {{ encounter.class|default:"Visit" }}
-                {% if encounter.location %} at {% for loc in encounter.location|slice:":1" %}{{ loc }}{% endfor %}{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">No hospitalizations recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- SECTION 5: Labs -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">5</span>
-            Labs
-        </div>
-        
-        {% if data.clinical_summary.observations %}
-        <div class="table-container">
-            {% for obs in data.clinical_summary.observations %}
-            <div class="table-row">
-                <strong>{{ obs.display_name }}</strong> | 
-                Measurement: {{ obs.value|default:"—" }}{% if obs.unit %} {{ obs.unit }}{% endif %} | 
-                Date: {{ obs.effective_date|date:"m/d/Y"|default:"Not recorded" }}
-                {% if obs.interpretation %} | {{ obs.interpretation|join:", " }}{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">No lab results recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- SECTION 6: Medications -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">6</span>
-            Medications
-        </div>
-        
-        {% if data.clinical_summary.medications %}
-        <div class="table-container">
-            {% for med in data.clinical_summary.medications %}
-            <div class="table-row">
-                <strong>{{ med.display_name }}</strong> | 
-                Dose: {% if med.dosage.0.text %}{{ med.dosage.0.text }}{% elif med.dosage.0.dose %}{{ med.dosage.0.dose }}{% else %}Not specified{% endif %} | 
-                Started: {{ med.effective_period.start|date:"m/d/Y"|default:"Unknown" }}
-                {% if med.status %} | Status: {{ med.status }}{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">No medications recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- SECTION 7: Recent Procedures -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">7</span>
-            Procedures
-        </div>
-        
-        {% if data.clinical_summary.procedures %}
-        <div class="table-container">
-            {% for proc in data.clinical_summary.procedures %}
-            <div class="table-row">
-                <strong>{{ proc.display_name }}</strong> | 
-                Date: {{ proc.performed_date|date:"m/d/Y"|default:"Not recorded" }} | 
-                Notes: {{ proc.outcome|default:"Completed" }}
-                {% if proc.status %} ({{ proc.status }}){% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">No procedures recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- SECTION 8: Allergies -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">8</span>
-            Allergies
-        </div>
-        
-        {% if data.clinical_summary.allergies %}
-        <div class="table-container">
-            {% for allergy in data.clinical_summary.allergies %}
-            <div class="table-row">
-                <strong>{{ allergy.display_name }}</strong> | 
-                Severity: {{ allergy.severity|default:"Not specified" }} | 
-                Status: {{ allergy.status|default:"Unknown" }}
-                {% if allergy.reactions %} | Reactions: {{ allergy.reactions|join:", " }}{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">No allergies recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- SECTION 9: Care Plans -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">9</span>
-            Care Plans
-        </div>
-        
-        {% if data.clinical_summary.care_plans %}
-        <div class="table-container">
-            {% for plan in data.clinical_summary.care_plans %}
-            <div class="table-row">
-                <strong>{{ plan.description|default:"No description" }}</strong> | 
-                Status: {{ plan.status|default:"Unknown" }}
-                {% if plan.goals %} | Goals: {{ plan.goals|join:"; " }}{% endif %}
-                {% if plan.period.start %} | From: {{ plan.period.start|date:"m/d/Y" }}{% endif %}
-                {% if plan.period.end %} to {{ plan.period.end|date:"m/d/Y" }}{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">No care plans recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- SECTION 10: Service Requests -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">10</span>
-            Service Requests
-        </div>
-        
-        {% if data.clinical_summary.service_requests %}
-        <div class="table-container">
-            {% for req in data.clinical_summary.service_requests %}
-            <div class="table-row">
-                <strong>{{ req.display_name }}</strong> | 
-                Priority: {{ req.priority|default:"Routine" }} | 
-                Status: {{ req.status|default:"Unknown" }}
-                {% if req.authored_on %} | Date: {{ req.authored_on|date:"m/d/Y" }}{% endif %}
-                {% if req.reason %} | Reason: {{ req.reason|join:", " }}{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">No service requests recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- SECTION 11: Diagnostic Reports -->
-    <div class="section">
-        <div class="section-title">
-            <span class="section-number">11</span>
-            Diagnostic Reports
-        </div>
-        
-        {% if data.clinical_summary.diagnostic_reports %}
-        <div class="table-container">
-            {% for diag in data.clinical_summary.diagnostic_reports %}
-            <div class="table-row">
-                <strong>{{ diag.display_name }}</strong> | 
-                Status: {{ diag.status|default:"Unknown" }}
-                {% if diag.effective_date %} | Date: {{ diag.effective_date|date:"m/d/Y" }}{% endif %}
-                {% if diag.conclusion %} | Conclusion: {{ diag.conclusion }}{% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">No diagnostic reports recorded</div>
-        {% endif %}
-    </div>
-    
-    <!-- FOOTER -->
-    <div class="report-footer">
-        <p><strong>Disclaimer:</strong> This report is generated from structured clinical data for informational purposes only. 
-        It contains PHI and should be handled in accordance with HIPAA regulations. 
-        All data is proprietary to the healthcare institution and is intended for authorized personnel only.</p>
-        <p style="margin-top: 10px;"><em>Generated: {{ generated_at|date:"F d, Y g:i A" }}</em></p>
+    <div class="doc-meta">
+        Generated {{ generated_at|date:"F j, Y" }} at {{ generated_at|date:"g:i A" }}
+        &nbsp;&middot;&nbsp; Source: structured clinical record
     </div>
 </div>
+
+<!-- CLINICAL CONTEXT -->
+<div class="section">
+    <div class="section-title">Clinical Context</div>
+    <table class="demographics">
+        <tr>
+            <td>
+                <span class="lbl">Primary Diagnosis:</span>
+                {% if pi.primary_diagnosis %}{{ pi.primary_diagnosis.display_name|default:"Not specified" }}{% else %}Not specified{% endif %}
+                {% if pi.primary_diagnosis.codes.0.code %}({{ pi.primary_diagnosis.codes.0.code }}){% endif %}
+            </td>
+            <td>
+                <span class="lbl">Date of Initial Diagnosis:</span>
+                {% if pi.initial_diagnosis_date %}{{ pi.initial_diagnosis_date|date:"m/d/Y" }}{% if pi.primary_diagnosis.onset_date_precision and pi.primary_diagnosis.onset_date_precision != 'day' %}*{% endif %}{% else %}Not recorded{% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td><span class="lbl">Living Setting:</span> {{ pi.living_setting|default:"Not specified" }}</td>
+            <td></td>
+        </tr>
+    </table>
+</div>
+
+<!-- 1. ACTIVE PROBLEMS -->
+<div class="section numbered">
+    <div class="section-title">1. Problem List</div>
+    {% if ci.conditions %}
+    <table class="data">
+        <thead>
+            <tr><th>Diagnosis</th><th class="nowrap">ICD-10</th><th class="nowrap">Onset</th><th class="nowrap">Status</th></tr>
+        </thead>
+        <tbody>
+            {% for c in ci.conditions %}
+            <tr>
+                <td>{{ c.display_name }}{% if c.severity %} <span class="note">({{ c.severity }})</span>{% endif %}</td>
+                <td class="nowrap">{{ c.codes.0.code|default:"—" }}</td>
+                <td class="nowrap">{% if c.onset_date %}{{ c.onset_date|date:"m/d/Y" }}{% if c.onset_date_precision and c.onset_date_precision != 'day' %}*{% endif %}{% else %}Not recorded{% endif %}</td>
+                <td class="nowrap">{% if c.status == 'active' %}<span class="status-active">Active</span>{% else %}<span class="status-inactive">{{ c.status|default:"Unknown"|capfirst }}</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="note">*Approximate date (exact day unknown)</div>
+    {% else %}
+    <div class="empty-state">No diagnoses recorded.</div>
+    {% endif %}
+</div>
+
+<!-- 2. MEDICATIONS -->
+<div class="section numbered shaded">
+    <div class="section-title">2. Medications</div>
+    {% with meds=ci.medications_deduped %}
+    {% if meds.active %}
+    <div class="subsection-title">Active Medications</div>
+    <table class="data">
+        <thead>
+            <tr><th>Medication</th><th>Dose &amp; Instructions</th><th class="nowrap">Route</th><th class="nowrap">Started</th></tr>
+        </thead>
+        <tbody>
+            {% for m in meds.active %}
+            <tr>
+                <td><strong>{{ m.display_name }}</strong></td>
+                <td>{% for d in m.dosage %}{% if d.text %}{{ d.text }}{% elif d.dose %}{{ d.dose }}{% endif %}{% if not forloop.last and d.text or d.dose %}<br>{% endif %}{% empty %}{{ m.dosage.0.dose|default:"—" }}{% endfor %}{% if not m.dosage %}—{% endif %}</td>
+                <td class="nowrap">{{ m.dosage.0.route|default:"—" }}</td>
+                <td class="nowrap">{{ m.effective_period.start|date:"m/d/Y"|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% if meds.historical %}
+    <div class="subsection-title">Historical / Inactive Medications</div>
+    <table class="data">
+        <thead>
+            <tr><th>Medication</th><th>Dose &amp; Instructions</th><th class="nowrap">Route</th><th class="nowrap">Status</th></tr>
+        </thead>
+        <tbody>
+            {% for m in meds.historical %}
+            <tr>
+                <td>{{ m.display_name }}</td>
+                <td>{% for d in m.dosage %}{% if d.text %}{{ d.text }}{% elif d.dose %}{{ d.dose }}{% endif %}{% if not forloop.last and d.text or d.dose %}<br>{% endif %}{% empty %}{{ m.dosage.0.dose|default:"—" }}{% endfor %}{% if not m.dosage %}—{% endif %}</td>
+                <td class="nowrap">{{ m.dosage.0.route|default:"—" }}</td>
+                <td class="nowrap">{{ m.status|default:"Unknown"|capfirst }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    {% if not meds.active and not meds.historical %}
+    <div class="empty-state">No medications recorded.</div>
+    {% endif %}
+    {% endwith %}
+</div>
+
+<!-- 3. ALLERGIES -->
+<div class="section numbered">
+    <div class="section-title">3. Allergies</div>
+    {% if ci.allergies %}
+    <table class="data">
+        <thead>
+            <tr><th>Allergen</th><th class="nowrap">Severity</th><th class="nowrap">Status</th><th>Reactions</th></tr>
+        </thead>
+        <tbody>
+            {% for a in ci.allergies %}
+            <tr>
+                <td><strong>{{ a.display_name }}</strong></td>
+                <td class="nowrap">{{ a.severity|default:"—" }}</td>
+                <td class="nowrap">{{ a.status|default:"—"|capfirst }}</td>
+                <td>{% if a.reactions %}{{ a.reactions|join:", " }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No known allergies recorded.</div>
+    {% endif %}
+</div>
+
+<!-- 4. ENCOUNTERS / VISITS -->
+<div class="section numbered shaded">
+    <div class="section-title">4. Encounters &amp; Visits</div>
+    {% if ci.encounters %}
+    <table class="data">
+        <thead>
+            <tr><th class="nowrap">Date</th><th class="nowrap">Type</th><th>Reason</th><th>Location</th></tr>
+        </thead>
+        <tbody>
+            {% for e in ci.encounters %}
+            <tr>
+                <td class="nowrap">{% if e.period.start %}{{ e.period.start|date:"m/d/Y" }}{% else %}Unknown{% endif %}</td>
+                <td class="nowrap"><span class="badge {{ e.type_code|default:'ambulatory' }}">{{ e.type_label|default:"Visit" }}</span></td>
+                <td>{% if e.reason %}{% for r in e.reason|slice:":2" %}{{ r.display|default:r.code }}{% if not forloop.last %}; {% endif %}{% endfor %}{% else %}—{% endif %}</td>
+                <td>{% if e.location %}{% for loc in e.location|slice:":1" %}{{ loc }}{% endfor %}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No encounters recorded.</div>
+    {% endif %}
+</div>
+
+<!-- 5. LABS & RESULTS (by visit) -->
+<div class="section numbered">
+    <div class="section-title">5. Labs &amp; Results <span class="section-note">— Data organized by visit</span></div>
+    {% with lbv=ci.labs_by_visit %}
+    {% if lbv.has_labs and not lbv.has_linked_labs and not data.include_unlinked %}
+        <div class="empty-state">No visit-linked laboratory results. Unlinked results are hidden &mdash; enable &ldquo;Include unlinked results&rdquo; before export to view them.</div>
+    {% elif lbv.has_labs %}
+        {% for visit in lbv.visits %}
+        {% if data.include_unlinked or not visit.is_unlinked %}
+        <div class="visit-block">
+            <div class="visit-header">
+                {{ visit.type_label }}
+                <span class="vh-meta">
+                    {% if visit.date %}&middot; {{ visit.date|date:"m/d/Y" }}{% endif %}
+                    {% if visit.location %}&middot; {% for loc in visit.location|slice:":1" %}{{ loc }}{% endfor %}{% endif %}
+                    &middot; {{ visit.total_results }} result{{ visit.total_results|pluralize }}
+                </span>
+            </div>
+
+            {% for panel in visit.panels %}
+            <div class="panel-name">
+                {{ panel.display_name }} ({{ panel.observation_count }})
+            </div>
+            <table class="data">
+                <thead>
+                    <tr><th>Test</th><th class="num">Result</th><th class="nowrap">Units</th></tr>
+                </thead>
+                <tbody>
+                    {% for obs in panel.observations %}
+                    <tr>
+                        <td>{{ obs.display_name }}</td>
+                        <td class="num">{{ obs.value|default:"—" }}</td>
+                        <td class="nowrap">{{ obs.unit|default:"" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endfor %}
+
+            {% if visit.other_results %}
+            <div class="panel-name">Other Results</div>
+            <table class="data">
+                <thead>
+                    <tr><th>Test</th><th class="num">Result</th><th class="nowrap">Units</th><th class="nowrap">Date</th></tr>
+                </thead>
+                <tbody>
+                    {% for obs in visit.other_results %}
+                    <tr>
+                        <td>{{ obs.display_name }}</td>
+                        <td class="num">{{ obs.value|default:"—" }}</td>
+                        <td class="nowrap">{{ obs.unit|default:"" }}</td>
+                        <td class="nowrap">{{ obs.effective_date|date:"m/d/Y"|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">No laboratory results recorded.</div>
+    {% endif %}
+    {% endwith %}
+</div>
+
+<!-- 6. VITALS & MEASUREMENTS (by visit, like Labs) -->
+<div class="section numbered shaded">
+    <div class="section-title">6. Vitals &amp; Measurements <span class="section-note">— Data organized by visit</span></div>
+    {% with vbv=ci.vitals_by_visit %}
+    {% if vbv.has_vitals %}
+        {% for visit in vbv.visits %}
+        {% if data.include_unlinked or not visit.is_unlinked %}
+        <div class="visit-block">
+            <div class="visit-header">
+                {{ visit.type_label }}
+                <span class="vh-meta">
+                    {% if visit.date %}&middot; {{ visit.date|date:"m/d/Y" }}{% endif %}
+                    {% if visit.location %}&middot; {% for loc in visit.location|slice:":1" %}{{ loc }}{% endfor %}{% endif %}
+                    &middot; {{ visit.total }} measurement{{ visit.total|pluralize }}
+                </span>
+            </div>
+            <table class="data">
+                <thead>
+                    <tr><th>Measurement</th><th class="num">Value</th><th class="nowrap">Units</th></tr>
+                </thead>
+                <tbody>
+                    {% for obs in visit.vitals %}
+                    <tr>
+                        <td>{{ obs.display_name }}</td>
+                        <td class="num">{{ obs.value|default:"—" }}</td>
+                        <td class="nowrap">{{ obs.unit|default:"" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% endfor %}
+    {% endif %}
+
+    {# Standalone weight trend only when there is more than one data point. #}
+    {% if ci.weight_timeline.data_points|length > 1 %}
+    <div class="subsection-title">Weight Trend</div>
+    <table class="data">
+        <thead><tr><th class="nowrap">Date</th><th class="num">Weight ({{ ci.weight_timeline.unit }})</th></tr></thead>
+        <tbody>
+            {% for point in ci.weight_timeline.data_points %}
+            <tr><td class="nowrap">{{ point.date|date:"m/d/Y" }}</td><td class="num">{{ point.weight }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if not vbv.has_vitals and ci.weight_timeline.data_points|length <= 1 %}
+    <div class="empty-state">No vitals or measurements recorded.</div>
+    {% endif %}
+    {% endwith %}
+</div>
+
+<!-- 7. PROCEDURES -->
+<div class="section numbered">
+    <div class="section-title">7. Procedures</div>
+    {% if ci.procedures %}
+    <table class="data">
+        <thead>
+            <tr><th>Procedure</th><th class="nowrap">Date</th><th class="nowrap">Status</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+            {% for p in ci.procedures %}
+            <tr>
+                <td>{{ p.display_name }}</td>
+                <td class="nowrap">{% if p.performed_date %}{{ p.performed_date|date:"m/d/Y" }}{% elif p.performed_period.start %}{{ p.performed_period.start|date:"m/d/Y" }}{% else %}Not recorded{% endif %}</td>
+                <td class="nowrap">{{ p.status|default:"—"|capfirst }}</td>
+                <td>{% if p.outcome %}<strong>{{ p.outcome }}</strong>{% if p.notes %}<br>{% endif %}{% endif %}{% if p.notes %}{{ p.notes|join:" " }}{% endif %}{% if not p.outcome and not p.notes %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No procedures recorded.</div>
+    {% endif %}
+</div>
+
+<!-- 8. IMMUNIZATIONS -->
+<div class="section numbered shaded">
+    <div class="section-title">8. Immunizations</div>
+    {% if ci.immunizations %}
+    <table class="data">
+        <thead>
+            <tr><th>Vaccine</th><th class="nowrap">Date</th><th class="nowrap">Dose</th><th>Site</th><th class="nowrap">Status</th></tr>
+        </thead>
+        <tbody>
+            {% for imm in ci.immunizations %}
+            <tr>
+                <td>{{ imm.display_name }}</td>
+                <td class="nowrap">{% if imm.date %}{{ imm.date|date:"m/d/Y" }}{% else %}—{% endif %}</td>
+                <td class="nowrap">{{ imm.dose_number|default:"—" }}</td>
+                <td>{{ imm.site|default:"—" }}</td>
+                <td class="nowrap">{{ imm.status|default:"—"|capfirst }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No immunizations recorded.</div>
+    {% endif %}
+</div>
+
+<!-- 9. CARE PLANS -->
+<div class="section numbered">
+    <div class="section-title">9. Care Plans</div>
+    {% if ci.care_plans %}
+    <table class="data">
+        <thead>
+            <tr><th>Plan</th><th class="nowrap">Status</th><th>Goals</th><th class="nowrap">Period</th></tr>
+        </thead>
+        <tbody>
+            {% for plan in ci.care_plans %}
+            <tr>
+                <td>{{ plan.description|default:"No description" }}</td>
+                <td class="nowrap">{{ plan.status|default:"—"|capfirst }}</td>
+                <td>{% if plan.goals %}{{ plan.goals|join:"; " }}{% else %}—{% endif %}</td>
+                <td class="nowrap">{% if plan.period.start %}{{ plan.period.start|date:"m/d/Y" }}{% if plan.period.end %}–{{ plan.period.end|date:"m/d/Y" }}{% endif %}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No care plans recorded.</div>
+    {% endif %}
+</div>
+
+<!-- DISCLAIMER -->
+<div class="disclaimer">
+    <strong>Disclaimer:</strong> This report is generated from structured clinical data extracted from source documents
+    and is provided for informational purposes only. It may not reflect the complete medical record. It contains Protected
+    Health Information (PHI) and must be handled in accordance with HIPAA regulations.
+    <br>Generated {{ generated_at|date:"F j, Y" }} at {{ generated_at|date:"g:i A" }}.
+</div>
+{% endwith %}
 {% endblock %}

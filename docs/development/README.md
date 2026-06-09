@@ -3655,3 +3655,33 @@ text = service.extract_text_from_result(result)
 ---
 
 *Updated: 2026-05-06 20:44:02 | Extraction pipeline extensions, family history service, bundle dedupe wiring, prompt alignment, regression tests*
+
+## Large Document OOM Protection
+
+### Implementation Summary
+Multi-layer defense for very large PDFs (e.g. 300K+ extracted characters) that previously caused Celery worker OOM/SIGKILL and orphaned `processing` records.
+
+### Technical Details
+- **Watchdog** (`cleanup_old_documents`): Celery Beat every 5 minutes; re-queues stuck `processing`/`ocr_pending` docs after `STUCK_DOCUMENT_THRESHOLD_MINUTES` (default 15), fails after 3 attempts.
+- **Streaming chunk aggregation** (`_process_chunks_streaming`): incremental merge per chunk instead of holding `all_chunk_data[]` in memory.
+- **Size gates**: `MAX_DOCUMENT_TEXT_LENGTH` (500K chars) and `MAX_DOCUMENT_CHUNKS` (25) fail gracefully before AI extraction.
+- **Chunker settings**: `DocumentChunker` now uses `AI_CHUNK_SIZE` and `AI_CHUNK_OVERLAP` (threshold remains `AI_TOKEN_THRESHOLD_FOR_CHUNKING`).
+- **Status API**: includes `ocr_pending`, `elapsed_seconds`, `processing_attempts`, `is_large_document`.
+- **Upload UX**: blocking modal at 2MB on main upload and inline patient upload; floating widget shows long-running/stalled warnings.
+
+### Settings (`meddocparser/settings/base.py`)
+| Setting | Default |
+|---------|---------|
+| `MAX_DOCUMENT_TEXT_LENGTH` | 500000 |
+| `MAX_DOCUMENT_CHUNKS` | 25 |
+| `STUCK_DOCUMENT_THRESHOLD_MINUTES` | 15 |
+| `LARGE_DOCUMENT_FILE_SIZE_BYTES` | 5MB |
+| `AI_CHUNK_SIZE` | 15000 |
+| `AI_CHUNK_OVERLAP` | 2000 |
+
+### Tests
+- `apps/documents/test_oom_protection.py`
+
+---
+
+*Updated: 2026-05-11 22:04:02 | Large document OOM protection: watchdog, streaming chunks, size gates, upload modal*

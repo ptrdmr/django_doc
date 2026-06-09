@@ -1,6 +1,6 @@
-{# Patient Summary Side Panel - Renders 11 sections from JSON data via Alpine.js #}
-{# Data structure: patient_info, clinical_summary (conditions, procedures, medications, observations, encounters, weight_timeline, allergies, care_plans, service_requests, diagnostic_reports) #}
-<div class="summary-panel-content h-full overflow-y-auto p-4" x-ref="panelContent">
+{# Patient Summary Side Panel - tabbed, clinical-dense view driven by Alpine.js #}
+{# Consumes /summary-data/ JSON: patient_info + clinical_summary (incl. medications_deduped, labs_by_visit, immunizations) #}
+<div class="summary-panel-content flex-1 min-h-0 h-0 flex flex-col overflow-hidden" x-ref="panelContent">
     <!-- Loading state -->
     <div x-show="isLoading" class="flex flex-col items-center justify-center py-12">
         <svg class="animate-spin h-10 w-10 text-blue-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -11,263 +11,372 @@
     </div>
 
     <!-- Error state -->
-    <div x-show="!isLoading && error" class="p-4 bg-red-50 border border-red-200 rounded-lg">
+    <div x-show="!isLoading && error" class="p-4 m-4 bg-red-50 border border-red-200 rounded-lg">
         <p class="text-sm text-red-800 font-medium" x-text="error"></p>
-        <button @click="fetchSummary()" class="mt-3 text-sm text-blue-600 hover:text-blue-800 font-medium">
-            Retry
-        </button>
+        <button @click="fetchSummary()" class="mt-3 text-sm text-blue-600 hover:text-blue-800 font-medium">Retry</button>
     </div>
 
-    <!-- Content: 11 sections -->
-    <template x-if="!isLoading && !error && summaryData">
-        <div class="space-y-4">
-            <!-- Section 1: Demographics & Context -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">1</span>
-                    Demographics & Context
-                </h3>
-                <div class="grid grid-cols-2 gap-2 text-sm">
-                    <div><span class="text-gray-500">Age:</span> <span x-text="summaryData?.patient_info?.age || 'N/A'"></span></div>
-                    <div><span class="text-gray-500">Gender:</span> <span x-text="summaryData?.patient_info?.gender || 'N/A'"></span></div>
-                    <div class="col-span-2">
-                        <span class="text-gray-500">Primary Diagnosis:</span>
-                        <span x-text="summaryData?.patient_info?.primary_diagnosis?.display_name || 'Not specified'"></span>
-                    </div>
-                    <div><span class="text-gray-500">ICD-10:</span> <span x-text="summaryData?.patient_info?.primary_diagnosis?.codes?.[0]?.code || 'N/A'"></span></div>
-                    <div><span class="text-gray-500">Living Setting:</span> <span x-text="summaryData?.patient_info?.living_setting || 'N/A'"></span></div>
-                </div>
-                <template x-if="summaryData?.patient_info?.comorbidities?.length">
-                    <div class="mt-2 text-sm">
-                        <span class="text-gray-500">Comorbidities:</span>
-                        <span x-text="(summaryData?.patient_info?.comorbidities || []).map(c => c.display_name).join('; ')"></span>
-                    </div>
-                </template>
-            </div>
-
-            <!-- Section 2: Diagnoses with Onset Dates -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">2</span>
-                    Diagnoses with Clinical Onset Dates
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.conditions?.length">
-                    <div class="space-y-2 text-sm">
-                        <template x-for="(c, idx) in summaryData.clinical_summary.conditions" :key="'cond-' + idx">
-                            <div class="p-2 bg-white rounded border border-gray-100">
-                                <span class="font-medium" x-text="c.display_name || 'Unknown'"></span> |
-                                ICD-10: <span x-text="c.codes?.[0]?.code || 'Not coded'"></span> |
-                                Onset: <span x-text="c.onset_date ? new Date(c.onset_date).toLocaleDateString() : 'Not recorded'"></span>
-                            </div>
+    <div x-show="!isLoading && !error && summaryData" x-cloak
+         class="flex flex-1 flex-col min-h-0 h-0 overflow-hidden">
+            <!-- TAB BAR -->
+            <div class="flex-shrink-0 relative z-10 border-b border-gray-200 bg-white px-2 pt-2">
+                <div class="flex items-center gap-1" role="tablist">
+                    <!-- Scrollable primary tabs; the More dropdown lives OUTSIDE this
+                         scroll container so its absolute menu isn't clipped by overflow -->
+                    <div class="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
+                        <template x-for="t in tabs" :key="t.id">
+                            <button type="button" @click="selectTab(t.id)"
+                                    :class="activeTab === t.id ? 'border-blue-600 text-blue-700 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                                    class="px-3 py-2 text-xs whitespace-nowrap border-b-2 transition-colors"
+                                    role="tab" :aria-selected="activeTab === t.id">
+                                <span x-text="t.label"></span>
+                                <span x-show="tabBadge(t.id) > 0"
+                                      class="ml-1 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600"
+                                      x-text="tabBadge(t.id)"></span>
+                            </button>
                         </template>
                     </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.conditions?.length" class="text-sm text-gray-500 italic py-2">No diagnoses recorded</div>
+                    <!-- More dropdown -->
+                    <div class="relative flex-shrink-0" @click.outside="moreOpen = false">
+                        <button type="button" @click="moreOpen = !moreOpen"
+                                :class="moreTabs.some(t => t.id === activeTab) ? 'border-blue-600 text-blue-700 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                                class="px-3 py-2 text-xs whitespace-nowrap border-b-2 transition-colors flex items-center gap-1"
+                                aria-haspopup="true" :aria-expanded="moreOpen">
+                            More
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div x-show="moreOpen" x-cloak x-transition.opacity
+                             class="absolute right-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                            <template x-for="t in moreTabs" :key="t.id">
+                                <button type="button" @click="selectTab(t.id)"
+                                        :class="activeTab === t.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'"
+                                        class="w-full text-left px-3 py-2 text-xs flex items-center justify-between">
+                                    <span x-text="t.label"></span>
+                                    <span x-show="tabBadge(t.id) > 0" class="text-[10px] text-gray-400" x-text="tabBadge(t.id)"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <!-- Section 3: Weight Tracking -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">3</span>
-                    Weight Tracking
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.weight_timeline?.has_data">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full text-sm">
-                            <thead><tr class="border-b"><th class="text-left py-1">Date</th><th class="text-left py-1">Weight</th></tr></thead>
-                            <tbody>
-                                <template x-for="(p, idx) in (summaryData.clinical_summary.weight_timeline.data_points || [])" :key="'wt-' + idx">
-                                    <tr class="border-b border-gray-100">
-                                        <td class="py-1" x-text="p.date ? new Date(p.date).toLocaleDateString() : 'N/A'"></td>
-                                        <td class="py-1" x-text="(p.weight || '—') + ' ' + (summaryData.clinical_summary.weight_timeline.unit || '')"></td>
+            <!-- TAB CONTENT (scrollable) -->
+            <div class="flex-1 min-h-0 h-0 overflow-y-auto overscroll-contain p-4">
+
+                <!-- ============ OVERVIEW ============ -->
+                <div x-show="activeTab === 'overview'" class="space-y-4" role="tabpanel">
+                    <!-- Clinical context -->
+                    <div class="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                        <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Primary Diagnosis</div>
+                        <div class="text-sm font-semibold text-gray-900" x-text="pi.primary_diagnosis?.display_name || 'Not specified'"></div>
+                        <div class="grid grid-cols-2 gap-2 mt-2 text-xs">
+                            <div><span class="text-gray-500">ICD-10:</span> <span x-text="pi.primary_diagnosis?.codes?.[0]?.code || '—'"></span></div>
+                            <div><span class="text-gray-500">Onset:</span> <span x-text="pi.initial_diagnosis_date ? fmtDate(pi.initial_diagnosis_date) : 'Not recorded'"></span></div>
+                            <div><span class="text-gray-500">Age/Sex:</span> <span x-text="(pi.age || '—') + ' / ' + (pi.gender || '—')"></span></div>
+                            <div><span class="text-gray-500">Setting:</span> <span x-text="pi.living_setting || '—'"></span></div>
+                        </div>
+                    </div>
+
+                    <!-- Stat grid -->
+                    <div class="grid grid-cols-3 gap-2">
+                        <template x-for="s in statCards" :key="s.label">
+                            <button type="button" @click="s.tab && selectTab(s.tab)"
+                                    class="bg-white rounded-lg p-2 border border-gray-200 text-center hover:border-blue-300 transition-colors">
+                                <div class="text-lg font-bold" :class="s.alert ? 'text-red-600' : 'text-gray-900'" x-text="s.value"></div>
+                                <div class="text-[10px] text-gray-500 uppercase tracking-wide leading-tight" x-text="s.label"></div>
+                            </button>
+                        </template>
+                    </div>
+
+                    <!-- Most recent encounter -->
+                    <template x-if="lastEncounter">
+                        <div class="bg-white rounded-lg p-3 border border-gray-200">
+                            <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Most Recent Visit</div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-medium text-gray-900" x-text="fmtDate(lastEncounter.period?.start)"></span>
+                                <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full" :class="badgeClass(lastEncounter.type_code)" x-text="lastEncounter.type_label || 'Visit'"></span>
+                            </div>
+                            <div class="text-xs text-gray-600 mt-1" x-show="lastEncounter.location?.length" x-text="lastEncounter.location?.[0]"></div>
+                        </div>
+                    </template>
+
+                </div>
+
+                <!-- ============ PROBLEMS ============ -->
+                <div x-show="activeTab === 'problems'" role="tabpanel">
+                    <template x-if="conditions.length">
+                        <div class="space-y-1.5">
+                            <template x-for="(c, i) in conditions" :key="'cond-' + i">
+                                <div class="bg-white rounded border border-gray-200 px-3 py-2">
+                                    <div class="flex items-start justify-between">
+                                        <span class="text-sm font-medium text-gray-900 pr-2" x-text="c.display_name || 'Unknown'"></span>
+                                        <span class="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                              :class="c.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'"
+                                              x-text="(c.status || 'unknown')"></span>
+                                    </div>
+                                    <div class="text-xs text-gray-500 mt-0.5">
+                                        <span x-text="c.codes?.[0]?.code ? ('ICD-10: ' + c.codes[0].code) : 'Not coded'"></span>
+                                        <span> · Onset: </span><span x-text="c.onset_date ? fmtDate(c.onset_date) : 'Not recorded'"></span>
+                                        <span x-show="c.severity"> · </span><span x-show="c.severity" x-text="c.severity"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <div x-show="!conditions.length" class="text-sm text-gray-500 italic py-6 text-center">No diagnoses recorded</div>
+                </div>
+
+                <!-- ============ LABS (visit > panel > result) ============ -->
+                <div x-show="activeTab === 'labs'" role="tabpanel">
+                    <template x-if="labsByVisit.length">
+                        <div class="space-y-3">
+                            <template x-for="(v, vi) in labsByVisit" :key="'visit-' + vi">
+                                <div>
+                                    <div class="flex items-center justify-between bg-indigo-50 border-l-4 border-indigo-500 px-2 py-1.5 rounded-r">
+                                        <div class="text-xs font-semibold text-indigo-900">
+                                            <span x-text="v.type_label"></span>
+                                            <span class="font-normal text-gray-500" x-show="v.date" x-text="' · ' + fmtDate(v.date)"></span>
+                                        </div>
+                                        <span class="text-[10px] text-gray-500" x-text="v.total_results + ' result' + (v.total_results === 1 ? '' : 's')"></span>
+                                    </div>
+                                    <div class="text-[10px] text-gray-500 px-2 mt-0.5 mb-1" x-show="v.location?.length" x-text="v.location?.[0]"></div>
+
+                                    <!-- Panels (collapsible) -->
+                                    <template x-for="(panel, pi) in (v.panels || [])" :key="'p-' + vi + '-' + pi">
+                                        <details class="bg-white rounded border border-gray-200 mb-1" :open="vi === 0">
+                                            <summary class="px-2 py-1.5 cursor-pointer text-xs font-medium text-gray-800 select-none flex items-center justify-between">
+                                                <span><span x-text="panel.display_name"></span> <span class="text-gray-400" x-text="'(' + panel.observation_count + ')'"></span></span>
+                                            </summary>
+                                            <table class="w-full text-xs border-t border-gray-100">
+                                                <template x-for="(o, oi) in (panel.observations || [])" :key="'po-' + pi + '-' + oi">
+                                                    <tr class="border-b border-gray-50">
+                                                        <td class="px-2 py-1 text-gray-700" x-text="o.display_name"></td>
+                                                        <td class="px-2 py-1 text-right text-gray-900 whitespace-nowrap" x-text="(o.value ?? '—') + (o.unit ? ' ' + o.unit : '')"></td>
+                                                    </tr>
+                                                </template>
+                                            </table>
+                                        </details>
+                                    </template>
+
+                                    <!-- Other (non-panel) results -->
+                                    <template x-if="v.other_results?.length">
+                                        <div class="bg-white rounded border border-gray-200 mb-1">
+                                            <div class="px-2 py-1 text-[10px] font-semibold text-gray-500 uppercase border-b border-gray-100">Other Results</div>
+                                            <table class="w-full text-xs">
+                                                <template x-for="(o, oi) in v.other_results" :key="'or-' + vi + '-' + oi">
+                                                    <tr class="border-b border-gray-50">
+                                                        <td class="px-2 py-1 text-gray-700" x-text="o.display_name"></td>
+                                                        <td class="px-2 py-1 text-right text-gray-900 whitespace-nowrap" x-text="(o.value ?? '—') + (o.unit ? ' ' + o.unit : '')"></td>
+                                                    </tr>
+                                                </template>
+                                            </table>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <div x-show="!labsByVisit.length" class="text-sm text-gray-500 italic py-6 text-center">No laboratory results recorded</div>
+                </div>
+
+                <!-- ============ MEDS ============ -->
+                <div x-show="activeTab === 'meds'" role="tabpanel">
+                    <template x-if="activeMeds.length">
+                        <div class="mb-3">
+                            <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Active</div>
+                            <div class="space-y-1.5">
+                                <template x-for="(m, i) in activeMeds" :key="'am-' + i">
+                                    <div class="bg-white rounded border border-gray-200 px-3 py-2">
+                                        <div class="text-sm font-medium text-gray-900" x-text="m.display_name"></div>
+                                        <div class="text-xs text-gray-600 mt-0.5" x-text="medSig(m) || 'No instructions recorded'"></div>
+                                        <div class="text-[10px] text-gray-400 mt-0.5" x-show="m.effective_period?.start">Started <span x-text="fmtDate(m.effective_period?.start)"></span></div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="historicalMeds.length">
+                        <div>
+                            <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Historical / Inactive</div>
+                            <div class="space-y-1.5">
+                                <template x-for="(m, i) in historicalMeds" :key="'hm-' + i">
+                                    <div class="bg-gray-50 rounded border border-gray-200 px-3 py-2">
+                                        <div class="text-sm text-gray-700" x-text="m.display_name"></div>
+                                        <div class="text-xs text-gray-500 mt-0.5" x-text="medSig(m) || (m.status || 'inactive')"></div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="!activeMeds.length && !historicalMeds.length" class="text-sm text-gray-500 italic py-6 text-center">No medications recorded</div>
+                </div>
+
+                <!-- ============ VISITS ============ -->
+                <div x-show="activeTab === 'visits'" role="tabpanel">
+                    <template x-if="encounters.length">
+                        <div class="space-y-1.5">
+                            <template x-for="(e, i) in encounters" :key="'enc-' + i">
+                                <div class="bg-white rounded border border-gray-200 px-3 py-2">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-sm font-medium text-gray-900" x-text="fmtDate(e.period?.start)"></span>
+                                        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full" :class="badgeClass(e.type_code)" x-text="e.type_label || 'Visit'"></span>
+                                    </div>
+                                    <div class="text-xs text-gray-600 mt-0.5" x-show="e.reason?.length">Reason: <span x-text="e.reason?.[0]?.display || e.reason?.[0]?.code"></span></div>
+                                    <div class="text-xs text-gray-500 mt-0.5" x-show="e.location?.length" x-text="e.location?.[0]"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <div x-show="!encounters.length" class="text-sm text-gray-500 italic py-6 text-center">No encounters recorded</div>
+                </div>
+
+                <!-- ============ VITALS (grouped by visit, like Labs) ============ -->
+                <div x-show="activeTab === 'vitals'" class="space-y-4" role="tabpanel">
+                    <!-- Per-visit vitals/exam -->
+                    <template x-if="vitalsByVisit.length">
+                        <div class="space-y-3">
+                            <template x-for="(v, vi) in vitalsByVisit" :key="'vvisit-' + vi">
+                                <div>
+                                    <div class="flex items-center justify-between bg-emerald-50 border-l-4 border-emerald-500 px-2 py-1.5 rounded-r">
+                                        <div class="text-xs font-semibold text-emerald-900">
+                                            <span x-text="v.type_label"></span>
+                                            <span class="font-normal text-gray-500" x-show="v.date" x-text="' · ' + fmtDate(v.date)"></span>
+                                        </div>
+                                        <span class="text-[10px] text-gray-500" x-text="v.total + ' measurement' + (v.total === 1 ? '' : 's')"></span>
+                                    </div>
+                                    <div class="text-[10px] text-gray-500 px-2 mt-0.5 mb-1" x-show="v.location?.length" x-text="v.location?.[0]"></div>
+                                    <table class="w-full text-xs bg-white rounded border border-gray-200">
+                                        <template x-for="(o, oi) in v.vitals" :key="'vv-' + vi + '-' + oi">
+                                            <tr class="border-b border-gray-50">
+                                                <td class="px-2 py-1 text-gray-700" x-text="o.display_name"></td>
+                                                <td class="px-2 py-1 text-right text-gray-900 whitespace-nowrap" x-text="(o.value ?? '—') + (o.unit ? ' ' + o.unit : '')"></td>
+                                            </tr>
+                                        </template>
+                                    </table>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Weight trend: only meaningful with more than one data point -->
+                    <template x-if="weightTimeline.data_points && weightTimeline.data_points.length > 1">
+                        <div>
+                            <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Weight Trend (<span x-text="weightTimeline.unit"></span>)</div>
+                            <table class="w-full text-xs bg-white rounded border border-gray-200">
+                                <template x-for="(pt, i) in [...weightTimeline.data_points].reverse()" :key="'wt-' + i">
+                                    <tr class="border-b border-gray-50">
+                                        <td class="px-2 py-1 text-gray-700" x-text="fmtDate(pt.date)"></td>
+                                        <td class="px-2 py-1 text-right text-gray-900" x-text="pt.weight + ' ' + weightTimeline.unit"></td>
                                     </tr>
                                 </template>
-                            </tbody>
-                        </table>
-                    </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.weight_timeline?.has_data" class="text-sm text-gray-500 italic py-2">No weight data recorded</div>
-            </div>
+                            </table>
+                        </div>
+                    </template>
 
-            <!-- Section 4: Hospitalizations -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">4</span>
-                    Hospitalizations
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.encounters?.length">
-                    <div class="space-y-2 text-sm">
-                        <template x-for="(e, idx) in summaryData.clinical_summary.encounters" :key="'enc-' + idx">
-                            <div class="p-2 bg-white rounded border border-gray-100">
-                                <span class="font-medium" x-text="(e.period?.start ? new Date(e.period.start).toLocaleDateString() : 'Unknown') + (e.period?.end ? ' - ' + new Date(e.period.end).toLocaleDateString() : ' - Ongoing')"></span> |
-                                Reason: <span x-text="e.reason?.[0]?.display || e.reason?.[0]?.code || 'Not specified'"></span>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.encounters?.length" class="text-sm text-gray-500 italic py-2">No hospitalizations recorded</div>
-            </div>
+                    <div x-show="!vitalsByVisit.length && !(weightTimeline.data_points && weightTimeline.data_points.length > 1)" class="text-sm text-gray-500 italic py-6 text-center">No vitals or measurements recorded</div>
+                </div>
 
-            <!-- Section 5: Labs -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">5</span>
-                    Labs
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.observations?.length">
-                    <div class="space-y-2 text-sm">
-                        <template x-for="(o, idx) in summaryData.clinical_summary.observations" :key="'obs-' + idx">
-                            <div class="p-2 bg-white rounded border border-gray-100">
-                                <span class="font-medium" x-text="o.display_name || 'Unknown'"></span> |
-                                <span x-text="(o.value != null ? o.value : '—') + (o.unit ? ' ' + o.unit : '')"></span> |
-                                Date: <span x-text="o.effective_date ? new Date(o.effective_date).toLocaleDateString() : 'Not recorded'"></span>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.observations?.length" class="text-sm text-gray-500 italic py-2">No lab results recorded</div>
-            </div>
+                <!-- ============ PROCEDURES ============ -->
+                <div x-show="activeTab === 'procedures'" role="tabpanel">
+                    <template x-if="procedures.length">
+                        <div class="space-y-1.5">
+                            <template x-for="(p, i) in procedures" :key="'proc-' + i">
+                                <div class="bg-white rounded border border-gray-200 px-3 py-2">
+                                    <div class="text-sm font-medium text-gray-900" x-text="p.display_name"></div>
+                                    <div class="text-xs text-gray-500 mt-0.5">
+                                        <span x-text="p.performed_date ? fmtDate(p.performed_date) : (p.performed_period?.start ? fmtDate(p.performed_period.start) : 'Not recorded')"></span>
+                                        <span x-show="p.status"> · </span><span x-show="p.status" x-text="p.status"></span>
+                                    </div>
+                                    <div class="text-xs text-gray-700 mt-1" x-show="p.outcome">Outcome: <span x-text="p.outcome"></span></div>
+                                    <div class="text-xs text-gray-600 mt-1 whitespace-pre-line" x-show="p.notes?.length" x-text="p.notes.join('\n')"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <div x-show="!procedures.length" class="text-sm text-gray-500 italic py-6 text-center">No procedures recorded</div>
+                </div>
 
-            <!-- Section 6: Medications -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">6</span>
-                    Medications
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.medications?.length">
-                    <div class="space-y-2 text-sm">
-                        <template x-for="(m, idx) in summaryData.clinical_summary.medications" :key="'med-' + idx">
-                            <div class="p-2 bg-white rounded border border-gray-100">
-                                <span class="font-medium" x-text="m.display_name || 'Unknown'"></span> |
-                                Dose: <span x-text="(m.dosage && m.dosage[0]) ? (m.dosage[0].text || m.dosage[0].dose || 'Not specified') : 'Not specified'"></span> |
-                                Started: <span x-text="(m.effective_period && m.effective_period.start) ? new Date(m.effective_period.start).toLocaleDateString() : 'Unknown'"></span>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.medications?.length" class="text-sm text-gray-500 italic py-2">No medications recorded</div>
-            </div>
+                <!-- ============ IMMUNIZATIONS ============ -->
+                <div x-show="activeTab === 'immunizations'" role="tabpanel">
+                    <template x-if="immunizations.length">
+                        <div class="space-y-1.5">
+                            <template x-for="(im, i) in immunizations" :key="'imm-' + i">
+                                <div class="bg-white rounded border border-gray-200 px-3 py-2 flex items-center justify-between">
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-900" x-text="im.display_name"></div>
+                                        <div class="text-xs text-gray-500" x-text="im.date ? fmtDate(im.date) : 'Date not recorded'"></div>
+                                    </div>
+                                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                          :class="im.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+                                          x-text="im.status"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <div x-show="!immunizations.length" class="text-sm text-gray-500 italic py-6 text-center">No immunizations recorded</div>
+                </div>
 
-            <!-- Section 7: Procedures -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">7</span>
-                    Procedures
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.procedures?.length">
-                    <div class="space-y-2 text-sm">
-                        <template x-for="(p, idx) in summaryData.clinical_summary.procedures" :key="'proc-' + idx">
-                            <div class="p-2 bg-white rounded border border-gray-100">
-                                <span class="font-medium" x-text="p.display_name || 'Unknown'"></span> |
-                                Date: <span x-text="p.performed_date ? new Date(p.performed_date).toLocaleDateString() : 'Not recorded'"></span> |
-                                <span x-text="p.outcome || 'Completed'"></span>
-                            </div>
-                        </template>
+                <!-- ============ CARE PLANS ============ -->
+                <div x-show="activeTab === 'careplans'" role="tabpanel">
+                    <div class="space-y-3">
+                        <!-- Allergies (grouped here with care context) -->
+                        <div>
+                            <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Allergies</div>
+                            <template x-if="allergies.length">
+                                <div class="space-y-1.5">
+                                    <template x-for="(a, i) in allergies" :key="'alg-' + i">
+                                        <div class="bg-white rounded border border-gray-200 px-3 py-2 text-xs">
+                                            <span class="font-medium text-gray-900" x-text="a.display_name"></span>
+                                            <span class="text-gray-500" x-show="a.severity"> · <span x-text="a.severity"></span></span>
+                                            <span class="text-gray-500" x-show="a.reactions?.length"> · <span x-text="a.reactions?.join(', ')"></span></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                            <div x-show="!allergies.length" class="text-xs text-gray-500 italic">No known allergies</div>
+                        </div>
+                        <!-- Care plans -->
+                        <div>
+                            <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Care Plans</div>
+                            <template x-if="carePlans.length">
+                                <div class="space-y-1.5">
+                                    <template x-for="(cp, i) in carePlans" :key="'cp-' + i">
+                                        <div class="bg-white rounded border border-gray-200 px-3 py-2">
+                                            <div class="text-sm font-medium text-gray-900" x-text="cp.description || 'No description'"></div>
+                                            <div class="text-xs text-gray-500 mt-0.5" x-show="cp.goals?.length">Goals: <span x-text="cp.goals?.join('; ')"></span></div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                            <div x-show="!carePlans.length" class="text-xs text-gray-500 italic">No care plans recorded</div>
+                        </div>
                     </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.procedures?.length" class="text-sm text-gray-500 italic py-2">No procedures recorded</div>
-            </div>
+                </div>
 
-            <!-- Section 8: Allergies -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">8</span>
-                    Allergies
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.allergies?.length">
-                    <div class="space-y-2 text-sm">
-                        <template x-for="(a, idx) in summaryData.clinical_summary.allergies" :key="'allergy-' + idx">
-                            <div class="p-2 bg-white rounded border border-gray-100">
-                                <span class="font-medium" x-text="a.display_name || 'Unknown'"></span> |
-                                Severity: <span x-text="a.severity || 'Not specified'"></span> |
-                                Status: <span x-text="a.status || 'Unknown'"></span>
-                                <template x-if="a.reactions?.length">
-                                    <span> | Reactions: <span x-text="a.reactions.join(', ')"></span></span>
-                                </template>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.allergies?.length" class="text-sm text-gray-500 italic py-2">No allergies recorded</div>
-            </div>
+                <!-- ============ DIAGNOSTIC REPORTS ============ -->
+                <div x-show="activeTab === 'reports'" role="tabpanel">
+                    <template x-if="diagnosticReports.length">
+                        <div class="space-y-1.5">
+                            <template x-for="(dr, i) in diagnosticReports" :key="'dr-' + i">
+                                <div class="bg-white rounded border border-gray-200 px-3 py-2">
+                                    <div class="text-sm font-medium text-gray-900" x-text="dr.display_name"></div>
+                                    <div class="text-xs text-gray-500 mt-0.5">
+                                        <span x-show="dr.effective_date" x-text="fmtDate(dr.effective_date)"></span>
+                                        <span x-show="dr.status"> · </span><span x-show="dr.status" x-text="dr.status"></span>
+                                    </div>
+                                    <div class="text-xs text-gray-600 mt-1" x-show="dr.conclusion" x-text="dr.conclusion"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <div x-show="!diagnosticReports.length" class="text-sm text-gray-500 italic py-6 text-center">No diagnostic reports recorded</div>
+                </div>
 
-            <!-- Section 9: Care Plans -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">9</span>
-                    Care Plans
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.care_plans?.length">
-                    <div class="space-y-2 text-sm">
-                        <template x-for="(cp, idx) in summaryData.clinical_summary.care_plans" :key="'cp-' + idx">
-                            <div class="p-2 bg-white rounded border border-gray-100">
-                                <span class="font-medium" x-text="cp.description || 'No description'"></span> |
-                                Status: <span x-text="cp.status || 'Unknown'"></span>
-                                <template x-if="cp.goals?.length">
-                                    <span> | Goals: <span x-text="cp.goals.join('; ')"></span></span>
-                                </template>
-                                <template x-if="cp.period?.start">
-                                    <span> | From: <span x-text="new Date(cp.period.start).toLocaleDateString()"></span></span>
-                                </template>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.care_plans?.length" class="text-sm text-gray-500 italic py-2">No care plans recorded</div>
-            </div>
-
-            <!-- Section 10: Service Requests -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">10</span>
-                    Service Requests
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.service_requests?.length">
-                    <div class="space-y-2 text-sm">
-                        <template x-for="(sr, idx) in summaryData.clinical_summary.service_requests" :key="'sr-' + idx">
-                            <div class="p-2 bg-white rounded border border-gray-100">
-                                <span class="font-medium" x-text="sr.display_name || 'Unknown'"></span> |
-                                Priority: <span x-text="sr.priority || 'Routine'"></span> |
-                                Status: <span x-text="sr.status || 'Unknown'"></span>
-                                <template x-if="sr.authored_on">
-                                    <span> | Date: <span x-text="new Date(sr.authored_on).toLocaleDateString()"></span></span>
-                                </template>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.service_requests?.length" class="text-sm text-gray-500 italic py-2">No service requests recorded</div>
-            </div>
-
-            <!-- Section 11: Diagnostic Reports -->
-            <div class="section bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
-                <h3 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center mr-2">11</span>
-                    Diagnostic Reports
-                </h3>
-                <template x-if="summaryData?.clinical_summary?.diagnostic_reports?.length">
-                    <div class="space-y-2 text-sm">
-                        <template x-for="(dr, idx) in summaryData.clinical_summary.diagnostic_reports" :key="'dr-' + idx">
-                            <div class="p-2 bg-white rounded border border-gray-100">
-                                <span class="font-medium" x-text="dr.display_name || 'Unknown'"></span> |
-                                Status: <span x-text="dr.status || 'Unknown'"></span>
-                                <template x-if="dr.conclusion">
-                                    <span> | Conclusion: <span x-text="dr.conclusion"></span></span>
-                                </template>
-                                <template x-if="dr.effective_date">
-                                    <span> | Date: <span x-text="new Date(dr.effective_date).toLocaleDateString()"></span></span>
-                                </template>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-                <div x-show="!summaryData?.clinical_summary?.diagnostic_reports?.length" class="text-sm text-gray-500 italic py-2">No diagnostic reports recorded</div>
             </div>
 
             <!-- Footer -->
-            <div class="text-xs text-gray-500 pt-4 border-t border-gray-200">
-                <p>Generated from structured clinical data. Contains PHI—handle per HIPAA.</p>
+            <div class="flex-shrink-0 text-[10px] text-gray-400 px-4 py-2 border-t border-gray-200 bg-gray-50">
+                Generated from structured clinical data · Contains PHI — handle per HIPAA
             </div>
         </div>
-    </template>
 </div>

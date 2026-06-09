@@ -240,7 +240,26 @@ class ObservationService:
                 "code": loinc_code,
                 "display": display_name.strip()
             }]
-        
+
+        # Add observation category (WP2: consumed by DiagnosticReport panel
+        # synthesis to identify lab observations; also improves FHIR fidelity).
+        category_code = obs_dict.get('category')
+        if not category_code:
+            category_code = 'laboratory' if obs_type == 'lab_result' else 'vital-signs'
+        category_display = {
+            'laboratory': 'Laboratory',
+            'vital-signs': 'Vital Signs',
+            'exam': 'Exam',
+            'social-history': 'Social History',
+        }.get(category_code, category_code)
+        observation["category"] = [{
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": category_code,
+                "display": category_display,
+            }]
+        }]
+
         # Add effective date if available
         if effective_date:
             observation["effectiveDateTime"] = effective_date
@@ -250,6 +269,49 @@ class ObservationService:
                 "display": f"Date source: {date_source}"
             })
         
+        # Composite vital signs (e.g. blood pressure) carry sub-measurements in
+        # ``components``. Emit FHIR component[] entries with LOINC where known
+        # (WP2: closes the BP systolic/diastolic gap the council flagged).
+        components = obs_dict.get('components') or []
+        if isinstance(components, list) and components:
+            fhir_components = []
+            for comp in components:
+                if not isinstance(comp, dict):
+                    continue
+                comp_name = (comp.get('measurement') or '').strip()
+                comp_value = comp.get('value')
+                if not comp_name or comp_value is None:
+                    continue
+                comp_unit = (comp.get('unit') or '').strip()
+                comp_loinc = None
+                comp_lower = comp_name.lower()
+                for key, code in self.VITAL_LOINC_MAPPING.items():
+                    if key in comp_lower:
+                        comp_loinc = code
+                        break
+                comp_code: Dict[str, Any] = {"text": comp_name}
+                if comp_loinc:
+                    comp_code["coding"] = [{
+                        "system": "http://loinc.org",
+                        "code": comp_loinc,
+                        "display": comp_name,
+                    }]
+                component_entry: Dict[str, Any] = {"code": comp_code}
+                try:
+                    numeric_comp = float(str(comp_value).replace(',', '').strip())
+                    component_entry["valueQuantity"] = {"value": numeric_comp}
+                    if comp_unit:
+                        component_entry["valueQuantity"].update({
+                            "unit": comp_unit,
+                            "system": "http://unitsofmeasure.org",
+                            "code": comp_unit,
+                        })
+                except (ValueError, AttributeError, TypeError):
+                    component_entry["valueString"] = str(comp_value).strip()
+                fhir_components.append(component_entry)
+            if fhir_components:
+                observation["component"] = fhir_components
+
         # Add value and unit
         value = obs_dict.get('value')
         unit = obs_dict.get('unit')
@@ -270,7 +332,8 @@ class ObservationService:
                         "value": numeric_value
                     }
             except (ValueError, AttributeError):
-                # Not numeric, use string value
+                # Composite values like "120/80" stay as a string summary; the
+                # structured breakdown already lives in component[] above.
                 observation["valueString"] = str(value).strip()
         
         # Add reference range for lab results
@@ -279,6 +342,13 @@ class ObservationService:
             if reference_range:
                 observation["referenceRange"] = [{
                     "text": reference_range.strip()
+                }]
+
+            # Abnormal flag -> FHIR interpretation (WP2: consume WP1 field).
+            abnormal_flag = (obs_dict.get('abnormal_flag') or '').strip()
+            if abnormal_flag:
+                observation["interpretation"] = [{
+                    "text": abnormal_flag
                 }]
             
             # Override status for lab results if provided

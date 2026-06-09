@@ -7,6 +7,7 @@ Memory optimizations added for large document processing (OOM fix).
 """
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from meddocparser.celery import app
 import time
 import logging
@@ -15,6 +16,7 @@ import gc
 import uuid
 from datetime import timedelta
 from django.conf import settings
+from django.db import models
 from django.utils import timezone
 from typing import Dict, Any, List, Optional
 
@@ -33,6 +35,130 @@ def force_memory_cleanup(context: str = "unknown"):
     collected = gc.collect()
     if collected > 0:
         logger.debug(f"[Memory cleanup - {context}] Collected {collected} objects")
+
+
+def _coerce_iso_date(raw_date):
+    """
+    Coerce a possibly-partial date string into a full YYYY-MM-DD string for storage.
+
+    ParsedData.clinical_date is a DateField and therefore requires a full calendar date.
+    Partial dates (year, year-month) are padded to the first day SOLELY for this single
+    sortable/storable field; the original precision is preserved untouched in the FHIR
+    resources and structured extraction data.
+
+    Args:
+        raw_date: A date string in YYYY, YYYY-MM, or YYYY-MM-DD form (other formats ignored).
+
+    Returns:
+        A 'YYYY-MM-DD' string, or None if the input could not be interpreted.
+    """
+    import re
+
+    if not raw_date or not isinstance(raw_date, str):
+        return None
+
+    candidate = raw_date.strip()[:10]
+
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', candidate):
+        return candidate
+    if re.match(r'^\d{4}-\d{2}$', candidate):
+        return f"{candidate}-01"
+    if re.match(r'^\d{4}$', candidate):
+        return f"{candidate}-01-01"
+    return None
+
+
+def derive_clinical_date(structured_data, fhir_resources):
+    """
+    Derive a single clinical date for a document from already-serialized extraction data.
+
+    Both inputs are plain JSON-compatible structures (the Pydantic model and fhir.resources
+    objects have already been serialized at the call sites), so this function never touches
+    live model objects.
+
+    Priority order:
+        1. AI-provided top-level clinical_date
+        2. Earliest encounter date (structured encounters, then FHIR Encounter.period.start)
+        3. Earliest dated clinical item (lab test_date, procedure_date, vital timestamp)
+
+    Args:
+        structured_data: dict dump of StructuredMedicalExtraction (or None).
+        fhir_resources: flat list of serialized FHIR resource dicts (or None).
+
+    Returns:
+        (iso_date_str, source_label) where iso_date_str is 'YYYY-MM-DD' (or None) and
+        source_label describes where the date came from (or None).
+    """
+    structured_data = structured_data or {}
+    fhir_resources = fhir_resources or []
+
+    # Priority 1: explicit AI-provided clinical date
+    iso = _coerce_iso_date(structured_data.get('clinical_date'))
+    if iso:
+        return iso, 'ai_clinical_date'
+
+    # Priority 2a: earliest encounter date from structured extraction
+    encounter_dates = [
+        iso for enc in (structured_data.get('encounters') or [])
+        if isinstance(enc, dict) and (iso := _coerce_iso_date(enc.get('encounter_date')))
+    ]
+    if encounter_dates:
+        return min(encounter_dates), 'encounter'
+
+    # Priority 2b: earliest Encounter.period.start from the flat FHIR resource list
+    fhir_encounter_dates = []
+    for resource in fhir_resources:
+        if isinstance(resource, dict) and resource.get('resourceType') == 'Encounter':
+            period = resource.get('period') or {}
+            iso = _coerce_iso_date(period.get('start'))
+            if iso:
+                fhir_encounter_dates.append(iso)
+    if fhir_encounter_dates:
+        return min(fhir_encounter_dates), 'fhir_encounter'
+
+    # Priority 3: earliest dated clinical item from structured extraction
+    clinical_item_dates = []
+    for lab in (structured_data.get('lab_results') or []):
+        if isinstance(lab, dict) and (iso := _coerce_iso_date(lab.get('test_date'))):
+            clinical_item_dates.append(iso)
+    for proc in (structured_data.get('procedures') or []):
+        if isinstance(proc, dict) and (iso := _coerce_iso_date(proc.get('procedure_date'))):
+            clinical_item_dates.append(iso)
+    for vital in (structured_data.get('vital_signs') or []):
+        if isinstance(vital, dict) and (iso := _coerce_iso_date(vital.get('timestamp'))):
+            clinical_item_dates.append(iso)
+    if clinical_item_dates:
+        return min(clinical_item_dates), 'clinical_item'
+
+    return None, None
+
+
+def _build_clinical_date_defaults(structured_data, fhir_resources):
+    """
+    Build the ParsedData date fields for an update_or_create defaults dict.
+
+    Returns an empty dict when no date could be derived (so we never stamp
+    date_source='extracted' on a record that has no clinical_date).
+    """
+    from datetime import datetime as _datetime
+
+    iso_date, source_label = derive_clinical_date(structured_data, fhir_resources)
+    if not iso_date:
+        return {}
+
+    try:
+        parsed = _datetime.strptime(iso_date, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        logger.warning(f"derive_clinical_date produced unparseable date '{iso_date}'")
+        return {}
+
+    logger.info(f"Derived clinical_date {parsed.isoformat()} (source: {source_label})")
+    return {
+        'clinical_date': parsed,
+        'date_source': 'extracted',
+        'date_status': 'pending',
+    }
+
 
 # Import custom exceptions for enhanced error handling
 from .exceptions import (
@@ -361,7 +487,9 @@ def test_celery_task(self, message="Hello from Celery!"):
 
 @shared_task(bind=True, name="apps.documents.tasks.process_document_async", acks_late=True, 
              autoretry_for=(AIServiceRateLimitError, AIServiceTimeoutError), 
-             retry_kwargs={'max_retries': 3, 'countdown': 60})
+             retry_kwargs={'max_retries': 3, 'countdown': 60},
+             time_limit=getattr(settings, 'LARGE_DOCUMENT_TASK_TIME_LIMIT', 2100),
+             soft_time_limit=getattr(settings, 'LARGE_DOCUMENT_TASK_SOFT_TIME_LIMIT', 1800))
 def process_document_async(self, document_id: int):
     """
     Asynchronous task to process an uploaded medical document.
@@ -681,10 +809,15 @@ def process_document_async(self, document_id: int):
         force_memory_cleanup("after extraction_result cleanup")
         
         logger.info(f"[{task_id}] Document size: {text_length} chars (threshold: {chunk_threshold})")
+
+        size_failure = _check_document_text_size_limit(document, text_length, task_id)
+        if size_failure:
+            return size_failure
         
         # STEP 2: Analyze document with AI using size-appropriate strategy
         ai_result = None
         structured_extraction = None
+        chunk_stats = None
         if extracted_text.strip():
             # VALIDATION: Check text quality before AI extraction
             if not validate_before_ai_extraction(document, extracted_text):
@@ -715,42 +848,22 @@ def process_document_async(self, document_id: int):
                 if text_length > chunk_threshold:
                     logger.info(f"[{task_id}] Large document detected ({text_length} chars), chunking for efficiency")
                     
-                    # For very large documents, use direct AI extraction with chunking
-                    from apps.documents.services.ai_extraction import extract_medical_data_structured
-                    
                     chunks = document_chunker.chunk_text(extracted_text, preserve_context=True)
+                    chunk_failure = _check_document_chunk_limit(document, len(chunks), task_id)
+                    if chunk_failure:
+                        return chunk_failure
                     
                     if len(chunks) > 1:
-                        # Process in chunks and aggregate
-                        # MEMORY FIX: Only keep serialized dicts, clear Pydantic models immediately
-                        all_chunk_data = []
                         total_chunks = len(chunks)
-                        
-                        for chunk_idx, chunk in enumerate(chunks):
-                            logger.info(f"[{task_id}] Processing chunk {chunk_idx + 1}/{total_chunks}")
-                            
-                            # Extract data for this chunk
-                            chunk_result = extract_medical_data_structured(chunk['text'], context=context)
-                            
-                            # MEMORY FIX: Convert to dict immediately and discard Pydantic model
-                            chunk_data = chunk_result.model_dump()
-                            all_chunk_data.append(chunk_data)
-                            
-                            # Clear the Pydantic model reference
-                            del chunk_result
-                            
-                            # MEMORY FIX: Force garbage collection between chunks
-                            if chunk_idx < total_chunks - 1:
-                                force_memory_cleanup(f"after chunk {chunk_idx + 1}")
-                        
-                        # Aggregate results
-                        structured_extraction = _aggregate_chunked_extractions(all_chunk_data)
-                        
-                        # MEMORY FIX: Clear chunk data after aggregation
-                        del all_chunk_data
+                        structured_extraction, chunk_stats = _process_chunks_streaming(
+                            chunks, context, task_id, document=document
+                        )
                         force_memory_cleanup("after chunk aggregation")
-                        
-                        logger.info(f"[{task_id}] Chunked processing completed: {total_chunks} chunks processed")
+                        logger.info(
+                            f"[{task_id}] Chunked processing completed: "
+                            f"{chunk_stats['succeeded']}/{chunk_stats['total']} chunks succeeded "
+                            f"({chunk_stats['ledger_hits']} ledger hits)"
+                        )
                     else:
                         # Single chunk, process normally
                         structured_extraction = ai_analyzer.analyze_document_structured(
@@ -893,6 +1006,12 @@ def process_document_async(self, document_id: int):
                     except Exception as pd_lookup_exc:
                         logger.warning(f"Could not look up ParsedData for clinical date: {pd_lookup_exc}")
                     
+                    # WP1 council fix: Snapshot structured data BEFORE converter attempt
+                    # so clinical_date derivation still has access if the converter fails.
+                    _pre_convert_structured_dict = None
+                    if structured_extraction:
+                        _pre_convert_structured_dict = structured_extraction.model_dump()
+
                     # NEW: Use StructuredDataConverter if we have structured data
                     if structured_extraction:
                         try:
@@ -1027,11 +1146,12 @@ def process_document_async(self, document_id: int):
                         processing_time = ai_result.get('processing_duration_ms', 0) / 1000.0 if 'processing_duration_ms' in ai_result else 0.0
                         
                         # Prepare structured data for storage (serialize if available)
+                        # WP1 council fix: fall back to pre-converter snapshot when
+                        # structured_extraction was cleared due to converter failure.
                         structured_data_dict = None
                         structured_data_counts = {}
                         if structured_extraction:
-                            structured_data_dict = structured_extraction.model_dump()
-                            # MEMORY FIX: Capture counts now, then free the Pydantic model
+                            structured_data_dict = _pre_convert_structured_dict or structured_extraction.model_dump()
                             structured_data_counts = {
                                 'conditions': len(structured_extraction.conditions),
                                 'medications': len(structured_extraction.medications),
@@ -1042,6 +1162,12 @@ def process_document_async(self, document_id: int):
                             }
                             del structured_extraction
                             force_memory_cleanup("after structured_extraction model_dump")
+                        elif _pre_convert_structured_dict:
+                            structured_data_dict = _pre_convert_structured_dict
+                            structured_data_counts = {
+                                k: len(v) for k, v in _pre_convert_structured_dict.items()
+                                if isinstance(v, list)
+                            }
                         
                         # Serialize FHIR resources to JSON-compatible dicts
                         # StructuredDataConverter returns FHIR resource models that need serialization
@@ -1089,6 +1215,11 @@ def process_document_async(self, document_id: int):
                             force_memory_cleanup("after FHIR serialization")
                             logger.info(f"Successfully serialized {len(serialized_fhir_resources)}/{total_resources} FHIR resources for document {document_id}")
                         
+                        # WP1 Phase 3: Derive clinical_date from serialized extraction data
+                        clinical_date_defaults = _build_clinical_date_defaults(
+                            structured_data_dict, serialized_fhir_resources
+                        )
+
                         parsed_data, created = ParsedData.objects.update_or_create(
                             document=document,
                             defaults={
@@ -1106,6 +1237,8 @@ def process_document_async(self, document_id: int):
                                 'reviewed_by': None,   # Clear reviewer for reprocessed documents
                                 # NEW: Store structured data if available (could add a field for this)
                                 'corrections': {'structured_data': structured_data_dict} if structured_data_dict else {},
+                                # WP1 Phase 3: clinical_date / date_source / date_status (empty when undetermined)
+                                **clinical_date_defaults,
                             }
                         )
                         
@@ -1124,6 +1257,11 @@ def process_document_async(self, document_id: int):
                             parsed_data.auto_approved = (review_status == 'auto_approved')
                             parsed_data.flag_reason = flag_reason
                             parsed_data.save(update_fields=['review_status', 'auto_approved', 'flag_reason'])
+                            
+                            # Partial chunk completion overrides any auto-approval
+                            if _apply_partial_completion_flag(parsed_data, chunk_stats, task_id):
+                                review_status = parsed_data.review_status
+                                flag_reason = parsed_data.flag_reason
                             
                             logger.info(
                                 f"[{task_id}] Review status determined: {review_status} "
@@ -1446,7 +1584,14 @@ def process_document_async(self, document_id: int):
     except APIRateLimitError as exc:
         logger.warning(f"Rate limit exceeded for document {document_id}. Retrying task.")
         raise self.retry(exc=exc, countdown=60, max_retries=5) # Retry after 60s
-        
+
+    except SoftTimeLimitExceeded:
+        # Completed chunks are checkpointed in the ledger; hand off to a
+        # resume run instead of failing (text is in document.original_text)
+        return _handle_soft_time_limit(
+            document_id, task_id, time.time() - start_time, resume_attempt=0
+        )
+
     except Exception as exc:
         # Categorize the error for better handling
         error_info = categorize_exception(exc)
@@ -2187,8 +2332,10 @@ def poll_textract_job(self, document_id: int, job_id: str, s3_key: str, attempt:
 
 
 @shared_task(bind=True, name="apps.documents.tasks.continue_document_processing", acks_late=True,
-             max_retries=3, default_retry_delay=60)
-def continue_document_processing(self, document_id: int, ocr_text: str):
+             max_retries=3, default_retry_delay=60,
+             time_limit=getattr(settings, 'LARGE_DOCUMENT_TASK_TIME_LIMIT', 2100),
+             soft_time_limit=getattr(settings, 'LARGE_DOCUMENT_TASK_SOFT_TIME_LIMIT', 1800))
+def continue_document_processing(self, document_id: int, ocr_text: str, resume_attempt: int = 0):
     """
     Continue document processing pipeline after async OCR completion.
     
@@ -2203,9 +2350,15 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
     This mirrors the sync processing path after text extraction, reusing
     as much code as possible from process_document_async.
     
+    Also serves as the RESUME path after a soft time limit: when called with
+    empty ocr_text, the text is reloaded from document.original_text and the
+    chunk ledger skips all previously completed chunks.
+    
     Args:
         document_id: ID of the Document to continue processing
-        ocr_text: Extracted text from async Textract OCR
+        ocr_text: Extracted text from async Textract OCR. Empty string means
+            "resume from document.original_text".
+        resume_attempt: How many soft-time-limit resumes have already happened.
         
     Returns:
         Dict with processing results matching process_document_async format
@@ -2217,7 +2370,8 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
     
     logger.info(
         f"[{task_id}] Continuing document processing after async OCR: "
-        f"document_id={document_id}, text_length={len(ocr_text)}"
+        f"document_id={document_id}, text_length={len(ocr_text)}, "
+        f"resume_attempt={resume_attempt}"
     )
     
     # Load document
@@ -2232,11 +2386,37 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
             'task_id': task_id
         }
     
-    # Store OCR text in document
-    document.original_text = ocr_text
-    document.status = 'processing'
-    document.processing_message = "OCR complete, analyzing document with AI..."
-    document.save(update_fields=['original_text', 'status', 'processing_message'])
+    if ocr_text:
+        # Normal path: store fresh OCR text in document
+        document.original_text = ocr_text
+        document.status = 'processing'
+        document.processing_message = "OCR complete, analyzing document with AI..."
+        document.save(update_fields=['original_text', 'status', 'processing_message'])
+    else:
+        # Resume path: reload previously saved text, never overwrite it
+        ocr_text = document.original_text or ''
+        if not ocr_text.strip():
+            logger.error(
+                f"[{task_id}] Resume requested for document {document_id} but "
+                f"original_text is empty — cannot resume"
+            )
+            document.status = 'failed'
+            document.error_message = "Resume failed: no saved text available"
+            document.save(update_fields=['status', 'error_message'])
+            return {
+                'success': False,
+                'document_id': document_id,
+                'error': 'Resume failed: no saved text available',
+                'task_id': task_id
+            }
+        document.status = 'processing'
+        document.processing_message = (
+            f"Resuming AI extraction from checkpoint (attempt {resume_attempt})..."
+        )
+        document.save(update_fields=['status', 'processing_message'])
+        logger.info(
+            f"[{task_id}] Resume path: loaded {len(ocr_text)} chars from document.original_text"
+        )
     _notify_monitor_stage(document)
     
     # Get page count from structured_data if available
@@ -2267,6 +2447,7 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
     processing_errors = []
     ai_result = None
     structured_extraction = None
+    chunk_stats = None
     fhir_resources = []
     
     try:
@@ -2280,34 +2461,34 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
         chunk_threshold = getattr(settings, 'AI_TOKEN_THRESHOLD_FOR_CHUNKING', 20000)
         
         logger.info(f"[{task_id}] Starting AI structured extraction ({text_length} chars, threshold={chunk_threshold})")
+
+        size_failure = _check_document_text_size_limit(document, text_length, task_id)
+        if size_failure:
+            return size_failure
         
         ai_step_start = time.time()
         
         if text_length > chunk_threshold:
             logger.info(f"[{task_id}] Large OCR document ({text_length} chars), chunking for efficiency")
-            from apps.documents.services.ai_extraction import extract_medical_data_structured
-            
             chunks = document_chunker.chunk_text(extracted_text, preserve_context=True)
             del extracted_text
             force_memory_cleanup("after chunking extracted_text in continue_processing")
+
+            chunk_failure = _check_document_chunk_limit(document, len(chunks), task_id)
+            if chunk_failure:
+                return chunk_failure
             
             if len(chunks) > 1:
-                all_chunk_data = []
                 total_chunks = len(chunks)
-                
-                for chunk_idx, chunk in enumerate(chunks):
-                    logger.info(f"[{task_id}] Processing chunk {chunk_idx + 1}/{total_chunks}")
-                    chunk_result = extract_medical_data_structured(chunk['text'], context=context)
-                    chunk_data = chunk_result.model_dump()
-                    all_chunk_data.append(chunk_data)
-                    del chunk_result
-                    if chunk_idx < total_chunks - 1:
-                        force_memory_cleanup(f"after chunk {chunk_idx + 1}")
-                
-                structured_extraction = _aggregate_chunked_extractions(all_chunk_data)
-                del all_chunk_data
+                structured_extraction, chunk_stats = _process_chunks_streaming(
+                    chunks, context, task_id, document=document
+                )
                 force_memory_cleanup("after chunk aggregation in continue_processing")
-                logger.info(f"[{task_id}] Chunked processing completed: {total_chunks} chunks processed")
+                logger.info(
+                    f"[{task_id}] Chunked processing completed: "
+                    f"{chunk_stats['succeeded']}/{chunk_stats['total']} chunks succeeded "
+                    f"({chunk_stats['ledger_hits']} ledger hits)"
+                )
             else:
                 structured_extraction = ai_analyzer.analyze_document_structured(
                     document_content=chunks[0]['text'], context=context
@@ -2407,6 +2588,11 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
             logger.info(f"[{task_id}] Serialized {len(serialized_fhir_resources)}/{total_resources} FHIR resources")
             
             # STEP 5: Create ParsedData record
+            # WP1 Phase 3: Derive clinical_date from serialized extraction data
+            clinical_date_defaults = _build_clinical_date_defaults(
+                structured_data_dict, serialized_fhir_resources
+            )
+
             parsed_data, created = ParsedData.objects.update_or_create(
                 document=document,
                 defaults={
@@ -2420,6 +2606,8 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
                     'is_merged': False,
                     'reviewed_at': None,
                     'reviewed_by': None,
+                    # WP1 Phase 3: clinical_date / date_source / date_status (empty when undetermined)
+                    **clinical_date_defaults,
                 }
             )
             
@@ -2433,7 +2621,12 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
                 parsed_data.auto_approved = (review_status == 'auto_approved')
                 parsed_data.flag_reason = flag_reason
                 parsed_data.save(update_fields=['review_status', 'auto_approved', 'flag_reason'])
-                
+
+                # Partial chunk completion overrides any auto-approval
+                if _apply_partial_completion_flag(parsed_data, chunk_stats, task_id):
+                    review_status = parsed_data.review_status
+                    flag_reason = parsed_data.flag_reason
+
                 logger.info(f"[{task_id}] Review status: {review_status}")
                 
                 if review_status == 'flagged':
@@ -2469,6 +2662,13 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
             logger.warning(f"[{task_id}] AI structured extraction returned None for document {document_id}")
             ai_result = {'success': False, 'error': 'Structured extraction returned None', 'fields': []}
     
+    except SoftTimeLimitExceeded:
+        # Completed chunks are checkpointed in the ledger; hand off to a
+        # resume run instead of failing
+        return _handle_soft_time_limit(
+            document_id, task_id, time.time() - start_time, resume_attempt=resume_attempt
+        )
+
     except Exception as pipeline_exc:
         logger.error(f"[{task_id}] Pipeline error in continue_processing: {pipeline_exc}", exc_info=True)
         processing_errors.append(str(pipeline_exc))
@@ -2542,16 +2742,704 @@ def continue_document_processing(self, document_id: int, ocr_text: str):
 @shared_task
 def cleanup_old_documents():
     """
-    Periodic task to clean up old processed documents.
-    This task is scheduled in the CELERY_BEAT_SCHEDULE.
+    Periodic watchdog for documents stuck in processing or async OCR.
+
+    Detects orphaned records (e.g. worker OOM/SIGKILL) and either re-queues
+    them or marks them failed after max attempts.
     """
-    logger.info("Starting cleanup of old documents")
-    
-    # Placeholder for cleanup logic
-    # This will be implemented when we have the document models
-    
-    logger.info("Document cleanup completed")
-    return "Cleanup task completed"
+    from .models import Document
+
+    threshold_minutes = getattr(settings, 'STUCK_DOCUMENT_THRESHOLD_MINUTES', 15)
+    cutoff = timezone.now() - timedelta(minutes=threshold_minutes)
+
+    stuck_docs = Document.objects.filter(
+        status__in=['processing', 'ocr_pending'],
+        processing_started_at__isnull=False,
+        processing_started_at__lt=cutoff,
+    ).order_by('processing_started_at')
+
+    recovered = 0
+    failed = 0
+
+    for document in stuck_docs:
+        elapsed_minutes = int(
+            (timezone.now() - document.processing_started_at).total_seconds() / 60
+        )
+        logger.warning(
+            "Stuck document detected: id=%s status=%s attempts=%s elapsed_min=%s",
+            document.id,
+            document.status,
+            document.processing_attempts,
+            elapsed_minutes,
+        )
+
+        document.add_error_to_log(
+            error_type='stuck_processing',
+            error_message=(
+                f"Document stuck in {document.status} for {elapsed_minutes} minutes; "
+                "watchdog recovery triggered"
+            ),
+            context={'elapsed_minutes': elapsed_minutes},
+        )
+
+        if document.processing_attempts < 3:
+            document.status = 'pending'
+            document.processing_message = 'Re-queued after processing timeout'
+            document.error_message = ''
+            document.processing_started_at = None
+            document.increment_processing_attempts()
+            document.save(
+                update_fields=[
+                    'status',
+                    'processing_message',
+                    'error_message',
+                    'processing_started_at',
+                    'processing_attempts',
+                ]
+            )
+            _notify_monitor_stage(document)
+            process_document_async.delay(document.id)
+            recovered += 1
+            logger.warning(
+                "Re-queued stuck document %s (attempt %s/3)",
+                document.id,
+                document.processing_attempts,
+            )
+        else:
+            document.status = 'failed'
+            document.processing_message = 'Processing timed out after multiple attempts'
+            document.error_message = (
+                'Processing timed out after multiple attempts. '
+                'The document may be too large or the worker was interrupted.'
+            )
+            document.processed_at = timezone.now()
+            document.save(
+                update_fields=[
+                    'status',
+                    'processing_message',
+                    'error_message',
+                    'processed_at',
+                ]
+            )
+            _notify_monitor_stage(document)
+            failed += 1
+            logger.warning(
+                "Marked stuck document %s as failed after %s attempts",
+                document.id,
+                document.processing_attempts,
+            )
+
+    summary = (
+        f"Watchdog complete: recovered={recovered}, failed={failed}, "
+        f"checked={stuck_docs.count()}"
+    )
+    logger.info(summary)
+    return summary
+
+
+def _fail_document_with_limit(
+    document,
+    *,
+    error_message: str,
+    processing_message: str,
+    task_id: str,
+    error_type: str,
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Mark a document failed due to size/limit constraints and return task result."""
+    document.status = 'failed'
+    document.processing_message = processing_message
+    document.error_message = error_message
+    document.processed_at = timezone.now()
+    document.save(
+        update_fields=[
+            'status',
+            'processing_message',
+            'error_message',
+            'processed_at',
+        ]
+    )
+    document.add_error_to_log(
+        error_type=error_type,
+        error_message=error_message,
+        context=context or {},
+    )
+    _notify_monitor_stage(document)
+    logger.warning("[%s] %s for document %s", task_id, error_type, document.id)
+    return {
+        'success': False,
+        'document_id': document.id,
+        'status': 'failed',
+        'error_message': error_message,
+    }
+
+
+def _check_document_text_size_limit(document, text_length: int, task_id: str) -> Optional[Dict[str, Any]]:
+    """Return a failure result if extracted text exceeds the configured limit."""
+    max_length = getattr(settings, 'MAX_DOCUMENT_TEXT_LENGTH', 500000)
+    if text_length <= max_length:
+        return None
+
+    error_message = (
+        f"Document too large for processing: {text_length:,} characters exceeds "
+        f"{max_length:,} character limit. Contact administrator."
+    )
+    return _fail_document_with_limit(
+        document,
+        error_message=error_message,
+        processing_message='Document exceeds maximum text size',
+        task_id=task_id,
+        error_type='document_too_large',
+        context={'text_length': text_length, 'max_length': max_length},
+    )
+
+
+def _check_document_chunk_limit(document, chunk_count: int, task_id: str) -> Optional[Dict[str, Any]]:
+    """Return a failure result if chunk count exceeds the configured limit."""
+    max_chunks = getattr(settings, 'MAX_DOCUMENT_CHUNKS', 25)
+    if chunk_count <= max_chunks:
+        return None
+
+    error_message = (
+        f"Document requires too many processing chunks ({chunk_count} > {max_chunks}). "
+        "The document may be too large for reliable processing."
+    )
+    return _fail_document_with_limit(
+        document,
+        error_message=error_message,
+        processing_message='Document exceeds maximum chunk count',
+        task_id=task_id,
+        error_type='document_too_many_chunks',
+        context={'chunk_count': chunk_count, 'max_chunks': max_chunks},
+    )
+
+
+def _create_empty_aggregated_dict() -> Dict[str, Any]:
+    """Initialize the aggregated extraction dict used for chunked processing."""
+    return {
+        'conditions': [],
+        'medications': [],
+        'vital_signs': [],
+        'lab_results': [],
+        'procedures': [],
+        'immunizations': [],
+        'providers': [],
+        'encounters': [],
+        'service_requests': [],
+        'diagnostic_reports': [],
+        'allergies': [],
+        'care_plans': [],
+        'organizations': [],
+        'family_history': [],
+        'physical_exam_findings': [],
+        'social_history': [],
+        'extraction_timestamp': timezone.now().isoformat(),
+        'document_type': 'chunked_document',
+    }
+
+
+_CHUNK_LIST_KEYS = [
+    'conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'immunizations',
+    'providers', 'encounters', 'service_requests', 'diagnostic_reports', 'allergies',
+    'care_plans', 'organizations', 'family_history', 'physical_exam_findings', 'social_history',
+]
+
+
+def _extend_aggregated_from_chunk(aggregated: Dict[str, Any], chunk_result: Dict) -> None:
+    """Merge a single chunk extraction dict into the running aggregate."""
+    if not chunk_result or not isinstance(chunk_result, dict):
+        return
+    for key in _CHUNK_LIST_KEYS:
+        if key in chunk_result:
+            aggregated[key].extend(chunk_result[key])
+
+
+# Exact-match dedup keys for structured items duplicated across chunk overlap zones.
+# Unlike narrative items (conditions/medications), these are discrete measurements where
+# fuzzy matching would incorrectly merge distinct results (e.g., two different glucose draws).
+_EXACT_DEDUP_KEYS = {
+    'lab_results': ('test_name', 'value', 'test_date'),
+    'vital_signs': ('measurement', 'value', 'timestamp'),
+    'immunizations': ('vaccine_name', 'date_administered'),
+}
+
+
+def _deduplicate_exact(aggregated: Dict[str, Any], data_type: str, key_fields: tuple) -> None:
+    """Remove exact duplicates (same identifying fields) introduced by chunk overlap."""
+    if data_type not in aggregated:
+        return
+    items = aggregated[data_type]
+    seen = set()
+    deduplicated = []
+
+    for item in items:
+        if not isinstance(item, dict):
+            deduplicated.append(item)
+            continue
+        identity = tuple(
+            str(item.get(field) or '').strip().lower() for field in key_fields
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        deduplicated.append(item)
+
+    if len(deduplicated) != len(items):
+        logger.info(
+            "Deduplicated %s: %s -> %s items (exact match)",
+            data_type,
+            len(items),
+            len(deduplicated),
+        )
+    aggregated[data_type] = deduplicated
+
+
+def _deduplicate_aggregated(aggregated: Dict[str, Any]) -> None:
+    """Deduplicate similar medical items in aggregated chunk results."""
+    from difflib import SequenceMatcher
+
+    def is_similar(a: str, b: str, threshold: float = 0.85) -> bool:
+        return SequenceMatcher(None, a.lower(), b.lower()).ratio() > threshold
+
+    for data_type in ['conditions', 'medications', 'procedures']:
+        if data_type not in aggregated:
+            continue
+        items = aggregated[data_type]
+        deduplicated = []
+
+        for item in items:
+            item_name = item.get('name', str(item)) if isinstance(item, dict) else str(item)
+            is_duplicate = False
+            for existing in deduplicated:
+                existing_name = (
+                    existing.get('name', str(existing))
+                    if isinstance(existing, dict)
+                    else str(existing)
+                )
+                if is_similar(item_name, existing_name):
+                    if isinstance(item, dict) and isinstance(existing, dict):
+                        if item.get('confidence', 0) > existing.get('confidence', 0):
+                            idx = deduplicated.index(existing)
+                            deduplicated[idx] = item
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                deduplicated.append(item)
+
+        logger.info(
+            "Deduplicated %s: %s -> %s items",
+            data_type,
+            len(items),
+            len(deduplicated),
+        )
+        aggregated[data_type] = deduplicated
+
+    # Exact-match dedup for discrete measurements duplicated by chunk overlap
+    for data_type, key_fields in _EXACT_DEDUP_KEYS.items():
+        _deduplicate_exact(aggregated, data_type, key_fields)
+
+
+def _handle_soft_time_limit(document_id: int, task_id: str, total_time: float,
+                            resume_attempt: int = 0) -> Dict[str, Any]:
+    """
+    Handle a soft time limit hit during document processing.
+
+    Chunk checkpoints are already persisted in the ledger, so instead of
+    failing we re-enqueue a resume run (continue_document_processing with no
+    ocr_text, which reloads document.original_text). The resume run skips all
+    succeeded chunks via the ledger and only pays for unfinished work.
+
+    Marks the document failed only after LARGE_DOCUMENT_MAX_RESUMES attempts.
+    """
+    from .models import Document
+
+    max_resumes = getattr(settings, 'LARGE_DOCUMENT_MAX_RESUMES', 2)
+
+    if resume_attempt < max_resumes:
+        next_attempt = resume_attempt + 1
+        logger.warning(
+            f"[{task_id}] Document {document_id} hit soft time limit ({total_time:.0f}s). "
+            f"Re-enqueueing resume run {next_attempt}/{max_resumes} "
+            f"(completed chunks are checkpointed)."
+        )
+        try:
+            document = Document.objects.get(id=document_id)
+            document.processing_message = (
+                f"Time limit reached — resuming from checkpoint (attempt {next_attempt}/{max_resumes})"
+            )
+            document.save(update_fields=['processing_message'])
+        except Exception as save_err:
+            logger.error(f"[{task_id}] Could not update resume message: {save_err}")
+
+        continue_document_processing.apply_async(
+            args=[document_id, ''],
+            kwargs={'resume_attempt': next_attempt},
+            countdown=15,
+        )
+        return {
+            'success': False,
+            'document_id': document_id,
+            'status': 'resuming',
+            'error_type': 'SoftTimeLimitExceeded',
+            'resume_attempt': next_attempt,
+            'error_message': (
+                f'Processing timed out after {total_time/60:.1f} minutes; '
+                f'resume run {next_attempt} enqueued'
+            ),
+        }
+
+    logger.error(
+        f"[{task_id}] Document {document_id} exceeded soft time limit ({total_time:.0f}s) "
+        f"after {resume_attempt} resume attempts. Marking as failed."
+    )
+    try:
+        document = Document.objects.get(id=document_id)
+        document.status = 'failed'
+        document.error_message = (
+            f"Processing timed out after {total_time/60:.1f} minutes "
+            f"({resume_attempt} resume attempts exhausted). "
+            f"Completed chunks remain checkpointed for a manual retry."
+        )
+        document.processed_at = timezone.now()
+        document.save(update_fields=['status', 'error_message', 'processed_at'])
+    except Exception as save_err:
+        logger.critical(
+            f"[{task_id}] Failed to save timeout status for document {document_id}: {save_err}"
+        )
+    return {
+        'success': False,
+        'document_id': document_id,
+        'status': 'failed',
+        'error_type': 'SoftTimeLimitExceeded',
+        'error_message': f'Processing timed out after {total_time/60:.1f} minutes',
+    }
+
+
+def _apply_partial_completion_flag(parsed_data, chunk_stats, task_id: str) -> bool:
+    """
+    Force 'flagged' review status when some chunks failed extraction.
+
+    Partial results (>= AI_CHUNK_PARTIAL_THRESHOLD of chunks) are still merged,
+    but a reviewer must know which chunks are missing. The failed chunk list is
+    persisted in structured_extraction_metadata for the review UI.
+
+    Returns True if the flag was applied.
+    """
+    if not chunk_stats or not chunk_stats.get('failed_chunks'):
+        return False
+
+    try:
+        parsed_data.review_status = 'flagged'
+        parsed_data.auto_approved = False
+        parsed_data.flag_reason = (
+            f"Partial extraction: {chunk_stats['succeeded']}/{chunk_stats['total']} "
+            f"chunks succeeded; chunks {chunk_stats['failed_chunks']} failed"
+        )
+        metadata = parsed_data.structured_extraction_metadata or {}
+        metadata['partial_completion'] = {
+            'total_chunks': chunk_stats['total'],
+            'succeeded_chunks': chunk_stats['succeeded'],
+            'failed_chunk_indices': chunk_stats['failed_chunks'],
+            'ledger_hits': chunk_stats['ledger_hits'],
+            'flagged_at': timezone.now().isoformat(),
+        }
+        parsed_data.structured_extraction_metadata = metadata
+        parsed_data.save(update_fields=[
+            'review_status', 'auto_approved', 'flag_reason', 'structured_extraction_metadata'
+        ])
+        logger.warning(
+            f"[{task_id}] ParsedData {parsed_data.id} flagged for partial completion: "
+            f"{parsed_data.flag_reason}"
+        )
+        return True
+    except Exception as flag_error:
+        logger.error(f"[{task_id}] Failed to apply partial completion flag: {flag_error}")
+        return False
+
+
+# Version stamp folded into chunk content hashes. Bump when prompts/schema
+# change so stale ledger checkpoints are correctly invalidated.
+# Kept in sync with the Redis cache 'extraction_version'.
+CHUNK_EXTRACTION_VERSION = '4.0'
+
+
+def _chunk_content_hash(chunk_text: str, model: str) -> str:
+    """SHA-256 over chunk text + extraction version + model name."""
+    import hashlib
+    payload = f"{chunk_text}|{CHUNK_EXTRACTION_VERSION}|{model}"
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
+def _get_chunk_usage() -> Dict[str, Any]:
+    """
+    Pull usage stats from the most recent cached-extractor API call.
+
+    Returns zeros when the legacy (non-cached) path handled the chunk.
+    """
+    try:
+        from apps.documents.services.cached_extraction import _extractor_instance
+        if _extractor_instance is not None and _extractor_instance.last_usage:
+            return dict(_extractor_instance.last_usage)
+    except Exception:
+        pass
+    return {}
+
+
+def _estimate_chunk_cost(usage: Dict[str, Any]):
+    """Estimate USD cost of one chunk call from its token usage."""
+    from decimal import Decimal
+    from apps.core.services import CostCalculator
+
+    if not usage:
+        return Decimal('0')
+    model = usage.get('model') or getattr(settings, 'AI_MODEL_PRIMARY', 'claude-sonnet-4-5-20250929')
+    return CostCalculator.calculate_cost(
+        'anthropic', model,
+        usage.get('input_tokens', 0) or 0,
+        usage.get('output_tokens', 0) or 0,
+    )
+
+
+def _check_cost_circuit_breaker(document, task_id: str) -> None:
+    """
+    Halt chunk processing when per-document or daily AI spend limits are hit.
+
+    Per-document spend comes from the chunk ledger; daily spend from
+    APIUsageLog. Raises AIExtractionError with a clear message on breach.
+    """
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models import DocumentChunkResult
+    from apps.core.models import APIUsageLog
+
+    per_doc_limit = Decimal(str(getattr(settings, 'AI_PER_DOCUMENT_COST_LIMIT', 5.00)))
+    daily_limit = Decimal(str(getattr(settings, 'AI_DAILY_COST_LIMIT', 100.00)))
+
+    doc_spend = DocumentChunkResult.objects.filter(document=document).aggregate(
+        total=Sum('cost_usd')
+    )['total'] or Decimal('0')
+    if doc_spend >= per_doc_limit:
+        raise AIExtractionError(
+            f"Per-document AI cost limit reached (${doc_spend:.2f} >= ${per_doc_limit:.2f}). "
+            f"Processing halted to prevent cost overrun. Raise AI_PER_DOCUMENT_COST_LIMIT "
+            f"to allow this document to complete.",
+            details={'document_id': document.id, 'spend_usd': float(doc_spend)},
+        )
+
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    daily_spend = APIUsageLog.objects.filter(created_at__gte=today_start).aggregate(
+        total=Sum('cost_usd')
+    )['total'] or Decimal('0')
+    if daily_spend >= daily_limit:
+        raise AIExtractionError(
+            f"Daily AI cost limit reached (${daily_spend:.2f} >= ${daily_limit:.2f}). "
+            f"Processing halted until tomorrow or until AI_DAILY_COST_LIMIT is raised.",
+            details={'document_id': document.id, 'daily_spend_usd': float(daily_spend)},
+        )
+
+
+def _log_chunk_api_usage(document, usage: Dict[str, Any], task_id: str,
+                         chunk_number: int, total_chunks: int,
+                         start_time: float, success: bool = True,
+                         error_message: Optional[str] = None) -> None:
+    """Record one chunk's API usage in APIUsageLog; never fails processing."""
+    try:
+        from datetime import datetime, timezone as dt_timezone
+        from apps.core.services import APIUsageMonitor
+
+        if not usage:
+            return
+        APIUsageMonitor.log_api_usage(
+            document=document,
+            patient=document.patient,
+            session_id=_get_processing_session_id(task_id),
+            provider='anthropic',
+            model=usage.get('model') or getattr(settings, 'AI_MODEL_PRIMARY', 'unknown'),
+            input_tokens=usage.get('input_tokens', 0) or 0,
+            output_tokens=usage.get('output_tokens', 0) or 0,
+            total_tokens=(usage.get('input_tokens', 0) or 0) + (usage.get('output_tokens', 0) or 0),
+            start_time=datetime.fromtimestamp(start_time, tz=dt_timezone.utc),
+            end_time=datetime.now(tz=dt_timezone.utc),
+            success=success,
+            error_message=error_message,
+            chunk_number=chunk_number,
+            total_chunks=total_chunks,
+        )
+    except Exception as log_error:
+        logger.warning(f"[{task_id}] Failed to log chunk API usage: {log_error}")
+
+
+def _process_chunks_streaming(
+    chunks: List[Dict[str, Any]],
+    context: Optional[str],
+    task_id: str,
+    document=None,
+) -> tuple:
+    """
+    Ledger-aware sequential chunk processing with incremental aggregation.
+
+    For each chunk (in order):
+    1. Skip the API entirely if the ledger has a 'succeeded' row with a
+       matching content hash (retry/resume costs nothing for done chunks).
+    2. Otherwise check the cost circuit breaker, call the AI, and persist the
+       result to the ledger immediately — a crash or kill never loses
+       completed work.
+    3. On chunk failure, record it and continue — no longer all-or-nothing.
+
+    Peak memory is one chunk result plus the running aggregate.
+
+    Returns:
+        (StructuredMedicalExtraction, chunk_stats) where chunk_stats is
+        {'total': int, 'succeeded': int, 'failed_chunks': [int], 'ledger_hits': int}
+
+    Raises:
+        AIExtractionError: If the cost circuit breaker trips, or fewer than
+            AI_CHUNK_PARTIAL_THRESHOLD of chunks succeeded.
+        SoftTimeLimitExceeded: Propagated so the task can re-enqueue a resume;
+            all completed chunks are already persisted in the ledger.
+    """
+    from apps.documents.services.ai_extraction import (
+        extract_medical_data_structured,
+        StructuredMedicalExtraction,
+    )
+    from .models import DocumentChunkResult
+
+    model = getattr(settings, 'AI_MODEL_PRIMARY', 'claude-sonnet-4-5-20250929')
+    aggregated = _create_empty_aggregated_dict()
+    total_chunks = len(chunks)
+    failed_chunks: List[int] = []
+    ledger_hits = 0
+
+    for chunk_idx, chunk in enumerate(chunks):
+        chunk_text = chunk['text']
+        content_hash = _chunk_content_hash(chunk_text, model) if document else None
+
+        # 1. Ledger checkpoint: skip chunks already extracted with this exact
+        #    text/version/model combination
+        chunk_data = None
+        if document is not None:
+            ledger_row = DocumentChunkResult.objects.filter(
+                document=document,
+                chunk_index=chunk_idx,
+                content_hash=content_hash,
+                status='succeeded',
+            ).first()
+            if ledger_row is not None:
+                chunk_data = ledger_row.structured_json
+                ledger_hits += 1
+                logger.info(
+                    f"[{task_id}] Chunk {chunk_idx + 1}/{total_chunks}: ledger hit, skipping API call"
+                )
+
+        # 2. Fresh extraction with immediate checkpoint persistence
+        if chunk_data is None:
+            if document is not None:
+                _check_cost_circuit_breaker(document, task_id)
+
+            logger.info(f"[{task_id}] Processing chunk {chunk_idx + 1}/{total_chunks}")
+            chunk_start = time.time()
+            try:
+                chunk_result = extract_medical_data_structured(chunk_text, context=context)
+                chunk_data = chunk_result.model_dump()
+                del chunk_result
+
+                usage = _get_chunk_usage()
+                if document is not None:
+                    ledger_row, _ = DocumentChunkResult.objects.update_or_create(
+                        document=document,
+                        chunk_index=chunk_idx,
+                        content_hash=content_hash,
+                        defaults={
+                            'status': 'succeeded',
+                            'structured_json': chunk_data,
+                            'input_tokens': usage.get('input_tokens', 0) or 0,
+                            'output_tokens': usage.get('output_tokens', 0) or 0,
+                            'cost_usd': _estimate_chunk_cost(usage),
+                            'error_message': '',
+                        },
+                    )
+                    DocumentChunkResult.objects.filter(pk=ledger_row.pk).update(
+                        attempts=models.F('attempts') + 1
+                    )
+                    _log_chunk_api_usage(
+                        document, usage, task_id, chunk_idx + 1, total_chunks, chunk_start
+                    )
+            except SoftTimeLimitExceeded:
+                # Completed chunks are already in the ledger — propagate so the
+                # task layer can re-enqueue a resume run
+                raise
+            except Exception as chunk_error:
+                logger.error(
+                    f"[{task_id}] Chunk {chunk_idx + 1}/{total_chunks} failed: {chunk_error}"
+                )
+                failed_chunks.append(chunk_idx)
+                if document is not None:
+                    ledger_row, _ = DocumentChunkResult.objects.update_or_create(
+                        document=document,
+                        chunk_index=chunk_idx,
+                        content_hash=content_hash,
+                        defaults={
+                            'status': 'failed',
+                            'structured_json': {},
+                            'error_message': str(chunk_error)[:2000],
+                        },
+                    )
+                    DocumentChunkResult.objects.filter(pk=ledger_row.pk).update(
+                        attempts=models.F('attempts') + 1
+                    )
+                    _log_chunk_api_usage(
+                        document, _get_chunk_usage(), task_id, chunk_idx + 1,
+                        total_chunks, chunk_start, success=False,
+                        error_message=str(chunk_error)[:500],
+                    )
+                chunk['text'] = ''
+                continue
+
+        # 3. Aggregate and update progress
+        _extend_aggregated_from_chunk(aggregated, chunk_data)
+        del chunk_data
+        chunk['text'] = ''
+
+        if document is not None:
+            try:
+                document.processing_message = (
+                    f"AI extraction: {chunk_idx + 1}/{total_chunks} chunks"
+                )
+                document.save(update_fields=['processing_message'])
+            except Exception as msg_error:
+                logger.debug(f"[{task_id}] Could not update progress message: {msg_error}")
+
+        if chunk_idx < total_chunks - 1:
+            force_memory_cleanup(f"after chunk {chunk_idx + 1}")
+
+    del chunks
+    force_memory_cleanup("after all chunks processed")
+
+    succeeded = total_chunks - len(failed_chunks)
+    chunk_stats = {
+        'total': total_chunks,
+        'succeeded': succeeded,
+        'failed_chunks': failed_chunks,
+        'ledger_hits': ledger_hits,
+    }
+
+    partial_threshold = float(getattr(settings, 'AI_CHUNK_PARTIAL_THRESHOLD', 0.85))
+    if total_chunks > 0 and (succeeded / total_chunks) < partial_threshold:
+        raise AIExtractionError(
+            f"Only {succeeded}/{total_chunks} chunks extracted successfully "
+            f"(below {partial_threshold:.0%} threshold). Failed chunks: {failed_chunks}. "
+            f"Succeeded chunks are checkpointed — retry will only re-process failures.",
+            details={'document_id': getattr(document, 'id', None), **chunk_stats},
+        )
+
+    if failed_chunks:
+        logger.warning(
+            f"[{task_id}] Partial completion: {succeeded}/{total_chunks} chunks succeeded, "
+            f"failed chunks {failed_chunks} — result will be flagged for review"
+        )
+
+    _deduplicate_aggregated(aggregated)
+    return StructuredMedicalExtraction.model_validate(aggregated), chunk_stats
 
 
 def _aggregate_chunked_extractions(chunk_results: List[Dict]) -> 'StructuredMedicalExtraction':
@@ -2565,76 +3453,9 @@ def _aggregate_chunked_extractions(chunk_results: List[Dict]) -> 'StructuredMedi
         Aggregated StructuredMedicalExtraction object
     """
     from apps.documents.services.ai_extraction import StructuredMedicalExtraction
-    from collections import defaultdict
-    from difflib import SequenceMatcher
-    
-    # Initialize aggregated data
-    aggregated = {
-        'conditions': [],
-        'medications': [],
-        'vital_signs': [],
-        'lab_results': [],
-        'procedures': [],
-        'providers': [],
-        'encounters': [],
-        'service_requests': [],
-        'diagnostic_reports': [],
-        'allergies': [],
-        'care_plans': [],
-        'organizations': [],
-        'family_history': [],
-        'physical_exam_findings': [],
-        'social_history': [],
-        'extraction_timestamp': timezone.now().isoformat(),
-        'document_type': 'chunked_document'
-    }
 
-    _chunk_list_keys = [
-        'conditions', 'medications', 'vital_signs', 'lab_results', 'procedures', 'providers',
-        'encounters', 'service_requests', 'diagnostic_reports', 'allergies', 'care_plans',
-        'organizations', 'family_history', 'physical_exam_findings', 'social_history',
-    ]
-
-    # Collect all items from chunks
+    aggregated = _create_empty_aggregated_dict()
     for chunk_result in chunk_results:
-        if chunk_result and isinstance(chunk_result, dict):
-            for key in _chunk_list_keys:
-                if key in chunk_result:
-                    aggregated[key].extend(chunk_result[key])
-    
-    # Deduplicate similar items using fuzzy matching
-    def is_similar(a: str, b: str, threshold: float = 0.85) -> bool:
-        """Check if two medical terms are similar enough to be duplicates."""
-        return SequenceMatcher(None, a.lower(), b.lower()).ratio() > threshold
-    
-    for data_type in ['conditions', 'medications', 'procedures']:
-        if data_type in aggregated:
-            items = aggregated[data_type]
-            deduplicated = []
-            
-            for item in items:
-                # Extract name for comparison
-                item_name = item.get('name', str(item)) if isinstance(item, dict) else str(item)
-                
-                # Check if similar item already exists
-                is_duplicate = False
-                for existing in deduplicated:
-                    existing_name = existing.get('name', str(existing)) if isinstance(existing, dict) else str(existing)
-                    if is_similar(item_name, existing_name):
-                        # Keep the item with higher confidence if available
-                        if isinstance(item, dict) and isinstance(existing, dict):
-                            if item.get('confidence', 0) > existing.get('confidence', 0):
-                                # Replace existing with higher confidence item
-                                idx = deduplicated.index(existing)
-                                deduplicated[idx] = item
-                        is_duplicate = True
-                        break
-                
-                if not is_duplicate:
-                    deduplicated.append(item)
-            
-            logger.info(f"Deduplicated {data_type}: {len(items)} -> {len(deduplicated)} items")
-            aggregated[data_type] = deduplicated
-    
-    # Create and return StructuredMedicalExtraction object
+        _extend_aggregated_from_chunk(aggregated, chunk_result)
+    _deduplicate_aggregated(aggregated)
     return StructuredMedicalExtraction.model_validate(aggregated) 

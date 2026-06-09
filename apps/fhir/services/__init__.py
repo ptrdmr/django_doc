@@ -16,6 +16,8 @@ from .practitioner_service import PractitionerService
 from .allergy_intolerance_service import AllergyIntoleranceService
 from .care_plan_service import CarePlanService
 from .organization_service import OrganizationService
+from .immunization_service import ImmunizationService
+from .encounter_linker import EncounterLinker
 from .fhir_processor import FHIRProcessor
 from .metrics_service import FHIRMetricsService
 from .deduplication_service import DeduplicationService
@@ -33,6 +35,8 @@ __all__ = [
     'AllergyIntoleranceService',
     'CarePlanService',
     'OrganizationService',
+    'ImmunizationService',
+    'EncounterLinker',
     'FHIRProcessor',
     'FHIRMetricsService',
     'DeduplicationService',

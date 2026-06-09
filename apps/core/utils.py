@@ -209,4 +209,30 @@ class ActivityTypes:
     PROVIDER_VIEW = 'provider_view'
     REPORT_GENERATE = 'report_generate'
     PROFILE_UPDATE = 'profile_update'
-    ADMIN = 'admin_action' 
+    ADMIN = 'admin_action'
+
+
+# #region agent log
+def agent_debug_log(location, message, data=None, hypothesis_id=None, run_id='pre-fix'):
+    """Append NDJSON debug entry for agent debug session 09be6f."""
+    import json
+    import time
+    from pathlib import Path
+    from django.conf import settings
+
+    try:
+        log_path = Path(settings.BASE_DIR) / 'debug-09be6f.log'
+        entry = {
+            'sessionId': '09be6f',
+            'timestamp': int(time.time() * 1000),
+            'location': location,
+            'message': message,
+            'data': data or {},
+            'hypothesisId': hypothesis_id,
+            'runId': run_id,
+        }
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry) + '\n')
+    except Exception:
+        pass
+# #endregion

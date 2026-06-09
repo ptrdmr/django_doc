@@ -94,6 +94,95 @@ class EncounterService:
 
         return []
     
+    # Clinical resource groups whose presence justifies synthesizing an
+    # Encounter when the AI did not extract one explicitly.
+    _CLINICAL_GROUPS = (
+        "conditions", "medications", "vital_signs", "lab_results",
+        "procedures", "immunizations", "diagnostic_reports",
+    )
+
+    def synthesize_encounter(self, extracted_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Synthesize a minimal Encounter from document-level metadata (WP2 B10).
+
+        Only fires when the document has a usable clinical date AND at least one
+        clinical resource group, so administrative-only documents do not get a
+        fabricated visit. The synthesized encounter is tagged with low confidence
+        so it is identifiable as inferred from metadata rather than stated.
+
+        Args:
+            extracted_data: Processor input with 'patient_id', optional
+                'clinical_date', and a 'structured_data' dict.
+
+        Returns:
+            A FHIR Encounter resource dict, or None when synthesis is unwarranted.
+        """
+        patient_id = extracted_data.get('patient_id')
+        if not patient_id:
+            return None
+
+        structured = extracted_data.get('structured_data')
+        if not isinstance(structured, dict):
+            return None
+
+        has_clinical = any(
+            isinstance(structured.get(group), list) and structured.get(group)
+            for group in self._CLINICAL_GROUPS
+        )
+        if not has_clinical:
+            self.logger.debug("No clinical groups present; skipping encounter synthesis")
+            return None
+
+        # Resolve a clinical date: explicit processor clinical_date wins, else
+        # the structured top-level clinical_date.
+        raw_date = extracted_data.get('clinical_date') or structured.get('clinical_date')
+        start_date = None
+        if raw_date:
+            try:
+                extracted_dates = self.date_parser.extract_dates(str(raw_date))
+                if extracted_dates:
+                    best_date = max(extracted_dates, key=lambda x: x.confidence)
+                    start_date = best_date.extracted_date.isoformat()
+            except Exception as exc:
+                self.logger.debug(f"Could not parse synthesized encounter date: {exc}")
+
+        if not start_date:
+            self.logger.debug("No clinical date available; skipping encounter synthesis")
+            return None
+
+        encounter = {
+            "resourceType": "Encounter",
+            "id": str(uuid4()),
+            "status": "finished",
+            "class": {
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                "code": "AMB",
+                "display": "Ambulatory"
+            },
+            "subject": {"reference": f"Patient/{patient_id}"},
+            "period": {"start": start_date},
+            "meta": {
+                "source": "Synthesized from document metadata",
+                "profile": ["http://hl7.org/fhir/StructureDefinition/Encounter"],
+                "versionId": "1",
+                "lastUpdated": datetime.now().isoformat(),
+                "tag": [{
+                    "system": "http://terminology.hl7.org/CodeSystem/common-tags",
+                    "code": "synthesized-encounter",
+                    "display": "Synthesized from document metadata"
+                }]
+            }
+        }
+
+        append_extraction_extensions(
+            encounter,
+            confidence=0.6,
+            source_text="Synthesized from document-level clinical date and content",
+        )
+
+        self.logger.info("Synthesized minimal Encounter for %s", start_date)
+        return encounter
+
     def _create_encounter_from_structured(self, encounter_dict: Dict[str, Any], patient_id: str) -> Optional[Dict[str, Any]]:
         """
         Create a FHIR Encounter resource from structured Pydantic-derived dict.

@@ -272,6 +272,9 @@
                                     <div class="flex-1 text-left">
                                         <p class="text-sm font-medium text-gray-900" x-text="selectedFile ? selectedFile.name : ''"></p>
                                         <p class="text-xs text-gray-500" x-text="selectedFile ? formatFileSize(selectedFile.size) : ''"></p>
+                                        <span x-show="largeFileAccepted" class="inline-flex items-center mt-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                                            Large file
+                                        </span>
                                     </div>
                                     <button 
                                         type="button" 
@@ -479,14 +482,58 @@
         </div>
     </div>
     
+    <!-- Large File Warning Modal -->
+    <div x-show="showLargeFileModal" x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md mx-4 p-6" @click.stop>
+            <div class="flex items-center mb-4">
+                <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                    <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                </div>
+                <h3 class="ml-4 text-lg font-semibold text-gray-900">Large Document Detected</h3>
+            </div>
+            <p class="text-gray-600 mb-2">
+                This document is
+                <span class="font-semibold" x-text="pendingFile ? formatFileSize(pendingFile.size) : ''"></span>,
+                which is larger than average.
+            </p>
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <p class="text-sm text-amber-800"><strong>What to expect:</strong></p>
+                <ul class="text-sm text-amber-700 mt-1 list-disc list-inside space-y-1">
+                    <li>Processing will take significantly longer than usual</li>
+                    <li>The document will be split into multiple chunks for analysis</li>
+                    <li>You can safely navigate away — processing continues in the background</li>
+                    <li>You'll be notified when processing is complete</li>
+                </ul>
+            </div>
+            <div class="flex space-x-3">
+                <button type="button" @click="acceptLargeFile()"
+                        class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                    I Understand — Continue Upload
+                </button>
+                <button type="button" @click="cancelLargeFile()"
+                        class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notifications Container -->
     <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
 </div>
 
 <script>
 function documentUpload() {
+    const LARGE_FILE_THRESHOLD = 2 * 1024 * 1024; // 2MB
+
     return {
         selectedFile: null,
+        pendingFile: null,
+        showLargeFileModal: false,
+        largeFileAccepted: false,
         uploading: false,
         uploadProgress: 0,
         isDragOver: false,
@@ -534,13 +581,43 @@ function documentUpload() {
             }
         },
         
+        isLargeFile(file) {
+            return file && file.size > LARGE_FILE_THRESHOLD;
+        },
+
         handleFileSelection(file) {
             console.log('Processing file selection:', file.name);
-            if (this.validateFile(file)) {
-                this.selectedFile = file;
-                console.log('File set successfully:', this.selectedFile.name);
-                this.showToast('File selected successfully', 'success');
+            if (!this.validateFile(file)) {
+                return;
             }
+
+            if (this.isLargeFile(file)) {
+                this.pendingFile = file;
+                this.showLargeFileModal = true;
+                this.largeFileAccepted = false;
+                return;
+            }
+
+            this.selectedFile = file;
+            this.largeFileAccepted = false;
+            console.log('File set successfully:', this.selectedFile.name);
+            this.showToast('File selected successfully', 'success');
+        },
+
+        acceptLargeFile() {
+            this.selectedFile = this.pendingFile;
+            this.pendingFile = null;
+            this.showLargeFileModal = false;
+            this.largeFileAccepted = true;
+            this.showToast('Large file acknowledged — ready to upload', 'success');
+        },
+
+        cancelLargeFile() {
+            this.pendingFile = null;
+            this.showLargeFileModal = false;
+            this.largeFileAccepted = false;
+            this.$refs.fileInput.value = '';
+            this.showToast('Upload cancelled', 'warning');
         },
         
         validateFile(file) {
@@ -569,6 +646,9 @@ function documentUpload() {
         
         clearFile() {
             this.selectedFile = null;
+            this.pendingFile = null;
+            this.largeFileAccepted = false;
+            this.showLargeFileModal = false;
             this.$refs.fileInput.value = '';
             this.showToast('File removed', 'warning');
         },
@@ -579,6 +659,19 @@ function documentUpload() {
                 this.showToast('Please select a file to upload.', 'error');
                 return;
             }
+
+            if (this.isLargeFile(this.selectedFile) && !this.largeFileAccepted) {
+                event.preventDefault();
+                this.pendingFile = this.selectedFile;
+                this.showLargeFileModal = true;
+                return;
+            }
+
+            // #region agent log
+            var uploadForm = document.getElementById('upload-form');
+            var csrfInput = uploadForm ? uploadForm.querySelector('[name=csrfmiddlewaretoken]') : null;
+            fetch('http://127.0.0.1:7847/ingest/a6dcb460-cacd-43ee-8b7e-2a1cb41f5f8c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'09be6f'},body:JSON.stringify({sessionId:'09be6f',location:'upload.html:handleSubmit',message:'main upload form submit',data:{hasCsrfInput:!!csrfInput,csrfLen:csrfInput?csrfInput.value.length:0,pageCsrfCount:document.querySelectorAll('[name=csrfmiddlewaretoken]').length,host:window.location.host,uploadPath:uploadForm?uploadForm.action:''},timestamp:Date.now(),hypothesisId:'H2,H5',runId:'pre-fix'})}).catch(function(){});
+            // #endregion
             
             this.uploading = true;
             this.uploadProgress = 0;

@@ -10,6 +10,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from django.core.cache import cache
 from django.conf import settings
+from django.utils import timezone
 from apps.documents.services.ai_extraction import StructuredMedicalExtraction
 
 logger = logging.getLogger(__name__)

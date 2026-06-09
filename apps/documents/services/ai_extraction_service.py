@@ -82,8 +82,6 @@ EXTRACTION TARGETS - Extract ALL instances of:
 4. **ALL Diagnoses & Conditions**
    - Primary and secondary diagnoses
    - Chronic conditions and comorbidities
-   - Differential diagnoses under consideration
-   - Rule-out diagnoses
    - Historical diagnoses and resolved conditions
    - ICD codes if present
 
@@ -118,6 +116,12 @@ EXTRACTION TARGETS - Extract ALL instances of:
    - Pain scores
    - Measurement dates and times
 
+8b. **ALL Immunizations & Vaccines** (use `immunizations`, NOT `procedures`)
+   - Vaccine name and CVX code when shown
+   - Date administered, lot number, dose number in series
+   - Route and body site of administration
+   - Mark recommended/due vaccines that were NOT given with `is_forecast: true`
+
 9. **ALL Provider Information**
    - Attending physicians
    - Consulting specialists
@@ -135,8 +139,8 @@ EXTRACTION TARGETS - Extract ALL instances of:
 OUTPUT FORMAT: Return JSON whose **top-level keys match** the `StructuredMedicalExtraction`
 schema used by the ingestion pipeline (snake_case):
 
-- `conditions`, `medications`, `vital_signs`, `lab_results`, `procedures`, `providers`,
-  `encounters`, `service_requests`, `diagnostic_reports`, `allergies`, `care_plans`,
+- `conditions`, `medications`, `vital_signs`, `lab_results`, `procedures`, `immunizations`,
+  `providers`, `encounters`, `service_requests`, `diagnostic_reports`, `allergies`, `care_plans`,
   `organizations`, `family_history`, `physical_exam_findings`, `social_history`
 - `extraction_timestamp` (ISO-8601 string), optional `document_type`, optional `confidence_average`
 
@@ -218,6 +222,44 @@ CRITICAL EXTRACTION RULES:
 6. **Dates and Times**: Always extract when information was recorded/occurred
 7. **Context Preservation**: Maintain relationships between related information
 8. **No Assumptions**: Only extract what is explicitly stated in the document
+
+STRICT CLINICAL ASSERTION RULES (prevent hallucinated diagnoses):
+- ONLY record a condition when a provider explicitly states it (Diagnosis/Impression/Assessment/
+  Problem List/Past Medical History, or the provider names it directly).
+- NEVER infer a diagnosis from labs, vitals, BMI, measurements, or medications. Abnormal values
+  go in lab_results/vital_signs, NOT conditions. (e.g., A1C 5.9% is NOT "Prediabetes";
+  BMI 31.6 is NOT "Obesity"; BP 140/90 is NOT "Hypertension".)
+- Set each condition's `evidence_type` to explicit_diagnosis, problem_list, assessment, or history.
+  If a condition is not explicitly stated by a provider, do NOT extract it at all.
+
+DATE EXTRACTION (mandatory for all clinical data):
+- Search every format: MM/DD/YYYY, MM/DD/YY, YYYY-MM-DD, spelled-out, dates adjacent to values
+  (e.g., "HR: 90 10/19/24"), in parentheses (e.g., "CYSTOSCOPY (12/28/2023)"), and labeled
+  (e.g., "Date Administered: 11/15/17").
+- If a date appears near a clinical finding you MUST extract it. Missing a date that is present
+  in the text is a CRITICAL ERROR. Also populate the top-level `clinical_date` with the document's
+  primary service/visit/collection date (NOT the print/fax date).
+
+MEDICATION SIG CAPTURE (preserve complete instructions):
+- Capture each component separately: `dosage` (strength only, e.g., "0.4 mg"), `quantity`
+  (amount per dose, e.g., "1 capsule"), `frequency` ("twice daily", "BID"), `route` ("oral"),
+  and `sig` (the COMPLETE verbatim instruction, e.g., "Take 1 capsule twice a day by oral route").
+- NEVER truncate the SIG down to just the dosage. Capture `refills` and `prescriber` when present.
+- If brand and generic names appear for the same drug, create ONE entry with both `brand_name`
+  and `generic_name` instead of two duplicate entries.
+
+CODE & RANGE CAPTURE:
+- Extract ICD-10 and SNOMED codes onto conditions, CPT codes onto procedures, and reference
+  ranges + abnormal flags (H/L/HH/LL/A/critical) onto lab_results when present in the document.
+- Tag each observation with a `category`: laboratory, vital-signs, exam, or social-history.
+- For blood pressure, populate `components` with separate systolic and diastolic entries.
+
+ORGANIZATION & ENCOUNTER NOISE FILTER:
+- For each organization, set `role_in_document` (care_site, performing_lab, ordering_org,
+  pharmacy, payer, fax_header, admin). Only treat clinically relevant orgs as care sites; mark
+  fax headers, release-form boilerplate, and CC/routing lists as fax_header/admin.
+- Classify an encounter as "inpatient" ONLY when the text explicitly says admission, admitted,
+  discharged, or hospitalization. Clinic/office visits are "ambulatory"; ED visits are "emergency".
 
 RESPONSE REQUIREMENTS:
 - Your response must ONLY be a valid JSON object
@@ -310,8 +352,8 @@ RESPONSE REQUIREMENTS:
                 'prompt_length': len(prompt),
                 'extraction_targets': [
                     'conditions', 'medications', 'vital_signs', 'lab_results', 'procedures',
-                    'providers', 'encounters', 'service_requests', 'diagnostic_reports',
-                    'allergies', 'care_plans', 'organizations',
+                    'immunizations', 'providers', 'encounters', 'service_requests',
+                    'diagnostic_reports', 'allergies', 'care_plans', 'organizations',
                     'family_history', 'physical_exam_findings', 'social_history',
                 ]
             }

@@ -34,6 +34,9 @@
                 <div class="text-left">
                     <p class="text-sm font-medium text-gray-900" x-text="fileName"></p>
                     <p class="text-xs text-gray-500" x-text="fileSize"></p>
+                    <span x-show="largeFileAccepted" class="inline-flex items-center mt-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                        Large file
+                    </span>
                 </div>
                 <button type="button" @click.stop="clearFile()" class="p-1 text-gray-400 hover:text-red-500">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -84,13 +87,46 @@
             </button>
         </div>
     </form>
+
+    <!-- Large File Warning Modal (compact inline variant) -->
+    <div x-show="showLargeFileModal" x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div class="bg-white rounded-lg shadow-xl max-w-sm mx-4 p-5" @click.stop>
+            <h3 class="text-base font-semibold text-gray-900 mb-2">Large Document</h3>
+            <p class="text-sm text-gray-600 mb-3">
+                <span class="font-medium" x-text="pendingFileName"></span>
+                (<span x-text="pendingFileSize"></span>) may take several minutes to process.
+            </p>
+            <ul class="text-xs text-amber-700 list-disc list-inside space-y-1 mb-4">
+                <li>Split into multiple chunks for analysis</li>
+                <li>Processing continues if you navigate away</li>
+            </ul>
+            <div class="flex space-x-2">
+                <button type="button" @click="acceptLargeFile()"
+                        class="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+                    Continue Upload
+                </button>
+                <button type="button" @click="cancelLargeFile()"
+                        class="px-3 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
 function inlineUpload() {
+    var LARGE_FILE_THRESHOLD = 2 * 1024 * 1024;
+
     return {
         fileName: '',
         fileSize: '',
+        pendingFileName: '',
+        pendingFileSize: '',
+        pendingFileObject: null,
+        showLargeFileModal: false,
+        largeFileAccepted: false,
         dragOver: false,
         uploading: false,
         uploadSuccess: false,
@@ -110,6 +146,10 @@ function inlineUpload() {
                 dt.items.add(file);
                 this.$refs.fileInput.files = dt.files;
             }
+        },
+
+        isLargeFile(file) {
+            return file && file.size > LARGE_FILE_THRESHOLD;
         },
 
         setFileInfo(file) {
@@ -136,14 +176,52 @@ function inlineUpload() {
                 return;
             }
 
+            if (this.isLargeFile(file)) {
+                this.pendingFileObject = file;
+                this.pendingFileName = file.name;
+                this.pendingFileSize = this.formatSize(file.size);
+                this.showLargeFileModal = true;
+                this.largeFileAccepted = false;
+                this.fileName = '';
+                this.fileSize = '';
+                return;
+            }
+
             this.fileName = file.name;
             this.fileSize = this.formatSize(file.size);
+            this.largeFileAccepted = false;
+        },
+
+        acceptLargeFile() {
+            if (!this.pendingFileObject) {
+                return;
+            }
+            this.fileName = this.pendingFileObject.name;
+            this.fileSize = this.formatSize(this.pendingFileObject.size);
+            this.largeFileAccepted = true;
+            this.showLargeFileModal = false;
+            this.pendingFileObject = null;
+            this.pendingFileName = '';
+            this.pendingFileSize = '';
+        },
+
+        cancelLargeFile() {
+            this.pendingFileObject = null;
+            this.pendingFileName = '';
+            this.pendingFileSize = '';
+            this.showLargeFileModal = false;
+            this.largeFileAccepted = false;
+            this.$refs.fileInput.value = '';
+            this.errorMsg = 'Upload cancelled.';
         },
 
         clearFile() {
             this.fileName = '';
             this.fileSize = '';
             this.errorMsg = null;
+            this.largeFileAccepted = false;
+            this.pendingFileObject = null;
+            this.showLargeFileModal = false;
             this.$refs.fileInput.value = '';
         },
 
@@ -153,11 +231,25 @@ function inlineUpload() {
                 return;
             }
 
+            var selected = this.$refs.fileInput.files[0];
+            if (this.isLargeFile(selected) && !this.largeFileAccepted) {
+                this.pendingFileObject = selected;
+                this.pendingFileName = selected.name;
+                this.pendingFileSize = this.formatSize(selected.size);
+                this.showLargeFileModal = true;
+                return;
+            }
+
             this.uploading = true;
             this.errorMsg = null;
 
             var form = document.getElementById('inline-upload-form');
             var formData = new FormData(form);
+
+            // #region agent log
+            var csrfInput = form.querySelector('[name=csrfmiddlewaretoken]');
+            fetch('http://127.0.0.1:7847/ingest/a6dcb460-cacd-43ee-8b7e-2a1cb41f5f8c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'09be6f'},body:JSON.stringify({sessionId:'09be6f',location:'_upload_zone.html:submitUpload',message:'pre-fetch inline upload',data:{hasCsrfInput:!!csrfInput,csrfLen:csrfInput?csrfInput.value.length:0,formDataHasCsrf:formData.has('csrfmiddlewaretoken'),action:form.action,fileCount:this.$refs.fileInput.files.length,pageCsrfCount:document.querySelectorAll('[name=csrfmiddlewaretoken]').length,host:window.location.host},timestamp:Date.now(),hypothesisId:'H2,H5',runId:'pre-fix'})}).catch(function(){});
+            // #endregion
 
             try {
                 var response = await fetch(form.action, {
@@ -170,6 +262,10 @@ function inlineUpload() {
                 });
 
                 var responseText = await response.text();
+
+                // #region agent log
+                fetch('http://127.0.0.1:7847/ingest/a6dcb460-cacd-43ee-8b7e-2a1cb41f5f8c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'09be6f'},body:JSON.stringify({sessionId:'09be6f',location:'_upload_zone.html:submitUpload',message:'post-fetch inline upload',data:{status:response.status,ok:response.ok,isCsrfError:responseText.indexOf('CSRF')!==-1,responseLen:responseText.length},timestamp:Date.now(),hypothesisId:'H1,H3,H4',runId:'pre-fix'})}).catch(function(){});
+                // #endregion
 
                 if (response.ok) {
                     var tbody = document.getElementById('documents-tbody');

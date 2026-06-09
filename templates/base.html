@@ -306,7 +306,11 @@
        
            <!-- Active Processing Items -->
            <template x-for="doc in processingDocs" :key="doc.id">
-               <div class="bg-white rounded-lg shadow-lg border-l-4 border-blue-500 p-4 flex items-center space-x-3 animate-pulse">
+               <div class="bg-white rounded-lg shadow-lg border-l-4 p-4 flex items-center space-x-3"
+                    :class="{
+                        'border-amber-500': doc.elapsed_seconds > 300,
+                        'border-blue-500': doc.elapsed_seconds <= 300
+                    }">
                    <div class="flex-shrink-0">
                        <svg class="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -315,8 +319,16 @@
                    </div>
                    <div class="flex-1 min-w-0">
                        <p class="text-sm font-medium text-gray-900 truncate" x-text="doc.filename"></p>
-                       <!-- Shows specific step if available, else generic status -->
                        <p class="text-xs text-blue-600" x-text="doc.processing_message || doc.status_display || 'Processing...'"></p>
+                       <p x-show="doc.is_large_document" class="text-xs text-amber-700 mt-1">
+                           Large document detected — processing may take several minutes
+                       </p>
+                       <p x-show="doc.elapsed_seconds > 300 && doc.elapsed_seconds <= 600" class="text-xs text-amber-700 mt-1">
+                           This document is taking longer than usual
+                       </p>
+                       <p x-show="doc.elapsed_seconds > 600" class="text-xs text-amber-800 mt-1">
+                           Processing may have stalled. The system will automatically retry.
+                       </p>
                    </div>
                </div>
            </template>
@@ -409,7 +421,15 @@
                            
                            const data = await response.json();
                            if (data.success) {
-                               this.processingDocs = data.processing_documents;
+                               this.processingDocs = data.processing_documents.map(doc => ({
+                                   ...doc,
+                                   elapsed_seconds: doc.elapsed_seconds || 0,
+                               }));
+                               this.processingDocs.forEach(doc => {
+                                   if (doc.elapsed_seconds > 0) {
+                                       doc.elapsed_seconds += 3;
+                                   }
+                               });
                                this.recentUploads = data.recent_documents.filter(doc => !this.dismissedIds.has(doc.id));
                                this.hasActiveUploads = this.processingDocs.length > 0;
                            }

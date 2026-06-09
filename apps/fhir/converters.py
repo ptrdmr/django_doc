@@ -41,6 +41,8 @@ from apps.documents.exceptions import (
     PydanticModelError
 )
 
+logger = logging.getLogger(__name__)
+
 # Import structured medical data models
 try:
     from apps.documents.services.ai_extraction import (
@@ -56,9 +58,6 @@ try:
 except ImportError:
     logger.warning("Unable to import structured medical data models - structured conversion unavailable")
     StructuredMedicalExtraction = None
-
-
-logger = logging.getLogger(__name__)
 
 
 class BaseFHIRConverter:
@@ -720,6 +719,7 @@ class StructuredDataConverter(BaseFHIRConverter):
                 from fhir.resources.servicerequest import ServiceRequest
                 from fhir.resources.diagnosticreport import DiagnosticReport
                 from fhir.resources.familymemberhistory import FamilyMemberHistory
+                from fhir.resources.immunization import Immunization
                 
                 resource_mapping = {
                     'Condition': Condition,
@@ -734,6 +734,7 @@ class StructuredDataConverter(BaseFHIRConverter):
                     'ServiceRequest': ServiceRequest,
                     'DiagnosticReport': DiagnosticReport,
                     'FamilyMemberHistory': FamilyMemberHistory,
+                    'Immunization': Immunization,
                 }
                 
                 resources = []
@@ -789,7 +790,23 @@ class StructuredDataConverter(BaseFHIRConverter):
     def convert(self, data: Dict[str, Any], metadata: Dict[str, Any], patient) -> List[Resource]:
         """
         Convert dictionary data to FHIR resources using existing infrastructure.
-        
+
+        .. warning::
+            INERT / DEAD CODE (verified WP2, Task 35.7 legacy).
+            This ``convert`` override and its private helpers
+            (``_create_condition_from_structured``,
+            ``_create_medication_from_structured``, ``_create_lab_observation``)
+            are NOT part of the live conversion path. The live entry point is
+            :meth:`convert_structured_data`, which routes structured extractions
+            through ``FHIRProcessor`` (see the ``from apps.fhir.services import
+            FHIRProcessor`` block above). ``ConversionService._get_converter``
+            only ever returns the per-document-type converters
+            (Lab/ClinicalNote/MedicationList/DischargeSummary/Generic), never
+            ``StructuredDataConverter``, so this method is unreachable in
+            production. Retained for reference only — do NOT debug pipeline
+            behavior here; modify the resource services under
+            ``apps/fhir/services/`` instead. Safe to delete in a future cleanup.
+
         This method handles the converted dictionary format and creates FHIR resources
         using the existing converter patterns and resource creation methods.
         
@@ -1087,7 +1104,12 @@ class StructuredDataConverter(BaseFHIRConverter):
         return converted
 
     def _create_condition_from_structured(self, condition_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[ConditionResource]:
-        """Create a Condition resource from structured condition data."""
+        """Create a Condition resource from structured condition data.
+
+        INERT / DEAD CODE (WP2): only reachable via the unused ``convert``
+        override. The live Condition path is ``ConditionService``. See the
+        warning on :meth:`convert`.
+        """
         try:
             onset_date = None
             if condition_data.get("onset_date"):
@@ -1105,7 +1127,12 @@ class StructuredDataConverter(BaseFHIRConverter):
             return None
 
     def _create_medication_from_structured(self, medication_data: Dict[str, Any], patient_id: str, metadata: Dict[str, Any]) -> Optional[MedicationStatementResource]:
-        """Create a MedicationStatement resource from structured medication data."""
+        """Create a MedicationStatement resource from structured medication data.
+
+        INERT / DEAD CODE (WP2): only reachable via the unused ``convert``
+        override. The live medication path is ``MedicationService``. See the
+        warning on :meth:`convert`.
+        """
         try:
             effective_date = None
             if medication_data.get("start_date"):
@@ -1173,6 +1200,10 @@ class StructuredDataConverter(BaseFHIRConverter):
         """Create an Observation resource for lab results from structured data.
         
         Task 35.7: Updated to use clinical dates from metadata instead of processing timestamps.
+
+        INERT / DEAD CODE (WP2): only reachable via the unused ``convert``
+        override. The live lab Observation path is ``ObservationService``. See
+        the warning on :meth:`convert`.
         """
         try:
             test_date = None

@@ -2,6 +2,7 @@
 Document upload and processing views.
 """
 import logging
+from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import CreateView, ListView, DetailView, View
 from django.urls import reverse_lazy
@@ -125,6 +126,24 @@ class DocumentUploadView(LoginRequiredMixin, CreateView):
                 'success_rate': 0
             }
     
+    def post(self, request, *args, **kwargs):
+        # #region agent log
+        from apps.core.utils import agent_debug_log
+        agent_debug_log(
+            'apps/documents/views.py:DocumentUploadView.post',
+            'Document upload view reached (CSRF passed)',
+            {
+                'path': request.path,
+                'has_csrf_post': 'csrfmiddlewaretoken' in request.POST,
+                'post_token_len': len(request.POST.get('csrfmiddlewaretoken', '')),
+                'has_csrf_header': bool(request.META.get('HTTP_X_CSRFTOKEN')),
+                'files_keys': list(request.FILES.keys()),
+            },
+            hypothesis_id='H1,H2,H5',
+        )
+        # #endregion
+        return super().post(request, *args, **kwargs)
+
     def form_valid(self, form):
         """
         Process valid form submission with proper error handling.
@@ -469,10 +488,14 @@ class ProcessingStatusAPIView(LoginRequiredMixin, View):
             JsonResponse: Processing status data
         """
         try:
+            large_file_threshold = getattr(
+                settings, 'LARGE_DOCUMENT_FILE_SIZE_BYTES', 5 * 1024 * 1024
+            )
+
             # Get processing documents for current user
             processing_docs = Document.objects.filter(
                 created_by=request.user,
-                status__in=['processing', 'pending']
+                status__in=['processing', 'pending', 'ocr_pending']
             ).select_related('patient').order_by('-uploaded_at')[:10]
             
             # Get recently completed or failed documents (last 5 minutes)
@@ -485,6 +508,7 @@ class ProcessingStatusAPIView(LoginRequiredMixin, View):
             
             processing_data = []
             for doc in processing_docs:
+                elapsed_seconds = doc.get_processing_duration()
                 processing_data.append({
                     'id': doc.id,
                     'filename': doc.filename,
@@ -493,6 +517,11 @@ class ProcessingStatusAPIView(LoginRequiredMixin, View):
                     'processing_message': doc.processing_message,
                     'patient_name': f"{doc.patient.first_name} {doc.patient.last_name}",
                     'uploaded_at': doc.uploaded_at.isoformat(),
+                    'elapsed_seconds': int(elapsed_seconds) if elapsed_seconds is not None else 0,
+                    'processing_attempts': doc.processing_attempts,
+                    'is_large_document': bool(
+                        doc.file_size and doc.file_size >= large_file_threshold
+                    ),
                 })
             
             recent_data = []

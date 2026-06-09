@@ -34,8 +34,9 @@ class DocumentChunker:
             max_chunk_size: Maximum characters per chunk (defaults to settings value)
         """
         self.max_chunk_size = max_chunk_size or getattr(
-            settings, 'AI_TOKEN_THRESHOLD_FOR_CHUNKING', 20000
+            settings, 'AI_CHUNK_SIZE', 15000
         )
+        self.overlap_size = getattr(settings, 'AI_CHUNK_OVERLAP', 2000)
         
     def chunk_text(self, text: str, preserve_context: bool = True) -> List[Dict[str, Any]]:
         """
@@ -58,7 +59,7 @@ class DocumentChunker:
             }]
         
         chunks = []
-        overlap_size = 200 if preserve_context else 0
+        overlap_size = self.overlap_size if preserve_context else 0
         
         # Split at sentence boundaries to preserve medical context
         sentences = self._split_into_sentences(text)

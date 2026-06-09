@@ -66,6 +66,7 @@ Django 5.0 healthcare platform that transforms medical documents into FHIR-compa
 | Snippet Review | Text snippet validation (backend complete) |
 | Patient Summary Panel | Collapsible side panel on patient detail, JSON + PDF endpoints, localStorage persistence, old Reports flow deprecated |
 | Extraction pipeline (2026-05) | `FamilyMemberHistory` service, exam/social Observation path, bundle `DeduplicationService` on patient merge, shared extraction extensions, structured DiagnosticReport/ServiceRequest intake |
+| Large document OOM protection | Stuck-doc watchdog (5m Beat), streaming chunk aggregation, text/chunk size gates, large-file upload modal, enhanced processing status API |
 
 **Full task breakdown:** [docs/development/task-history.md](./development/task-history.md)
 

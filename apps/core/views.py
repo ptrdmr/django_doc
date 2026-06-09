@@ -246,3 +246,31 @@ class AuditLogExportView(LoginRequiredMixin, PermissionRequiredMixin, View):
         )
         
         return response
+
+
+# #region agent log
+def csrf_failure_debug(request, reason=''):
+    """Log CSRF failures then delegate to Django default handler."""
+    from apps.core.utils import agent_debug_log
+
+    agent_debug_log(
+        'apps/core/views.py:csrf_failure_debug',
+        'CSRF verification failed',
+        {
+            'reason': reason,
+            'path': request.path,
+            'method': request.method,
+            'has_csrf_post': 'csrfmiddlewaretoken' in request.POST,
+            'post_token_len': len(request.POST.get('csrfmiddlewaretoken', '')),
+            'has_csrf_header': bool(request.META.get('HTTP_X_CSRFTOKEN')),
+            'header_token_len': len(request.META.get('HTTP_X_CSRFTOKEN', '')),
+            'hx_request': request.headers.get('HX-Request'),
+            'referer': request.META.get('HTTP_REFERER', '')[:200],
+            'host': request.get_host(),
+            'session_key_present': bool(request.session.session_key),
+        },
+        hypothesis_id='H1,H2,H3,H4',
+    )
+    from django.views.csrf import csrf_failure
+    return csrf_failure(request, reason=reason)
+# #endregion

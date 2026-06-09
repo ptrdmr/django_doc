@@ -172,6 +172,21 @@ class ConditionService:
         }
         clinical_status_code = status_mapping.get(condition_status, 'active')
         
+        # WP1 Phase 1c: Flag AI-inferred diagnoses as unconfirmed so they are not presented
+        # as provider-confirmed. Only the explicit "inferred" evidence_type downgrades status;
+        # all other (or missing) values keep the prior "confirmed" behavior.
+        evidence_type = (condition_dict.get('evidence_type') or "").strip().lower()
+        if evidence_type == "inferred":
+            verification_code = "unconfirmed"
+            verification_display = "Unconfirmed"
+            self.logger.info(
+                "Condition '%s' marked unconfirmed (AI-inferred, not provider-stated)",
+                name.strip()[:50],
+            )
+        else:
+            verification_code = "confirmed"
+            verification_display = "Confirmed"
+        
         # Create FHIR Condition resource
         condition = {
             "resourceType": "Condition",
@@ -186,8 +201,8 @@ class ConditionService:
             "verificationStatus": {
                 "coding": [{
                     "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
-                    "code": "confirmed",
-                    "display": "Confirmed"
+                    "code": verification_code,
+                    "display": verification_display
                 }]
             },
             "code": {

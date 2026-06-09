@@ -7,6 +7,9 @@ maintaining the necessary functionality for comprehensive pipeline testing.
 
 from .base import *
 
+# Debug toolbar breaks Django's test runner (DEBUG is forced False during tests)
+INSTALLED_APPS = [app for app in INSTALLED_APPS if app != 'debug_toolbar']
+
 # Test Database Configuration
 DATABASES = {
     'default': {

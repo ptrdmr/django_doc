@@ -21,6 +21,8 @@ from .allergy_intolerance_service import AllergyIntoleranceService
 from .care_plan_service import CarePlanService
 from .organization_service import OrganizationService
 from .family_history_service import FamilyHistoryService
+from .immunization_service import ImmunizationService
+from .encounter_linker import EncounterLinker
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +50,9 @@ class FHIRProcessor:
         self.care_plan_service = CarePlanService()
         self.organization_service = OrganizationService()
         self.family_history_service = FamilyHistoryService()
+        self.immunization_service = ImmunizationService()
 
-        logger.info("FHIRProcessor initialized with 12 resource services.")
+        logger.info("FHIRProcessor initialized with 13 resource services.")
     
     def process_extracted_data(self, extracted_data: Dict[str, Any], 
                              patient_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -76,93 +79,136 @@ class FHIRProcessor:
             'errors': []
         }
         
-        # Ensure patient_id is available in the data
+        # Ensure patient_id is available in the data. Callers may pass it either
+        # as the positional arg OR embedded in extracted_data (the converter path
+        # does the latter), so resolve a single effective id for internal use.
         if patient_id:
             extracted_data['patient_id'] = patient_id
+        effective_patient_id = extracted_data.get('patient_id')
         
         try:
-            # Process medications (highest priority for 100% capture)
-            medications = self._process_medications(extracted_data)
-            if medications:
-                fhir_resources.extend(medications)
-                processing_stats['processed_categories'] += 1
-                logger.info(f"Processed {len(medications)} medication resources")
-            
-            # Process diagnostic reports
-            diagnostic_reports = self._process_diagnostic_reports(extracted_data)
-            if diagnostic_reports:
-                fhir_resources.extend(diagnostic_reports)
-                processing_stats['processed_categories'] += 1
-                logger.info(f"Processed {len(diagnostic_reports)} diagnostic report resources")
-            
-            # Process service requests
-            service_requests = self._process_service_requests(extracted_data)
-            if service_requests:
-                fhir_resources.extend(service_requests)
-                processing_stats['processed_categories'] += 1
-                logger.info(f"Processed {len(service_requests)} service request resources")
-            
-            # Process encounter information
+            # ──────────────────────────────────────────────────────────────
+            # PHASE 1: Foundation resources (WP2)
+            # Encounters first so downstream clinical resources can be linked
+            # to them. Practitioners and Organizations are independent context.
+            # ──────────────────────────────────────────────────────────────
             encounters = self._process_encounters(extracted_data)
+
+            # Synthesize a minimal Encounter when the document describes clinical
+            # activity but the AI did not extract an explicit encounter. This
+            # gives clinical resources something to attach to (single-visit docs).
+            if not encounters:
+                synthesized = self._synthesize_encounter_if_warranted(extracted_data)
+                if synthesized:
+                    encounters = [synthesized]
+
             if encounters:
                 fhir_resources.extend(encounters)
                 processing_stats['processed_categories'] += 1
                 logger.info(f"Processed {len(encounters)} encounter resource(s)")
-            
-            # Process conditions (diagnosis fields)
-            conditions = self._process_conditions(extracted_data)
-            if conditions:
-                fhir_resources.extend(conditions)
-                processing_stats['processed_categories'] += 1
-                logger.info(f"Processed {len(conditions)} condition resources")
-            
-            # Process observations (vital sign fields)
-            observations = self._process_observations(extracted_data)
-            if observations:
-                fhir_resources.extend(observations)
-                processing_stats['processed_categories'] += 1
-                logger.info(f"Processed {len(observations)} observation resources")
-            
-            # Process procedures (NEW in Phase 1)
-            procedures = self._process_procedures(extracted_data)
-            if procedures:
-                fhir_resources.extend(procedures)
-                processing_stats['processed_categories'] += 1
-                logger.info(f"Processed {len(procedures)} procedure resources")
-            
-            # Process practitioners (NEW in Phase 1)
+
+            encounter_map = self._build_encounter_map(encounters or [])
+
             practitioners = self._process_practitioners(extracted_data)
             if practitioners:
                 fhir_resources.extend(practitioners)
                 processing_stats['processed_categories'] += 1
                 logger.info(f"Processed {len(practitioners)} practitioner resources")
-            
-            # Process allergies (NEW in Phase 3)
-            allergies = self._process_allergies(extracted_data)
-            if allergies:
-                fhir_resources.extend(allergies)
-                processing_stats['processed_categories'] += 1
-                logger.info(f"Processed {len(allergies)} allergy resources")
-            
-            # Process care plans (NEW in Phase 3)
-            care_plans = self._process_care_plans(extracted_data)
-            if care_plans:
-                fhir_resources.extend(care_plans)
-                processing_stats['processed_categories'] += 1
-                logger.info(f"Processed {len(care_plans)} care plan resources")
-            
-            # Process organizations
+
             organizations = self._process_organizations(extracted_data)
             if organizations:
                 fhir_resources.extend(organizations)
                 processing_stats['processed_categories'] += 1
                 logger.info(f"Processed {len(organizations)} organization resources")
 
+            # ──────────────────────────────────────────────────────────────
+            # PHASE 2: Clinical resources (encounter-aware via post-link pass)
+            # ──────────────────────────────────────────────────────────────
+            clinical_resources: List[Dict[str, Any]] = []
+
+            medications = self._process_medications(extracted_data)
+            if medications:
+                clinical_resources.extend(medications)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(medications)} medication resources")
+
+            # Observations captured separately to feed DiagnosticReport synthesis.
+            observations = self._process_observations(extracted_data)
+            if observations:
+                clinical_resources.extend(observations)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(observations)} observation resources")
+
+            conditions = self._process_conditions(extracted_data)
+            if conditions:
+                clinical_resources.extend(conditions)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(conditions)} condition resources")
+
+            # Immunizations BEFORE procedures so vaccine items can be claimed and
+            # excluded from the Procedure list (prevents double-counting, D1).
+            immunizations = self._process_immunizations(extracted_data)
+            claimed_vaccines = self._collect_claimed_vaccines(immunizations)
+            if immunizations:
+                clinical_resources.extend(immunizations)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(immunizations)} immunization resources")
+
+            procedures = self._process_procedures(extracted_data, claimed_vaccines)
+            if procedures:
+                clinical_resources.extend(procedures)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(procedures)} procedure resources")
+
+            # Explicit diagnostic reports (existing behavior)
+            diagnostic_reports = self._process_diagnostic_reports(extracted_data)
+            if diagnostic_reports:
+                clinical_resources.extend(diagnostic_reports)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(diagnostic_reports)} diagnostic report resources")
+
+            # Synthesize lab-panel DiagnosticReports from lab observations (B1).
+            # Pass explicit reports so already-reported labs are not duplicated.
+            synthesized_reports = self._synthesize_lab_panels(
+                extracted_data, observations, effective_patient_id, diagnostic_reports
+            )
+            if synthesized_reports:
+                clinical_resources.extend(synthesized_reports)
+                processing_stats['processed_categories'] += 1
+                logger.info(
+                    f"Synthesized {len(synthesized_reports)} lab-panel diagnostic report(s)"
+                )
+
+            service_requests = self._process_service_requests(extracted_data)
+            if service_requests:
+                clinical_resources.extend(service_requests)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(service_requests)} service request resources")
+
+            allergies = self._process_allergies(extracted_data)
+            if allergies:
+                clinical_resources.extend(allergies)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(allergies)} allergy resources")
+
+            care_plans = self._process_care_plans(extracted_data)
+            if care_plans:
+                clinical_resources.extend(care_plans)
+                processing_stats['processed_categories'] += 1
+                logger.info(f"Processed {len(care_plans)} care plan resources")
+
             family_history_resources = self._process_family_history(extracted_data)
             if family_history_resources:
-                fhir_resources.extend(family_history_resources)
+                clinical_resources.extend(family_history_resources)
                 processing_stats['processed_categories'] += 1
                 logger.info(f"Processed {len(family_history_resources)} family history resources")
+
+            # Cross-reference clinical resources to encounters (B10)
+            if encounter_map:
+                linker = EncounterLinker(encounter_map)
+                linker.link_resources(clinical_resources)
+
+            fhir_resources.extend(clinical_resources)
 
             processing_stats['total_resources'] = len(fhir_resources)
             
@@ -229,12 +275,96 @@ class FHIRProcessor:
             logger.error(f"Error processing observations: {e}")
             return []
     
-    def _process_procedures(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Process procedure data using ProcedureService."""
+    def _process_procedures(self, extracted_data: Dict[str, Any],
+                            claimed_vaccines: Optional[set] = None) -> List[Dict[str, Any]]:
+        """Process procedure data using ProcedureService.
+
+        Args:
+            extracted_data: Extracted clinical data.
+            claimed_vaccines: Lowercased vaccine names already represented as
+                Immunization resources; matching procedures are skipped to
+                prevent double-counting (D1 contract).
+        """
         try:
-            return self.procedure_service.process_procedures(extracted_data)
+            return self.procedure_service.process_procedures(
+                extracted_data, claimed_vaccines=claimed_vaccines
+            )
         except Exception as e:
             logger.error(f"Error processing procedures: {e}")
+            return []
+
+    def _process_immunizations(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Process immunization data using ImmunizationService (D1)."""
+        try:
+            return self.immunization_service.process_immunizations(extracted_data)
+        except Exception as e:
+            logger.error(f"Error processing immunizations: {e}")
+            return []
+
+    def _collect_claimed_vaccines(self, immunizations: List[Dict[str, Any]]) -> set:
+        """Build the lowercased vaccine-name set claimed by Immunization resources.
+
+        ProcedureService uses this to skip vaccine administrations it would
+        otherwise mis-capture as Procedures.
+        """
+        claimed = set()
+        for imm in immunizations or []:
+            if not isinstance(imm, dict):
+                continue
+            vaccine_code = imm.get('vaccineCode', {}) or {}
+            text = (vaccine_code.get('text') or '').strip().lower()
+            if text:
+                claimed.add(text)
+        return claimed
+
+    def _build_encounter_map(self, encounters: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Build a lookup mapping date keys and ids to Encounter resources.
+
+        Both the encounter id and its period start date (full ISO string) are
+        registered so EncounterLinker can resolve references by either path.
+        """
+        encounter_map: Dict[str, Any] = {}
+        for enc in encounters:
+            if not isinstance(enc, dict) or enc.get('resourceType') != 'Encounter':
+                continue
+            enc_id = enc.get('id')
+            if enc_id:
+                encounter_map[enc_id] = enc
+            start_date = (enc.get('period') or {}).get('start')
+            if start_date:
+                encounter_map[str(start_date)[:10]] = enc
+        return encounter_map
+
+    def _synthesize_encounter_if_warranted(
+        self, extracted_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Synthesize a minimal Encounter from document metadata when none exist.
+
+        Returns None unless the document carries a clinical date AND at least one
+        clinical resource group, so we don't fabricate visits for pure
+        administrative documents.
+        """
+        try:
+            return self.encounter_service.synthesize_encounter(extracted_data)
+        except Exception as e:
+            logger.error(f"Error synthesizing encounter: {e}")
+            return None
+
+    def _synthesize_lab_panels(self, extracted_data: Dict[str, Any],
+                               observations: List[Dict[str, Any]],
+                               patient_id: Optional[str],
+                               explicit_reports: Optional[List[Dict[str, Any]]] = None
+                               ) -> List[Dict[str, Any]]:
+        """Group lab Observations into panel DiagnosticReports (B1)."""
+        try:
+            structured = extracted_data.get('structured_data')
+            if not isinstance(structured, dict):
+                return []
+            return self.diagnostic_report_service.synthesize_lab_panels(
+                structured, observations or [], patient_id, explicit_reports or []
+            )
+        except Exception as e:
+            logger.error(f"Error synthesizing lab panels: {e}")
             return []
     
     def _process_practitioners(self, extracted_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -348,6 +478,7 @@ class FHIRProcessor:
             'CarePlan',
             'Organization',
             'FamilyMemberHistory',
+            'Immunization',
         ]
         
         return supported_types
@@ -380,6 +511,7 @@ class FHIRProcessor:
             ('care_plan_service', 'CarePlanService'),
             ('organization_service', 'OrganizationService'),
             ('family_history_service', 'FamilyHistoryService'),
+            ('immunization_service', 'ImmunizationService'),
         ]
         
         for attr_name, service_name in required_services:

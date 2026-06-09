@@ -190,6 +190,7 @@ CSRF_COOKIE_SECURE = True
 CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Strict'
 CSRF_USE_SESSIONS = True
+CSRF_FAILURE_VIEW = 'apps.core.views.csrf_failure_debug'
 
 # Additional Security Headers
 SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
@@ -350,10 +351,9 @@ CELERY_TASK_ROUTES = {
 
 # Celery beat schedule (for periodic tasks)
 CELERY_BEAT_SCHEDULE = {
-    # Example: Clean up old processed documents every day at midnight
     'cleanup-old-documents': {
         'task': 'apps.documents.tasks.cleanup_old_documents',
-        'schedule': 3600.0 * 24,  # Every 24 hours
+        'schedule': 300.0,  # Every 5 minutes — stuck document watchdog
     },
 }
 
@@ -361,9 +361,13 @@ CELERY_BEAT_SCHEDULE = {
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Process one task at a time
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 50  # Restart worker after 50 tasks
 
-# Task time limits (medical documents can be large)
-CELERY_TASK_TIME_LIMIT = 600  # 10 minutes
-CELERY_TASK_SOFT_TIME_LIMIT = 540  # 9 minutes
+# Task time limits — global defaults for most tasks
+CELERY_TASK_TIME_LIMIT = 900  # 15 minutes (hard kill)
+CELERY_TASK_SOFT_TIME_LIMIT = 840  # 14 minutes (soft exception)
+
+# Per-task overrides for large document processing (set on the task decorator)
+LARGE_DOCUMENT_TASK_TIME_LIMIT = 2100  # 35 minutes (hard kill)
+LARGE_DOCUMENT_TASK_SOFT_TIME_LIMIT = 1800  # 30 minutes (soft exception)
 
 # Cache backend configuration - using Redis for performance and persistence
 CACHES = {
@@ -462,14 +466,37 @@ AI_MODEL_FALLBACK = config('AI_MODEL_FALLBACK', default='gpt-4o-mini')
 AI_MAX_TOKENS_PER_REQUEST = config('AI_MAX_TOKENS_PER_REQUEST', default=16384, cast=int)
 AI_TOKEN_THRESHOLD_FOR_CHUNKING = config('AI_TOKEN_THRESHOLD_FOR_CHUNKING', default=20000, cast=int)  # Lower threshold for better chunking
 AI_DAILY_COST_LIMIT = config('AI_DAILY_COST_LIMIT', default=100.00, cast=float)
+# Per-document spend ceiling enforced by the chunk-processing circuit breaker.
+# Computed from the DocumentChunkResult ledger before every chunk API call.
+AI_PER_DOCUMENT_COST_LIMIT = config('AI_PER_DOCUMENT_COST_LIMIT', default=5.00, cast=float)
+# Minimum fraction of chunks that must succeed to accept a partial result
+# (flagged for review). Below this the document is marked failed.
+AI_CHUNK_PARTIAL_THRESHOLD = config('AI_CHUNK_PARTIAL_THRESHOLD', default=0.85, cast=float)
+# How many times a soft-time-limited task may re-enqueue itself to resume
+# from the chunk ledger before giving up.
+LARGE_DOCUMENT_MAX_RESUMES = config('LARGE_DOCUMENT_MAX_RESUMES', default=2, cast=int)
 
 # Request Timeouts and Retry Configuration
-AI_REQUEST_TIMEOUT = config('AI_REQUEST_TIMEOUT', default=60, cast=int)
+# 120s read timeout accommodates large structured JSON responses from Sonnet
+AI_REQUEST_TIMEOUT = config('AI_REQUEST_TIMEOUT', default=120, cast=int)
 AI_MAX_RETRIES = config('AI_MAX_RETRIES', default=3, cast=int)
 
+# Prompt-cached extraction path (CachedAnthropicExtractor): static prompt prefix
+# marked with cache_control cuts input cost ~50-65% on multi-chunk documents.
+AI_USE_CACHED_EXTRACTION = config('AI_USE_CACHED_EXTRACTION', default=True, cast=bool)
+
 # Document Processing Settings
-AI_CHUNK_SIZE = config('AI_CHUNK_SIZE', default=15000, cast=int)  # Characters per chunk - more manageable size
-AI_CHUNK_OVERLAP = config('AI_CHUNK_OVERLAP', default=2000, cast=int)  # Overlap for context
+# 30K chars (~8K tokens) halves the chunk count of large docs without risking
+# the output-token ceiling on dense lab tables. Overlap of 200 is enough since
+# chunking already splits on sentence boundaries.
+AI_CHUNK_SIZE = config('AI_CHUNK_SIZE', default=30000, cast=int)  # Characters per chunk
+AI_CHUNK_OVERLAP = config('AI_CHUNK_OVERLAP', default=200, cast=int)  # Overlap for context
+
+# Large document protection
+MAX_DOCUMENT_TEXT_LENGTH = config('MAX_DOCUMENT_TEXT_LENGTH', default=500000, cast=int)
+MAX_DOCUMENT_CHUNKS = config('MAX_DOCUMENT_CHUNKS', default=25, cast=int)
+STUCK_DOCUMENT_THRESHOLD_MINUTES = config('STUCK_DOCUMENT_THRESHOLD_MINUTES', default=15, cast=int)
+LARGE_DOCUMENT_FILE_SIZE_BYTES = config('LARGE_DOCUMENT_FILE_SIZE_BYTES', default=5 * 1024 * 1024, cast=int)
 
 # FHIR Processing Configuration
 FHIR_VALIDATION_ENABLED = config('FHIR_VALIDATION_ENABLED', default=True, cast=bool)

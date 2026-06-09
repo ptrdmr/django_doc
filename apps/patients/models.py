@@ -1279,7 +1279,10 @@ class Patient(MedicalRecord):
                 'patient_info': {
                     'mrn': self.mrn,
                     'name': self.full_name,
-                    'date_of_birth': self.date_of_birth,
+                    # Date object (not the raw string) so the PDF's |date filter
+                    # renders it; JsonResponse(default=str) serialises it to an
+                    # ISO string for the web panel, which fmtDate() handles.
+                    'date_of_birth': self.get_date_of_birth(),
                     'age': self.age if self.age is not None else 'Unknown',
                     'gender': self.get_gender_display() if self.gender else 'Unknown',
                     'living_setting': self.get_living_setting_display() if self.living_setting else 'Not specified',
@@ -1299,6 +1302,7 @@ class Patient(MedicalRecord):
                     'care_plans': [],
                     'service_requests': [],
                     'diagnostic_reports': [],
+                    'immunizations': [],
                 },
                 'provider_summary': {
                     'providers': [],
@@ -1392,6 +1396,11 @@ class Patient(MedicalRecord):
                     if diag_summary:
                         report['clinical_summary']['diagnostic_reports'].append(diag_summary)
 
+                elif resource_type == 'Immunization':
+                    imm_summary = self._extract_immunization_for_report(resource)
+                    if imm_summary:
+                        report['clinical_summary']['immunizations'].append(imm_summary)
+
             # Update metadata
             report['report_metadata']['total_resources'] = total_resources
             report['report_metadata']['status'] = 'success'
@@ -1407,14 +1416,20 @@ class Patient(MedicalRecord):
             report['patient_info']['primary_diagnosis'] = primary_diagnosis
             report['patient_info']['comorbidities'] = self.get_comorbidities_from_conditions(conditions)
             
-            # Calculate initial diagnosis date from primary diagnosis
+            # Calculate initial diagnosis date from primary diagnosis.
+            # Use clinical onset only -- recorded_date is the document-processing
+            # timestamp (often "today") and would misrepresent the diagnosis date.
             if primary_diagnosis:
-                report['patient_info']['initial_diagnosis_date'] = primary_diagnosis.get('onset_date') or primary_diagnosis.get('recorded_date')
+                report['patient_info']['initial_diagnosis_date'] = primary_diagnosis.get('onset_date')
             else:
                 report['patient_info']['initial_diagnosis_date'] = None
             
             # Add weight timeline to clinical summary
             report['clinical_summary']['weight_timeline'] = self.get_weight_timeline_from_observations(observations)
+            
+            # WP3: presentation-layer classification and grouping. Wrapped so a
+            # failure here never breaks the core report (graceful degradation).
+            self._add_wp3_presentation(report)
             
             # Create audit record for report generation
             self._create_fhir_audit_record(
@@ -1453,6 +1468,7 @@ class Patient(MedicalRecord):
                     'care_plans': [],
                     'service_requests': [],
                     'diagnostic_reports': [],
+                    'immunizations': [],
                 },
                 'provider_summary': {
                     'providers': [],
@@ -1468,6 +1484,148 @@ class Patient(MedicalRecord):
                 }
             }
 
+    def _add_wp3_presentation(self, report):
+        """
+        Enrich a comprehensive report with WP3 presentation structures.
+
+        Adds (without removing the existing flat lists, for backward compat):
+            - clinical_summary['observations_by_category']: observations split
+              into laboratory / vital-signs / exam / social-history buckets.
+            - clinical_summary['encounters'][i]['type_code'|'type_label']:
+              classified ambulatory / inpatient / emergency type.
+            - clinical_summary['encounter_groups']: resources grouped by the
+              encounter/visit they belong to (three-tier matching).
+            - clinical_summary['lab_panels']: laboratory observations grouped
+              under their DiagnosticReport panels, plus unclaimed labs.
+
+        Any exception is logged and swallowed so report generation continues.
+
+        Args:
+            report: The in-progress report dict (mutated in place).
+        """
+        try:
+            from apps.patients.utils import (
+                build_observations_by_category,
+                observation_category_sections,
+                classify_encounter_type,
+                group_resources_by_encounter,
+                group_observations_by_panel,
+                deduplicate_medications,
+                deduplicate_encounters,
+                build_labs_by_visit,
+                build_vitals_by_visit,
+                interpretation_to_flag,
+            )
+
+            clinical = report['clinical_summary']
+            observations = clinical.get('observations', []) or []
+            diagnostic_reports = clinical.get('diagnostic_reports', []) or []
+            medications = clinical.get('medications', []) or []
+
+            # Annotate each observation with a short H/L/A flag. Panels and the
+            # labs_by_visit structure reference these same dicts, so the flag
+            # propagates everywhere downstream.
+            for obs in observations:
+                if isinstance(obs, dict):
+                    obs['flag'] = interpretation_to_flag(obs.get('interpretation'))
+
+            # Phase 1: split observations into presentation categories. Keep the
+            # FHIR-keyed dict (for JSON/Alpine) plus an ordered, template-safe
+            # list (Django templates can't resolve hyphenated keys).
+            obs_by_category = build_observations_by_category(observations)
+            clinical['observations_by_category'] = obs_by_category
+            clinical['observation_categories'] = observation_category_sections(
+                obs_by_category
+            )
+
+            # Phase 2: annotate each encounter with its classified type.
+            for encounter in clinical.get('encounters', []) or []:
+                if isinstance(encounter, dict):
+                    enc_type = classify_encounter_type(encounter)
+                    encounter['type_code'] = enc_type['code']
+                    encounter['type_label'] = enc_type['label']
+
+            # Phase 2b: collapse duplicate encounters extracted from different
+            # documents (same date + type + location). Done before grouping so
+            # both the Encounters list and every visit-grouped section share
+            # the deduped visits; resources that referenced a dropped encounter
+            # id fall back to same-date matching in group_resources_by_encounter.
+            clinical['encounters'] = deduplicate_encounters(
+                clinical.get('encounters', []) or []
+            )
+
+            # Phase 3: group clinical resources by encounter/visit.
+            clinical['encounter_groups'] = group_resources_by_encounter(clinical)
+
+            # Phase 4: group laboratory observations under DiagnosticReport
+            # panels (only laboratory-category obs are eligible for panels).
+            clinical['lab_panels'] = group_observations_by_panel(
+                obs_by_category.get('laboratory', []),
+                diagnostic_reports,
+            )
+
+            # Phase 5: deduplicate medications (collapse multi-document dupes,
+            # merge full SIG text) and split into active / historical.
+            clinical['medications_deduped'] = deduplicate_medications(medications)
+
+            # Phase 6: combine encounter grouping + lab panels into a
+            # visit > panel > result structure for the hybrid lab display.
+            clinical['labs_by_visit'] = build_labs_by_visit(
+                clinical['encounter_groups'],
+                clinical['lab_panels'],
+            )
+
+            # Phase 7: group vital-signs / exam observations by visit, mirroring
+            # labs_by_visit. The authoritative vital/exam id set comes from the
+            # pre-categorized buckets (category is computed, not stored).
+            vital_observations = (
+                (obs_by_category.get('vital-signs', []) or [])
+                + (obs_by_category.get('exam', []) or [])
+            )
+            clinical['vitals_by_visit'] = build_vitals_by_visit(
+                clinical['encounter_groups'],
+                vital_observations,
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"WP3 presentation enrichment failed: {str(e)}")
+            # Provide safe empty defaults so templates can rely on the keys.
+            clinical = report.get('clinical_summary', {})
+            flat_obs = clinical.get('observations', []) or []
+            clinical.setdefault('observations_by_category', {
+                'laboratory': flat_obs,
+                'vital-signs': [],
+                'exam': [],
+                'social-history': [],
+            })
+            clinical.setdefault('observation_categories', [
+                {'key': 'laboratory', 'label': 'Labs', 'observations': flat_obs},
+                {'key': 'vital-signs', 'label': 'Vital Signs', 'observations': []},
+                {'key': 'exam', 'label': 'Physical Exam', 'observations': []},
+                {'key': 'social-history', 'label': 'Social History', 'observations': []},
+            ])
+            clinical.setdefault('encounter_groups', [])
+            clinical.setdefault('lab_panels', {
+                'panels': [],
+                'unclaimed': clinical.get('observations', []) or [],
+                'has_panels': False,
+            })
+            flat_meds = clinical.get('medications', []) or []
+            clinical.setdefault('medications_deduped', {
+                'active': flat_meds,
+                'historical': [],
+                'all': flat_meds,
+            })
+            clinical.setdefault('labs_by_visit', {
+                'visits': [],
+                'has_labs': False,
+            })
+            clinical.setdefault('vitals_by_visit', {
+                'visits': [],
+                'has_vitals': False,
+            })
+
     def _extract_condition_for_report(self, condition):
         """Extract condition information for comprehensive report."""
         try:
@@ -1482,8 +1640,12 @@ class Patient(MedicalRecord):
                 'onset_date_precision': 'day',  # Default to day precision
                 'recorded_date': None,
                 'severity': None,
+                'encounter_reference': None,  # Encounter id for WP3 grouping
                 'notes': []
             }
+            
+            # Extract encounter reference id for WP3 encounter-based grouping
+            condition_data['encounter_reference'] = self._extract_encounter_ref_id(condition)
             
             # Extract condition codes
             if 'code' in condition:
@@ -1567,8 +1729,12 @@ class Patient(MedicalRecord):
                 'performed_period': None,
                 'category': None,
                 'outcome': None,
+                'encounter_reference': None,  # Encounter id for WP3 grouping
                 'notes': []
             }
+            
+            # Extract encounter reference id for WP3 encounter-based grouping
+            procedure_data['encounter_reference'] = self._extract_encounter_ref_id(procedure)
             
             # Extract procedure codes
             if 'code' in procedure:
@@ -1685,8 +1851,12 @@ class Patient(MedicalRecord):
                 'effective_period': None,
                 'category': None,
                 'requester': None,
+                'encounter_reference': None,  # Encounter id for WP3 grouping
                 'notes': []
             }
+            
+            # Extract encounter reference id for WP3 encounter-based grouping
+            medication_data['encounter_reference'] = self._extract_encounter_ref_id(medication)
             
             # Extract medication codes
             # Handle MedicationStatement with medication.concept (our FHIR structure)
@@ -1838,6 +2008,8 @@ class Patient(MedicalRecord):
                 'codes': [],
                 'display_name': 'Unknown Observation',
                 'category': None,
+                'category_code': None,  # Raw FHIR category code (WP3 classification)
+                'encounter_reference': None,  # Encounter id for WP3 grouping (Tier 1)
                 'value': None,
                 'unit': None,
                 'reference_range': None,
@@ -1867,14 +2039,18 @@ class Patient(MedicalRecord):
                         if not observation_data['display_name'] or observation_data['display_name'] == 'Unknown Observation':
                             observation_data['display_name'] = coding.get('display', observation_data['display_name'])
             
-            # Extract category
+            # Extract category (display for humans + raw code for WP3 classification)
             if 'category' in observation:
                 categories = observation['category'] if isinstance(observation['category'], list) else [observation['category']]
                 for category in categories:
                     if 'coding' in category:
                         category_coding = category['coding'][0]
                         observation_data['category'] = category_coding.get('display', category_coding.get('code'))
+                        observation_data['category_code'] = category_coding.get('code')
                         break
+
+            # Extract encounter reference id for WP3 encounter-based grouping
+            observation_data['encounter_reference'] = self._extract_encounter_ref_id(observation)
             
             # Extract value
             if 'valueQuantity' in observation:
@@ -1904,13 +2080,26 @@ class Patient(MedicalRecord):
                     ref_ranges.append(range_info)
                 observation_data['reference_range'] = ref_ranges
             
-            # Extract interpretation
+            # Extract interpretation. FHIR CodeableConcept may arrive as a
+            # coding array, a bare ``text`` value (common from AI extraction,
+            # e.g. ``[{'text': 'H'}]``), or a plain string. Handle all forms so
+            # the H/L/A flag downstream is never silently dropped.
             if 'interpretation' in observation:
                 interpretations = []
-                for interp in observation['interpretation']:
-                    if 'coding' in interp:
-                        interp_coding = interp['coding'][0]
-                        interpretations.append(interp_coding.get('display', interp_coding.get('code')))
+                interp_list = observation['interpretation']
+                if not isinstance(interp_list, list):
+                    interp_list = [interp_list]
+                for interp in interp_list:
+                    if isinstance(interp, str):
+                        interpretations.append(interp)
+                    elif isinstance(interp, dict):
+                        if interp.get('coding'):
+                            interp_coding = interp['coding'][0]
+                            value = interp_coding.get('display') or interp_coding.get('code')
+                            if value:
+                                interpretations.append(value)
+                        elif interp.get('text'):
+                            interpretations.append(interp['text'])
                 observation_data['interpretation'] = interpretations
             
             # Extract effective date
@@ -1946,6 +2135,7 @@ class Patient(MedicalRecord):
                 'id': encounter.get('id', 'unknown'),
                 'status': encounter.get('status', 'unknown'),
                 'class': None,
+                'class_code': None,  # Raw FHIR class code (IMP/AMB/EMER) for WP3
                 'type': [],
                 'period': None,
                 'reason': [],
@@ -1954,10 +2144,12 @@ class Patient(MedicalRecord):
                 'participants': []
             }
             
-            # Extract encounter class
+            # Extract encounter class (display for humans + raw code for WP3 classification)
             if 'class' in encounter:
                 class_coding = encounter['class']
-                encounter_data['class'] = class_coding.get('display', class_coding.get('code'))
+                if isinstance(class_coding, dict):
+                    encounter_data['class'] = class_coding.get('display', class_coding.get('code'))
+                    encounter_data['class_code'] = class_coding.get('code')
             
             # Extract encounter types
             if 'type' in encounter:
@@ -2324,8 +2516,19 @@ class Patient(MedicalRecord):
                 'display_name': 'Unknown Report',
                 'effective_date': None,
                 'conclusion': diagnostic_report.get('conclusion'),
-                'category': None
+                'category': None,
+                'result_refs': [],  # Observation ids this report groups (WP3 panels)
+                'encounter_reference': None,  # Encounter id for WP3 grouping
             }
+
+            # Extract result references (Observation ids) for WP3 panel rendering
+            for ref in diagnostic_report.get('result', []) or []:
+                reference = (ref or {}).get('reference', '') if isinstance(ref, dict) else ''
+                if isinstance(reference, str) and reference.startswith('Observation/'):
+                    report_data['result_refs'].append(reference.split('/', 1)[1])
+
+            # Extract encounter reference id for WP3 encounter-based grouping
+            report_data['encounter_reference'] = self._extract_encounter_ref_id(diagnostic_report)
 
             if 'code' in diagnostic_report:
                 code = diagnostic_report['code']
@@ -2360,6 +2563,107 @@ class Patient(MedicalRecord):
 
         except Exception as e:
             return {'error': f'Error processing diagnostic report: {str(e)}'}
+
+    def _extract_immunization_for_report(self, immunization):
+        """
+        Extract immunization information for the comprehensive report.
+
+        Args:
+            immunization: Raw FHIR Immunization resource dict.
+
+        Returns:
+            dict: Normalized immunization summary, or an error dict on failure.
+        """
+        try:
+            immunization_data = {
+                'resource_type': 'Immunization',
+                'id': immunization.get('id', 'unknown'),
+                'status': immunization.get('status', 'completed'),
+                'display_name': 'Unknown Vaccine',
+                'codes': [],
+                'date': None,
+                'site': None,
+                'dose_number': None,
+                'lot_number': immunization.get('lotNumber'),
+                'encounter_reference': None,
+                'notes': [],
+            }
+
+            # Encounter reference for WP3 grouping
+            immunization_data['encounter_reference'] = self._extract_encounter_ref_id(immunization)
+
+            # Vaccine code / display name
+            vaccine_code = immunization.get('vaccineCode', {}) or {}
+            if vaccine_code.get('text'):
+                immunization_data['display_name'] = vaccine_code['text']
+            for coding in vaccine_code.get('coding', []) or []:
+                immunization_data['codes'].append({
+                    'system': coding.get('system', ''),
+                    'code': coding.get('code', ''),
+                    'display': coding.get('display', ''),
+                })
+                if immunization_data['display_name'] == 'Unknown Vaccine' and coding.get('display'):
+                    immunization_data['display_name'] = coding['display']
+
+            # Occurrence date (FHIR uses occurrenceDateTime; occurrenceString is a fallback)
+            occurrence = immunization.get('occurrenceDateTime') or immunization.get('occurrenceString')
+            if occurrence and isinstance(occurrence, str) and len(occurrence) >= 10:
+                try:
+                    immunization_data['date'] = datetime.strptime(occurrence[:10], '%Y-%m-%d').date()
+                except (ValueError, AttributeError, TypeError):
+                    immunization_data['date'] = None
+
+            # Administration site
+            site = immunization.get('site', {}) or {}
+            if site.get('text'):
+                immunization_data['site'] = site['text']
+            elif site.get('coding'):
+                immunization_data['site'] = site['coding'][0].get('display', site['coding'][0].get('code'))
+
+            # Dose number from protocolApplied
+            protocol = immunization.get('protocolApplied', []) or []
+            if protocol and isinstance(protocol, list):
+                first = protocol[0] if isinstance(protocol[0], dict) else {}
+                immunization_data['dose_number'] = (
+                    first.get('doseNumberPositiveInt') or first.get('doseNumberString')
+                )
+
+            # Notes
+            for note in immunization.get('note', []) or []:
+                if isinstance(note, dict) and note.get('text'):
+                    immunization_data['notes'].append(note['text'])
+
+            return immunization_data
+
+        except Exception as e:
+            return {'error': f'Error processing immunization: {str(e)}'}
+
+    @staticmethod
+    def _extract_encounter_ref_id(resource):
+        """
+        Pull the bare Encounter id from a FHIR resource's ``encounter`` reference.
+
+        WP2's EncounterLinker stamps clinical resources with
+        ``encounter: {"reference": "Encounter/<id>"}``. This returns ``<id>``
+        (or None) so WP3 grouping can match resources to encounters by id.
+
+        Args:
+            resource: Raw FHIR resource dict.
+
+        Returns:
+            str | None: The referenced Encounter id, or None when absent.
+        """
+        try:
+            enc = resource.get('encounter')
+            if isinstance(enc, list):
+                enc = enc[0] if enc else None
+            if isinstance(enc, dict):
+                reference = enc.get('reference', '')
+                if isinstance(reference, str) and reference.startswith('Encounter/'):
+                    return reference.split('/', 1)[1]
+        except (AttributeError, IndexError, TypeError):
+            return None
+        return None
 
     @staticmethod
     def _report_sort_key_date(value):
@@ -2447,6 +2751,12 @@ class Patient(MedicalRecord):
             # Sort diagnostic reports by effective date
             report['clinical_summary'].get('diagnostic_reports', []).sort(
                 key=lambda x: sort_key_date(x.get('effective_date')),
+                reverse=True
+            )
+
+            # Sort immunizations by administration date
+            report['clinical_summary'].get('immunizations', []).sort(
+                key=lambda x: sort_key_date(x.get('date')),
                 reverse=True
             )
 
